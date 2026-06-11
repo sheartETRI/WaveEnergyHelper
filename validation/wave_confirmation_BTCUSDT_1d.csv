@@ -1,0 +1,13 @@
+timestamp,db_index,major_k_at_db,major_d_at_db,confirm_cross_delay,confirm_slope_delay,confirmed_by_cross,confirmed_by_slope,required_tb_before_confirm,tb_index,invalidated_before_confirm,final_outcome,within_3_cross,within_3_slope,within_5_cross,within_5_slope,within_8_cross,within_8_slope,within_13_cross,within_13_slope
+2025-10-21,30,34.38057937249452,51.08048007617033,6.0,4,True,True,False,106.0,False,INVALIDATED,False,False,False,True,True,True,True,True
+2025-10-26,35,31.623823630698915,34.3435460576989,1.0,28,True,True,False,106.0,False,INVALIDATED,True,False,True,False,True,False,True,False
+2025-11-09,49,31.075372968223178,39.22922395140513,16.0,14,True,True,False,106.0,True,INVALIDATED,False,False,False,False,False,False,False,False
+2025-12-22,92,36.485480492989794,53.258101032490046,9.0,3,True,True,False,106.0,False,INVALIDATED,False,True,False,True,False,True,True,True
+2026-01-27,128,25.39031091931492,50.71574134364727,12.0,3,True,True,False,198.0,True,INVALIDATED,False,True,False,True,False,True,True,True
+2026-02-09,141,17.69758088588024,15.742953264688627,57.0,11,True,True,False,198.0,True,INVALIDATED,False,False,False,False,False,False,False,True
+2026-02-16,148,28.193730337278954,21.412367861815817,50.0,4,True,True,False,198.0,False,INVALIDATED,False,False,False,True,False,True,False,True
+2026-02-27,159,38.56561145174327,32.10194159569271,39.0,10,True,True,False,198.0,False,INVALIDATED,False,False,False,False,False,False,False,True
+2026-03-03,163,48.00160492842674,38.39138792483649,35.0,6,True,True,False,198.0,False,INVALIDATED,False,False,False,False,False,True,False,True
+2026-04-06,197,22.420428263949184,25.9315424093247,1.0,16,True,True,False,198.0,False,INVALIDATED,True,False,True,False,True,False,True,False
+2026-05-03,224,78.92021675506822,81.390043539361,6.0,1,True,True,False,,False,INVALIDATED,False,True,False,True,True,True,True,True
+2026-05-25,246,26.269605628929373,46.292039567451475,,7,False,True,False,,True,INVALIDATED,False,False,False,False,False,True,False,True

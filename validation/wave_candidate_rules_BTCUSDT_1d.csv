@@ -1,0 +1,11 @@
+rule,count,n,win,win_rate,avg_return,median_return,expectancy,profit_factor,payoff_ratio,avg_mfe,avg_mae,avg_survival,window_a_expectancy,window_b_expectancy,window_a_n,window_b_n,robustness_gap,robustness_gap_normalized,stability_score
+RULE_A,2,2,0,0.0,-3.0000000000000053,-3.0000000000000053,-3.0000000000000053,0.0,0.0,0.504545041232505,-8.10473654284781,27.0,,,0,0,,1.0,-0.0
+RULE_B,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_C,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_D,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_E,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_F,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_G,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_H,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_SCORE_3,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
+RULE_SCORE_4,0,0,0,0.0,,,,,,,,,,,0,0,,1.0,
