@@ -52,6 +52,7 @@ from display.wave_branch_ui import render_wave_branch_panel
 from display.wave_confluence_ui import render_wave_confluence_panel
 from display.wave_candidate_rules_ui import render_wave_candidate_rules_panel
 from display.wave_generalization_ui import render_wave_generalization_panel
+from display.wave_regime_gated_ui import render_wave_regime_gated_panel
 from charts.plotly_builder import render_chart
 
 
@@ -314,6 +315,7 @@ def main():
     show_wave_confluence = st.sidebar.checkbox("Show Wave Confluence", value=False)
     show_candidate_rules = st.sidebar.checkbox("Show Candidate Rules", value=False)
     show_generalization = st.sidebar.checkbox("Show Generalization", value=False)
+    show_regime_gated = st.sidebar.checkbox("Show Regime Gated", value=False)
     as_of_text = st.sidebar.text_input(
         "기준 시점 (백트레이스)",
         value="",
@@ -499,6 +501,9 @@ def main():
 
             if show_generalization:
                 render_wave_generalization_panel(symbol, interval)
+
+            if show_regime_gated:
+                render_wave_regime_gated_panel(symbol, interval)
 
             # --- Rendering ---
             render_chart(
