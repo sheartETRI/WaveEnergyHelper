@@ -53,6 +53,33 @@ from display.wave_confluence_ui import render_wave_confluence_panel
 from display.wave_candidate_rules_ui import render_wave_candidate_rules_panel
 from display.wave_generalization_ui import render_wave_generalization_panel
 from display.wave_regime_gated_ui import render_wave_regime_gated_panel
+from display.wave_rule_grading_ui import render_wave_rule_grading_panel
+from display.wave_grade_origin_ui import render_wave_grade_origin_panel
+from display.wave_grade_early_warning_ui import render_wave_grade_early_warning_panel
+from display.wave_grade_failure_ui import render_wave_grade_failure_panel
+from display.wave_confirmation_gate_ui import render_wave_confirmation_gate_panel
+from display.wave_watchlist_tracker_ui import render_wave_watchlist_tracker_panel
+from display.wave_grade_post_event_ui import render_wave_grade_post_event_panel
+from display.wave_volume_energy_ui import render_wave_volume_energy_panel
+from display.wave_energy_divergence_ui import render_wave_energy_divergence_panel
+from display.wave_money_flow_ui import render_wave_money_flow_panel
+from display.wave_structure_confirmation_ui import render_wave_structure_confirmation_panel
+from display.wave_structure_lte_ui import render_wave_structure_lte_panel
+from display.wave_quality_score_ui import render_wave_quality_score_panel
+from display.wave_quality_ruleset_ui import render_wave_quality_ruleset_panel
+from display.wave_ruleset_robustness_ui import render_wave_ruleset_robustness_panel
+from display.wave_cross_market_validation_ui import render_wave_cross_market_validation_panel
+from display.wave_live_watchlist_ui import render_wave_live_watchlist_panel
+from display.wave_live_forward_journal_ui import render_wave_live_forward_journal_panel
+from display.wave_symbol_segmentation_ui import render_wave_symbol_segmentation_panel
+from display.wave_regime_segmentation_ui import render_wave_regime_segmentation_panel
+from display.wave_survival_segmentation_ui import render_wave_survival_segmentation_panel
+from display.wave_failure_trigger_validation_ui import render_wave_failure_trigger_validation_panel
+from display.wave_exit_policy_simulation_ui import render_wave_exit_policy_simulation_panel
+from display.wave_entry_filter_refinement_ui import render_wave_entry_filter_refinement_panel
+from display.wave_robustness_validation_ui import render_wave_robustness_validation_panel
+from display.wave_final_synthesis_ui import render_wave_final_synthesis_panel
+from display.wave_forward_observation_ui import render_wave_forward_observation_panel
 from charts.plotly_builder import render_chart
 
 
@@ -316,6 +343,33 @@ def main():
     show_candidate_rules = st.sidebar.checkbox("Show Candidate Rules", value=False)
     show_generalization = st.sidebar.checkbox("Show Generalization", value=False)
     show_regime_gated = st.sidebar.checkbox("Show Regime Gated", value=False)
+    show_rule_grading = st.sidebar.checkbox("Show Rule Grading", value=False)
+    show_grade_origin = st.sidebar.checkbox("Show Grade Origin", value=False)
+    show_grade_early_warning = st.sidebar.checkbox("Show Grade Early Warning", value=False)
+    show_grade_failure = st.sidebar.checkbox("Show Grade Failure", value=False)
+    show_confirmation_gate = st.sidebar.checkbox("Show Confirmation Gate", value=False)
+    show_watchlist_tracker = st.sidebar.checkbox("Show Watchlist Tracker", value=False)
+    show_grade_post_event = st.sidebar.checkbox("Show Grade Post Event", value=False)
+    show_volume_energy = st.sidebar.checkbox("Show Volume Energy", value=False)
+    show_energy_divergence = st.sidebar.checkbox("Show Energy Divergence", value=False)
+    show_money_flow = st.sidebar.checkbox("Show Money Flow", value=False)
+    show_structure_confirmation = st.sidebar.checkbox("Show Structure Confirmation", value=False)
+    show_structure_lte = st.sidebar.checkbox("Show Structure LTE", value=False)
+    show_quality_score = st.sidebar.checkbox("Show Wave Quality Score", value=False)
+    show_quality_ruleset = st.sidebar.checkbox("Show Quality Rule Set", value=False)
+    show_ruleset_robustness = st.sidebar.checkbox("Show Rule Set Robustness", value=False)
+    show_cross_market = st.sidebar.checkbox("Show Cross Market Validation", value=False)
+    show_live_watchlist = st.sidebar.checkbox("Show Live Watchlist", value=False)
+    show_live_forward_journal = st.sidebar.checkbox("Show Live Forward Journal", value=False)
+    show_symbol_segmentation = st.sidebar.checkbox("Show Symbol Segmentation", value=False)
+    show_regime_segmentation = st.sidebar.checkbox("Show Regime Segmentation", value=False)
+    show_survival_segmentation = st.sidebar.checkbox("Show Survival Segmentation", value=False)
+    show_failure_trigger_validation = st.sidebar.checkbox("Show Failure Trigger Validation", value=False)
+    show_exit_policy_simulation = st.sidebar.checkbox("Show Exit Policy Simulation", value=False)
+    show_entry_filter_refinement = st.sidebar.checkbox("Show Entry Filter Refinement", value=False)
+    show_robustness_validation = st.sidebar.checkbox("Show Robustness Validation", value=False)
+    show_final_synthesis = st.sidebar.checkbox("Show Final Synthesis", value=False)
+    show_forward_observation = st.sidebar.checkbox("Show Forward Observation", value=False)
     as_of_text = st.sidebar.text_input(
         "기준 시점 (백트레이스)",
         value="",
@@ -504,6 +558,87 @@ def main():
 
             if show_regime_gated:
                 render_wave_regime_gated_panel(symbol, interval)
+
+            if show_rule_grading:
+                render_wave_rule_grading_panel(symbol, interval)
+
+            if show_grade_origin:
+                render_wave_grade_origin_panel(symbol, interval)
+
+            if show_grade_early_warning:
+                render_wave_grade_early_warning_panel(symbol, interval)
+
+            if show_grade_failure:
+                render_wave_grade_failure_panel(symbol, interval)
+
+            if show_confirmation_gate:
+                render_wave_confirmation_gate_panel(symbol, interval)
+
+            if show_watchlist_tracker:
+                render_wave_watchlist_tracker_panel(symbol, interval)
+
+            if show_grade_post_event:
+                render_wave_grade_post_event_panel(symbol, interval)
+
+            if show_volume_energy:
+                render_wave_volume_energy_panel(symbol, interval)
+
+            if show_energy_divergence:
+                render_wave_energy_divergence_panel(symbol, interval)
+
+            if show_money_flow:
+                render_wave_money_flow_panel(symbol, interval)
+
+            if show_structure_confirmation:
+                render_wave_structure_confirmation_panel(symbol, interval)
+
+            if show_structure_lte:
+                render_wave_structure_lte_panel(symbol, interval)
+
+            if show_quality_score:
+                render_wave_quality_score_panel(symbol, interval)
+
+            if show_quality_ruleset:
+                render_wave_quality_ruleset_panel(symbol, interval)
+
+            if show_ruleset_robustness:
+                render_wave_ruleset_robustness_panel(symbol, interval)
+
+            if show_cross_market:
+                render_wave_cross_market_validation_panel(symbol, interval)
+
+            if show_live_watchlist:
+                render_wave_live_watchlist_panel(symbol, interval)
+
+            if show_live_forward_journal:
+                render_wave_live_forward_journal_panel(symbol, interval)
+
+            if show_symbol_segmentation:
+                render_wave_symbol_segmentation_panel(symbol, interval)
+
+            if show_regime_segmentation:
+                render_wave_regime_segmentation_panel(symbol, interval)
+
+            if show_survival_segmentation:
+                render_wave_survival_segmentation_panel(symbol, interval)
+
+            if show_failure_trigger_validation:
+                render_wave_failure_trigger_validation_panel(symbol, interval)
+
+            if show_exit_policy_simulation:
+                render_wave_exit_policy_simulation_panel(symbol, interval)
+
+            if show_entry_filter_refinement:
+                render_wave_entry_filter_refinement_panel(symbol, interval)
+
+            if show_robustness_validation:
+                render_wave_robustness_validation_panel(symbol, interval)
+
+            if show_final_synthesis:
+                render_wave_final_synthesis_panel(symbol, interval)
+
+            if show_forward_observation:
+                render_wave_forward_observation_panel(symbol, interval)
 
             # --- Rendering ---
             render_chart(
