@@ -24,6 +24,7 @@ from display.transition_radar import (
 )
 from narration.service import generate_narration
 from config.settings import NARRATION_CONFIG, NARRATION_DISCLAIMER
+from display.v2_campaign_view import render_v2_campaign_view
 from display.stability_verdict import (
     align_enriched_to_index,
     get_stability_enriched,
@@ -311,7 +312,19 @@ def main():
     st.sidebar.header("Chart Settings")
     symbol = st.sidebar.selectbox("Select Symbol", options=SUPPORTED_SYMBOLS, index=0)
     interval = st.sidebar.selectbox("Select Timeframe", options=TIMEFRAMES, index=TIMEFRAMES.index("1d"))
-    
+    show_v2_campaign = st.sidebar.checkbox("v2 캠페인 종합 뷰", value=True,
+                                           help="패턴 주도 TF 승격 캠페인 카드 (메인 뷰, 관측 등급)")
+
+    # --- v2 메인 뷰: 45패널 나열이 아니라 캠페인 카드가 메인 (§6). 실패해도 앱은 계속. ---
+    if show_v2_campaign:
+        try:
+            render_v2_campaign_view(symbol)
+            st.divider()
+            with st.expander("상세 분석 (v1 45패널)", expanded=False):
+                st.caption("기존 45패널은 패널 레지스트리(display.panel_registry)로 재조립 예정 — 아래는 기존 렌더 유지")
+        except Exception as exc:  # noqa: BLE001
+            st.warning(f"v2 캠페인 뷰 렌더 실패(앱 계속): {exc}")
+
     st.sidebar.subheader("Indicators")
     show_stoch = st.sidebar.checkbox("Show Stochastic Slow", value=True)
     stochastic_view_mode = st.sidebar.radio(
