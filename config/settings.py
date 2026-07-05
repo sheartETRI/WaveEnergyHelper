@@ -128,6 +128,13 @@ UPPER_FRAME_MAP = {
 # 파동 역할 -> STOCH_LAYERS의 label 매핑.
 WAVE_LAYER_ROLES = {"large": "(20,10,10)", "mid": "(10,5,5)", "small": "(5,3,3)"}
 
+# --- v2 캠페인 채점 파라미터 ---
+# 채점 단위 = 캠페인(T1: ENTRY-1→EXIT-1, T2: ENTRY-2→S7). 합산 = (1+T1)(1+T2)-1 − 수수료.
+# fee_per_fill: 체결 1회당 수수료(0.1% 가정). §10 미결 — 김박사 실계좌 기준 조정 대상.
+V2_CAMPAIGN_PARAMS = {
+    "fee_per_fill": 0.001,
+}
+
 # --- MA Pattern (이평선 쌍바닥/쌍봉) Settings ---
 # 이평선 시계열 자체의 W/M 패턴 검출 파라미터. 가격 스케일이므로 스케일 프리로 동작한다.
 MA_PATTERN_PARAMS = {
