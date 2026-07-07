@@ -29,8 +29,10 @@ from data.processor import resample_timeframe
 
 
 def test_pool_matches_spec_no_12h():
-    assert TF_POOL == ["15m", "30m", "1h", "2h", "4h", "6h", "8h", "1d", "4d", "2w"]
+    # 9차 위임 B: "1M"(월봉) 추가 — 고립 TF(관측 전용).
+    assert TF_POOL == ["15m", "30m", "1h", "2h", "4h", "6h", "8h", "1d", "4d", "2w", "1M"]
     assert "12h" not in TF_POOL
+    assert "1M" in TF_POOL
     assert tf_ladder.TF_LADDER == TF_POOL   # 하위 호환 별칭
     assert tf_ladder.in_ladder("8h")
     assert not tf_ladder.in_ladder("12h")
@@ -49,7 +51,8 @@ def test_adjacency_table_matches_spec_section1():
         ("8h", "2h", None),     # 1d는 ×3 → 범위 밖. 상위 없음
         ("1d", "6h", "4d"),     # 4h(÷6)보다 6h 우선
         ("4d", "1d", "2w"),     # 2w = ×3.5(하한 포함)
-        ("2w", "4d", None),     # 상위 없음
+        ("2w", "4d", None),     # 상위 없음 (1M은 ×2.14 → 인접 아님)
+        ("1M", None, None),     # 9차 B: 고립 TF — 2w와 ×2.14(<3.5)라 상·하위 모두 없음
     ]
     for tf, lo, up in table:
         assert lower(tf) == lo, f"lower({tf}) = {lower(tf)}, 기대 {lo}"
@@ -72,7 +75,20 @@ def test_upper_lower_edges_return_none_not_substitute():
     # 풀 밖 TF(12h 포함)는 None
     assert upper("12h") is None
     assert lower("12h") is None
-    assert tf_ladder.ladder_index("1M") is None
+
+
+def test_1M_isolated_observation_tf():
+    # 9차 위임 B: 1M은 풀에 있으나 고립(상·하위 없음). 통계·승격 아닌 관측 전용.
+    assert tf_ladder.in_ladder("1M")
+    assert tf_ladder.ladder_index("1M") == len(TF_POOL) - 1   # 풀 최상단
+    assert upper("1M") is None and lower("1M") is None
+    # 2w도 1M을 상위로 끌어오지 않는다(×2.14 < 3.5).
+    assert upper("2w") is None
+    # 히스토리 ~107개월: MA60까지만 usable, MA120/240 부족(부분집합).
+    part = assess_tf_data(107, "1M")
+    assert part.usable_ma_periods == [5, 10, 20, 60]
+    assert part.missing_ma_periods == [120, 240]
+    assert "부분집합" in part.note
 
 
 def test_recommended_base_limit_native_vs_resampled():
@@ -150,6 +166,7 @@ if __name__ == "__main__":
     test_adjacency_table_matches_spec_section1()
     test_adjacency_asymmetry_is_by_design()
     test_upper_lower_edges_return_none_not_substitute()
+    test_1M_isolated_observation_tf()
     test_recommended_base_limit_native_vs_resampled()
     test_usable_core_ma_subset()
     test_assess_tf_data_notes_and_flags()

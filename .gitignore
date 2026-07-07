@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .playwright-mcp/
+
+# 9차: 관측 저널(런타임 누적 데이터 — 커밋 대상 아님)
+validation/observatory_journal.csv

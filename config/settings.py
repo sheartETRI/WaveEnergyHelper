@@ -172,6 +172,20 @@ V2_CAMPAIGN_PARAMS = {
     "fee_per_fill": 0.001,
 }
 
+# --- v2 관측 계기판 파라미터 (9차 위임 — 표시·저널 전용, 판정/게이트/추천 아님) ---
+# ★ 관측 전용. slope 계기판·월봉 대파동 위치·전조 채널 디스패처 표시 상수.
+OBSERVATORY_PARAMS = {
+    # C: |정규화 slope| 히스토리 하위 pctile 이하 = 평탄(횡보). 8차 검증 부가기록 정의 재사용.
+    "slope_flat_pctile": 0.20,
+    "slope_dash_tfs": ["1d", "4d"],   # C 병렬 표시 대상 TF (각 60MA slope)
+    # B: 월봉 대파동(스토캐 4층 40,20,20) 위치 구간 경계. WAVE oversold/overbought와 정합.
+    "stoch_bottom_zone": 20.0,
+    "stoch_top_zone": 80.0,
+    "monthly_tf": "1M",
+    # 관측 저널 누적 경로(표시 시점 상태 기록).
+    "journal_path": "validation/observatory_journal.csv",
+}
+
 # --- MA Pattern (이평선 쌍바닥/쌍봉) Settings ---
 # 이평선 시계열 자체의 W/M 패턴 검출 파라미터. 가격 스케일이므로 스케일 프리로 동작한다.
 MA_PATTERN_PARAMS = {

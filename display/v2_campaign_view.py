@@ -60,7 +60,7 @@ def _scan_tf(symbol: str, tf: str):
 
     bare = fetch_ohlcv_bare(symbol, tf)
     if bare is None or bare.empty:
-        return None, None, assess_tf_from_df(None, tf), []
+        return None, None, assess_tf_from_df(None, tf), [], [], None
     full = prepare_base_frame(bare)
     r = run_symbol_tf(symbol, tf, full_df=full)
     candidates = scan_ma_candidates(full, symbol, tf, periods=[5, 10, 20])
@@ -76,6 +76,18 @@ def render_v2_campaign_view(symbol: str) -> None:
 
     st.subheader(f"v2 캠페인 종합 · {symbol}")
     st.caption("패턴 주도 기준 TF 승격 · 전 구간 관측 등급 (게이트 승격 전 추천 아님)")
+
+    # 관측 계기판 (9차 위임 C·B) — 심볼당 1회, 표시·저널 전용.
+    from display.observatory import (
+        render_monthly_stoch_panel,
+        render_precursor_slot,
+        render_slope_dashboard,
+    )
+    try:
+        render_slope_dashboard(symbol)      # C: 1d/4d 60MA slope 3단 + 종합 라벨
+        render_monthly_stoch_panel(symbol)  # B: 월봉 대파동 위치
+    except Exception as exc:  # noqa: BLE001
+        st.caption(f"관측 계기판 산출 실패 ({exc})")
 
     any_card = False
     for tf in TF_POOL:
@@ -102,5 +114,10 @@ def render_v2_campaign_view(symbol: str) -> None:
         # candidate·캔들은 확정 유무와 무관하게 표시(관측 전용 — 승격/진입 아님, §B·§E).
         render_candidate_notes(candidates)
         render_candle_notes(candles)
+        # 전조 채널 디스패처 슬롯 (9차 위임 D, 스펙 §2.5) — 배열 상태별 활성 채널 표시.
+        try:
+            render_precursor_slot(full, symbol, tf)
+        except Exception as exc:  # noqa: BLE001
+            st.caption(f"{tf} 전조 슬롯 산출 실패 ({exc})")
     if not any_card:
         st.info("현재 확정된 캠페인이 없습니다 (전 TF 스캔 결과).")
