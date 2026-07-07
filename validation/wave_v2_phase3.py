@@ -30,10 +30,14 @@ from validation.g1a_render import ensure_dir, render_ma_event  # noqa: E402
 from validation.wave_v2_phase2 import build  # noqa: E402 (엔진 무수정 재사용)
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-# B: 확대 스캔 풀 10개 (사다리 6 + 중간 네이티브 TF). 정확한 구성은 미결(김박사 확정 대상).
-POOL_10 = ["15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "4d", "2w"]
+# B: 확정 스캔 풀 10개 = 동결 스펙 §1 (tf_ladder.TF_POOL). 4차 위임 A에서 12h→8h 교정.
+# ⚠ 이 스크립트로 생성된 기존 REPORT_V2_PHASE3.md / G1A_LIVE_SNAPSHOT.md 는 잘못된 12h 풀
+#   상태에서 산출됐다(재실행 금지 — PHASE1~3 리포트 무수정). 캐비엇은 REPORT_V2_PHASE4.md.
+from analysis.tf_ladder import TF_POOL  # noqa: E402
+
+POOL_10 = list(TF_POOL)   # ["15m","30m","1h","2h","4h","6h","8h","1d","4d","2w"]
 POOL_LIMITS = {"15m": 1000, "30m": 1000, "1h": 1000, "2h": 1000, "4h": 1000,
-               "6h": 1000, "12h": 1000, "1d": 800, "4d": 1000, "2w": 1000}
+               "6h": 1000, "8h": 1000, "1d": 800, "4d": 1000, "2w": 1000}
 RECENT_BARS = 30   # 라이브에서 '활성 기준 TF 후보' = 최근 30봉 내 확정
 
 HERE = os.path.dirname(os.path.abspath(__file__))

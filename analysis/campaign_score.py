@@ -31,6 +31,12 @@ CAMPAIGN_JOURNAL_COLS = (
     "predicted_region", "t1_return", "t2_return", "combined_gross", "combined_net",
     "num_fills", "fee_per_fill", "mae_t2", "entry2_after_low_break",
     "upper_alignment", "lower_wave_count_at_entry2", "suppressed_by_upper",
+    "array_context", "context_aligned",   # 4차 위임 C — 관측 태그(확정봉 앵커, 게이트 아님)
+    "concordance",                          # 4차 위임 E — 상응 합치(확정봉 앵커)
+    # 5차 위임 B — 첫 바닥(천장) 피봇 앵커 재주석(확정봉 앵커 컬럼과 병존, 게이트 아님)
+    "array_context_p1", "context_aligned_p1", "concordance_p1",
+    # 6차 위임 C — 기법0 추세 레이어 관측 컬럼(게이트·필터 사용 금지, 표시·저널 전용)
+    "trend_state_at_entry", "bottom_width",
     "status", "obs_grade",
 )
 
@@ -166,6 +172,14 @@ def campaign_journal_row(
     upper_alignment: Optional[str] = None,
     lower_wave_count_at_entry2: Optional[str] = None,
     suppressed_by_upper: Optional[str] = None,
+    array_context: Optional[str] = None,
+    context_aligned: Optional[bool] = None,
+    concordance: Optional[str] = None,
+    array_context_p1: Optional[str] = None,
+    context_aligned_p1: Optional[bool] = None,
+    concordance_p1: Optional[str] = None,
+    trend_state_at_entry: Optional[str] = None,
+    bottom_width: Optional[int] = None,
 ) -> dict:
     """저널 1행. upper_alignment/lower_wave_count는 L3(commit9)·관측에서 주입(없으면 None)."""
     e1_ts, e1_px = _tp(res.entry1)
@@ -191,6 +205,14 @@ def campaign_journal_row(
         "upper_alignment": upper_alignment,
         "lower_wave_count_at_entry2": lower_wave_count_at_entry2,
         "suppressed_by_upper": suppressed_by_upper,
+        "array_context": array_context,
+        "context_aligned": context_aligned,
+        "concordance": concordance,
+        "array_context_p1": array_context_p1,
+        "context_aligned_p1": context_aligned_p1,
+        "concordance_p1": concordance_p1,
+        "trend_state_at_entry": trend_state_at_entry,
+        "bottom_width": bottom_width,
         "status": score.status, "obs_grade": OBSERVATION_GRADE,
     }
 

@@ -15,11 +15,35 @@ from typing import List, Optional
 
 from config.settings import CORE_MA_PERIODS, CUSTOM_INTERVAL_BASE
 
-# 하위 → 상위. v2 스캐너가 순회하는 표준 사다리.
-TF_LADDER: List[str] = ["15m", "1h", "4h", "1d", "4d", "2w"]
+# 확정 풀 (동결 스펙 §1). 하위→상위(분 단위 크기 오름차순). 12h 없음 — 아래 주석 참조.
+# 스펙 원문: TF_POOL = ["15m","30m","1h","2h","4h","6h","8h","1d","4d","2w"]
+# PHASE1/2 백테스트는 이 풀을 쓰지 않고 {1h,4h,1d} 단일 TF 리플레이만 수행했고(풀 무관),
+# PHASE3 라이브 스냅샷은 12h를 포함한 잘못된 10-풀(8h 부재)로 산출됐다 → PHASE4에서 교정.
+TF_POOL: List[str] = ["15m", "30m", "1h", "2h", "4h", "6h", "8h", "1d", "4d", "2w"]
+
+# ★ 12h 제외 근거: 12h(720분)는 인접 비율 규칙(×3.5~×6)상 상·하위가 모두 없는 고립 TF다.
+#   upper 후보: 720×[3.5,6] = [2520,4320]분 → 풀에 해당 TF 없음(1d=1440은 ×2, 4d=5760은 ×8).
+#   lower 후보: 720÷[3.5,6] = [120,206]분 → 2h(120)는 ×6 경계지만 스펙 확정 풀은 8h를 채택.
+#   따라서 12h는 사다리에 편입되지 않으며 풀에서 제외한다(스펙 §1 정합).
+
+# TF 분(minute) 크기 — 비율 기반 인접 계산용(스펙 §1). 리샘플/네이티브 무관 논리 크기.
+TF_MINUTES: dict = {
+    "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240,
+    "6h": 360, "8h": 480, "12h": 720, "1d": 1440, "4d": 5760, "2w": 20160,
+}
+
+# 인접 비율 규칙(스펙 §1, 예외 없음): upper=×3.5~×6(×4 최근접 우선), lower=÷3.5~÷6(÷4 우선).
+# 상·하위는 각각 독립 계산 — 대칭 보장 안 함(예: upper(4h)=1d(×6)이나 lower(1d)=6h(÷4)).
+_RATIO_LOW = 3.5
+_RATIO_HIGH = 6.0
+_RATIO_PREFER = 4.0
+
+# 하위 호환: 기존 소비자(campaign_promotion.ladder_index, v2_campaign_view 순회)는 크기순
+# 인덱스만 필요로 하므로 TF_LADDER를 풀의 별칭으로 유지한다. '고정 사다리'가 아니라 크기순 풀이다.
+TF_LADDER: List[str] = TF_POOL
 
 # 커스텀 TF 1봉이 베이스(1d) 몇 봉인지. 리샘플 기반 fetch 예산 산정용.
-# 4d = 4×1d, 2w = 14×1d (2주 = 14일). 네이티브 TF는 베이스와 동일하므로 1.
+# 4d = 4×1d, 2w = 14×1d (2주 = 14일). 네이티브 TF(30m/2h/6h/8h 등)는 베이스와 동일하므로 1.
 CUSTOM_TF_BASE_MULTIPLIER = {"4d": 4, "2w": 14, "2d": 2, "3h": 3}
 
 # CORE_MA period p가 "검출 가능"하려면 워밍업(p봉) 이후에도 패턴을 볼 만큼의
@@ -41,20 +65,40 @@ def in_ladder(tf: str) -> bool:
     return tf in TF_LADDER
 
 
-def upper(tf: str) -> Optional[str]:
-    """상위 1단계 TF. 사다리 최상단(2w)이거나 사다리 밖이면 None."""
-    idx = ladder_index(tf)
-    if idx is None or idx + 1 >= len(TF_LADDER):
+def _adjacent(tf: str, going_up: bool) -> Optional[str]:
+    """비율 기반 인접(스펙 §1). going_up=True면 상위(×3.5~×6), False면 하위(÷3.5~÷6).
+
+    후보 비율이 [3.5, 6] 범위에 드는 TF 중 ×4(÷4)에 최근접. 동률이면 비율이 작은 쪽.
+    범위 안 후보가 없으면 None(대체 TF를 임의로 끌어오지 않는다).
+    """
+    base = TF_MINUTES.get(tf)
+    if base is None or tf not in TF_POOL:
         return None
-    return TF_LADDER[idx + 1]
+    within = []
+    for c in TF_POOL:
+        cm = TF_MINUTES[c]
+        if going_up and cm > base:
+            r = cm / base
+        elif not going_up and cm < base:
+            r = base / cm
+        else:
+            continue
+        if _RATIO_LOW <= r <= _RATIO_HIGH:
+            within.append((c, r))
+    if not within:
+        return None
+    within.sort(key=lambda cr: (abs(cr[1] - _RATIO_PREFER), cr[1]))
+    return within[0][0]
+
+
+def upper(tf: str) -> Optional[str]:
+    """상위 1단계 TF (비율 ×3.5~×6, ×4 최근접). 상위 없으면 None. 스펙 §1."""
+    return _adjacent(tf, going_up=True)
 
 
 def lower(tf: str) -> Optional[str]:
-    """하위 1단계 TF. 사다리 최하단(15m)이거나 사다리 밖이면 None."""
-    idx = ladder_index(tf)
-    if idx is None or idx - 1 < 0:
-        return None
-    return TF_LADDER[idx - 1]
+    """하위 1단계 TF (비율 ÷3.5~÷6, ÷4 최근접). 하위 없으면 None. 스펙 §1."""
+    return _adjacent(tf, going_up=False)
 
 
 def base_fetch_interval(tf: str) -> str:

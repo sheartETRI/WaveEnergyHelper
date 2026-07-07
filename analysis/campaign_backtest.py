@@ -23,8 +23,11 @@ from analysis.campaign_score import (
     score_campaign,
     summarize_campaigns,
 )
+from analysis.array_context import tag_s0
+from analysis.concordance import concordance_at
 from analysis.campaign_state_machine import CampaignResult, prepare_base_frame, replay_campaign
-from analysis.pattern_scanner import scan_dataframe
+from analysis.pattern_scanner import ma_first_pivot_pos, scan_dataframe
+from analysis.trend_layer import bottom_width, trend_state_at
 
 # 기준 setup 채택 MA(대파동). MA5/MA20는 강화·문맥이라 별도 캠페인으로 세지 않는다.
 DEFAULT_PROMOTER_PERIODS = [10]
@@ -83,7 +86,27 @@ def run_symbol_tf(
             p.driver.ma_or_layer, setup_pos,
         )
         score = score_campaign(res, full_df, fee_per_fill=fee_per_fill)
-        row = campaign_journal_row(res, score, suppressed_by_upper=None)
+        # array_context 관측 태그(§C) + 상응 합치(§E) — 확정봉 앵커. 게이트 아님, 저널 컬럼만.
+        arr_label, arr_aligned = tag_s0(full_df, res.setup_pos, res.direction)
+        concord = concordance_at(full_df, p.driver.ma_or_layer, res.direction, res.setup_pos)
+        # 5차 위임 B — 첫 바닥(천장) 피봇 앵커 재주석(병존). 앵커=first_pos, 없으면 setup_pos 폴백.
+        period = int(str(p.driver.ma_or_layer).replace("MA", "")) if str(p.driver.ma_or_layer).startswith("MA") else 10
+        pat = "db" if res.direction == "long" else "dt"
+        anchor_p1 = ma_first_pivot_pos(full_df, period, pat, res.setup_pos)
+        anchor_p1 = res.setup_pos if anchor_p1 is None else anchor_p1
+        arr_label_p1, arr_aligned_p1 = tag_s0(full_df, anchor_p1, res.direction)
+        concord_p1 = concordance_at(full_df, p.driver.ma_or_layer, res.direction, anchor_p1)
+        # 6차 위임 C — 추세 상태·바닥 폭 관측 컬럼(게이트 아님). S0 봉 기준.
+        t_state = trend_state_at(full_df, res.setup_pos)
+        b_width = bottom_width(full_df, period, pat, res.setup_pos)
+        row = campaign_journal_row(
+            res, score, suppressed_by_upper=None,
+            array_context=arr_label, context_aligned=arr_aligned,
+            concordance=concord,
+            array_context_p1=arr_label_p1, context_aligned_p1=arr_aligned_p1,
+            concordance_p1=concord_p1,
+            trend_state_at_entry=t_state, bottom_width=b_width,
+        )
         out.campaigns.append((res, score))
         out.journal_rows.append(row)
         last_close_pos = res.exit_final.pos if res.exit_final else len(full_df) - 1

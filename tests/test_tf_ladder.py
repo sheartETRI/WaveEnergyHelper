@@ -1,8 +1,9 @@
-"""TF 사다리 + 데이터 충분성 회귀 테스트.
+"""TF 풀 + 인접(스펙 §1) + 데이터 충분성 회귀 테스트.
 
-확정 규칙:
-- TF_LADDER = ["15m","1h","4h","1d","4d","2w"] (하위→상위)
-- upper/lower는 인덱스 ±1, 경계는 None (대체하지 않는다)
+확정 규칙 (동결 스펙 §1):
+- TF_POOL = ["15m","30m","1h","2h","4h","6h","8h","1d","4d","2w"] (12h 없음)
+- upper/lower는 비율 규칙 ×3.5~×6 / ÷3.5~÷6, ×4·÷4 최근접 우선. 예외 없음, 대체 없음.
+- 상·하위 각각 독립 계산 → 대칭 보장 안 함(예: upper(4h)=1d 이나 lower(1d)=6h).
 - 4d/2w 리샘플은 기존 resample_timeframe 그대로 (2d 동작 불변 보증)
 - 데이터 충분성: available_bars >= p + min_detect_bars 인 CORE_MA만 usable
 
@@ -17,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis import tf_ladder
 from analysis.tf_ladder import (
-    TF_LADDER,
+    TF_POOL,
     assess_tf_data,
     lower,
     recommended_base_limit,
@@ -27,26 +28,50 @@ from analysis.tf_ladder import (
 from data.processor import resample_timeframe
 
 
-def test_ladder_order_and_membership():
-    assert TF_LADDER == ["15m", "1h", "4h", "1d", "4d", "2w"]
-    assert tf_ladder.in_ladder("4h")
-    assert not tf_ladder.in_ladder("30m")
+def test_pool_matches_spec_no_12h():
+    assert TF_POOL == ["15m", "30m", "1h", "2h", "4h", "6h", "8h", "1d", "4d", "2w"]
+    assert "12h" not in TF_POOL
+    assert tf_ladder.TF_LADDER == TF_POOL   # 하위 호환 별칭
+    assert tf_ladder.in_ladder("8h")
+    assert not tf_ladder.in_ladder("12h")
 
 
-def test_upper_lower_interior():
-    assert upper("15m") == "1h"
-    assert upper("1d") == "4d"
-    assert lower("2w") == "4d"
-    assert lower("4h") == "1h"
+def test_adjacency_table_matches_spec_section1():
+    """스펙 §1 인접표 전수 고정 (비고 포함). 표를 그대로 단위 테스트로 박는다."""
+    # (tf, expected_lower, expected_upper)
+    table = [
+        ("15m", None, "1h"),    # 하위 없음 → 카운팅 불가
+        ("30m", None, "2h"),    # 하위 없음
+        ("1h", "15m", "4h"),    # 6h(×6)보다 4h 우선
+        ("2h", "30m", "8h"),
+        ("4h", "1h", "1d"),     # upper 1d = ×6
+        ("6h", "1h", "1d"),     # lower 1h = ÷6
+        ("8h", "2h", None),     # 1d는 ×3 → 범위 밖. 상위 없음
+        ("1d", "6h", "4d"),     # 4h(÷6)보다 6h 우선
+        ("4d", "1d", "2w"),     # 2w = ×3.5(하한 포함)
+        ("2w", "4d", None),     # 상위 없음
+    ]
+    for tf, lo, up in table:
+        assert lower(tf) == lo, f"lower({tf}) = {lower(tf)}, 기대 {lo}"
+        assert upper(tf) == up, f"upper({tf}) = {upper(tf)}, 기대 {up}"
+
+
+def test_adjacency_asymmetry_is_by_design():
+    # 스펙 §1 명시: upper(4h)=1d 이나 lower(1d)=6h (버그 아님, 규칙의 결과)
+    assert upper("4h") == "1d"
+    assert lower("1d") == "6h"
 
 
 def test_upper_lower_edges_return_none_not_substitute():
-    # 최하단 15m은 하위 없음, 최상단 2w는 상위 없음 — 대체 금지
+    # 풀 최하단 15m은 하위 없음, 최상단 2w는 상위 없음 — 대체 금지
     assert lower("15m") is None
     assert upper("2w") is None
-    # 사다리 밖 TF
-    assert upper("30m") is None
+    # 8h는 상위 없음(고립 상단), 30m/15m은 하위 없음(고립 하단)
+    assert upper("8h") is None
     assert lower("30m") is None
+    # 풀 밖 TF(12h 포함)는 None
+    assert upper("12h") is None
+    assert lower("12h") is None
     assert tf_ladder.ladder_index("1M") is None
 
 
@@ -121,8 +146,9 @@ def test_2d_resample_unchanged_guard():
 
 
 if __name__ == "__main__":
-    test_ladder_order_and_membership()
-    test_upper_lower_interior()
+    test_pool_matches_spec_no_12h()
+    test_adjacency_table_matches_spec_section1()
+    test_adjacency_asymmetry_is_by_design()
     test_upper_lower_edges_return_none_not_substitute()
     test_recommended_base_limit_native_vs_resampled()
     test_usable_core_ma_subset()

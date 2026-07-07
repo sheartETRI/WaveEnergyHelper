@@ -26,10 +26,15 @@ PROMOTER_SOURCE = "ma"
 PROMOTER_PATTERNS = {"double_bottom", "double_top"}
 
 # 동시 확정 판정 윈도(상위 TF 1봉 지속). 잠정 튜너블 — §10 인접, 김박사 조정 대상.
+# 스펙 §1 풀 10개 전부 커버(30m/2h/6h/8h 포함) — 누락 시 _concurrency_window가 1d로 폴백.
 TF_DURATION = {
     "15m": pd.Timedelta(minutes=15),
+    "30m": pd.Timedelta(minutes=30),
     "1h": pd.Timedelta(hours=1),
+    "2h": pd.Timedelta(hours=2),
     "4h": pd.Timedelta(hours=4),
+    "6h": pd.Timedelta(hours=6),
+    "8h": pd.Timedelta(hours=8),
     "1d": pd.Timedelta(days=1),
     "4d": pd.Timedelta(days=4),
     "2w": pd.Timedelta(days=14),
@@ -65,11 +70,12 @@ class PromotedSignal:
 
 
 def is_promotable(ev: PatternEvent) -> bool:
-    """승격 구동자 자격: clean 이평선 쌍바닥/쌍봉만."""
+    """승격 구동자 자격: clean 이평선 쌍바닥/쌍봉만. candidate(넥라인 미돌파)는 승격 불가(§B)."""
     return (
         ev.source == PROMOTER_SOURCE
         and ev.kind_pattern in PROMOTER_PATTERNS
         and ev.clean == "clean"
+        and getattr(ev, "stage", "confirmed") == "confirmed"
     )
 
 

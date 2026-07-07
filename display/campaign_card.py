@@ -35,6 +35,7 @@ def build_campaign_card(
     lower_info: Optional[str] = None,
     history: Optional[str] = None,
     region_price_label: Optional[str] = None,
+    concordance_info: Optional[str] = None,
 ) -> List[str]:
     """§6 시그널 카드 라인들. 없는 정보는 정직하게 '수집 중'/'—'로 표시."""
     lines: List[str] = []
@@ -78,6 +79,8 @@ def build_campaign_card(
 
     lines.append(f"하위 파동: {lower_info or '수집 중'}")
     lines.append(f"상위 참고: {upper_info or '수집 중'}")
+    if concordance_info:
+        lines.append(f"상응 합치: {concordance_info}")   # 관측 태그(게이트 아님)
     lines.append(f"과거 성적: {history or '수집 중'}")
 
     # 합산(종료 시)
@@ -96,3 +99,57 @@ def render_campaign_card(res: CampaignResult, score: CampaignScore, **kwargs) ->
         st.markdown(f"**{lines[0]}**")
         for ln in lines[1:]:
             st.caption(ln)
+
+
+def build_candidate_note(ev) -> str:
+    """candidate(넥라인 미돌파) 1건을 확정과 명확히 구분되는 표기로 (§B).
+
+    예: '후보 — MA10 쌍바닥(HL) · 넥라인 612.4 상향 돌파 대기 [미확정·승격 불가]'.
+    """
+    pat = "쌍바닥" if ev.direction == "long" else "쌍봉"
+    kdir = "상향" if ev.direction == "long" else "하향"
+    nl = "—" if ev.neckline_price is None else f"{ev.neckline_price:.6g}"
+    kind = f"({ev.kind})" if ev.kind else ""
+    return (
+        f"후보 — {ev.ma_or_layer} {pat}{kind} · 넥라인 {nl} {kdir} 돌파 대기 "
+        f"[미확정 · 승격 불가]"
+    )
+
+
+def render_candidate_notes(events) -> None:
+    """형성 중 candidate들을 확정 카드와 시각적으로 구분해 렌더 (streamlit).
+
+    승격·진입 대상이 아님을 명시(표시·저널 전용, §B 금지사항).
+    """
+    import streamlit as st
+
+    if not events:
+        return
+    with st.container(border=True):
+        st.markdown("**형성 중 후보 (candidate) — 표시·관측 전용, 승격/진입 아님**")
+        for ev in events:
+            st.caption(build_candidate_note(ev))
+
+
+def build_candle_note(ev) -> str:
+    """캔들 쌍바닥/쌍봉 1건 표기 (§E, 관측·표시 전용, 승격 소스 아님)."""
+    pat = "쌍바닥" if ev.direction == "long" else "쌍봉"
+    kind = f"({ev.kind})" if ev.kind else ""
+    nl = "—" if ev.neckline_price is None else f"{ev.neckline_price:.6g}"
+    return (
+        f"캔들 {pat}{kind} · 4봉 확정 {ev.confirmed_bar:%Y-%m-%d %H:%M} · 넥라인 {nl} "
+        f"[하급 타이밍 · 승격 소스 아님]"
+    )
+
+
+def render_candle_notes(events, *, limit: int = 5) -> None:
+    """최근 캔들 패턴들을 관측 전용으로 렌더 (streamlit). 승격 소스 아님 명시."""
+    import streamlit as st
+
+    if not events:
+        return
+    recent = sorted(events, key=lambda e: e.confirmed_pos, reverse=True)[:limit]
+    with st.container(border=True):
+        st.markdown("**캔들 패턴 (소파동급) — 검출·표시·저널 전용, 캠페인 승격 아님**")
+        for ev in recent:
+            st.caption(build_candle_note(ev))

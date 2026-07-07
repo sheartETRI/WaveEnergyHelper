@@ -128,6 +128,43 @@ UPPER_FRAME_MAP = {
 # 파동 역할 -> STOCH_LAYERS의 label 매핑.
 WAVE_LAYER_ROLES = {"large": "(20,10,10)", "mid": "(10,5,5)", "small": "(5,3,3)"}
 
+# --- v2 array_context (이평선 배열 맥락) 관측 태그 파라미터 (4차 위임 C) ---
+# 게이트 아님 — 저널 컬럼 관측 전용. 김박사 조정 대상(초기값 보수적).
+# 규칙 형식화: "정배열이다가 모일 때 쌍봉 / 역배열이다가 모일 때 쌍바닥"이 정방향 맥락.
+ARRAY_CONTEXT_PARAMS = {
+    "core_ma": [5, 10, 20, 60],      # 배열 판정 대상 CORE_MA (순서=정배열 기준)
+    "converge_window": 10,           # 스프레드 축소 추세 판정 창(봉)
+    "converge_spread_max": 0.03,     # 정규화 스프레드(max-min)/close 상한 — 이하이면 '모임' 후보
+    "converge_shrink_ratio": 0.8,    # 현재 스프레드 ≤ (window 전 스프레드 × 이 값) 이면 축소 추세
+}
+
+# --- v2 기법0 추세 레이어 관측 계기 파라미터 (6차 위임 C → 7차 위임 A 스펙 교정) ---
+# ★ 관측·표시·저널 전용 — 게이트·필터·승격·판정 사용 금지. v3 게이트는 이 위임에서 정하지 않는다.
+# 7차 위임 A: 동결 스펙(docs/기법0_추세레이어_동결스펙.md) 확보 → PHASE6 즉흥 정의를 스펙 우선 교정.
+#   · slope = 부호만(스펙 §2) → slope_flat_pct=0.0 (순수 부호, flat 밴드는 스펙 외였음).
+#   · TREND_SLOPE_N=5 는 스펙 초기값 제안과 일치(김박사 조정 대상).
+TREND_LAYER_PARAMS = {
+    # 스토캐 4층 (40,20,20) — 엔진 STOCH_LAYERS에 넣지 않는다(관측 전용 별도 suffix). 스펙 §1 상응 4층.
+    "stoch_layer": {"label": "(40,20,20)", "k_len": 40, "k_smooth": 20, "d_len": 20},
+    "TREND_SLOPE_N": 5,        # slope 판정 봉수 (스펙 §2, MA60/MA120 공통)
+    "slope_flat_pct": 0.0,     # 스펙 §2: slope는 부호만. 0.0=순수 부호(정확한 tie만 flat).
+    "trend_ma_fast": 60,       # 추세 기준 MA (스펙 §0: 추세의 기준은 60MA)
+    "trend_ma_slow": 120,      # T4 완연상승 판정 MA (스펙 §2: MA60×MA120 GC + slope120>0)
+}
+
+# --- v2 캔들 패턴 검출 + 상응 합치(concordance) 파라미터 (4차 위임 E) ---
+# 관측 전용 — 게이트·필터·승격 소스 아님. 김박사 조정 대상.
+# [F1] 상응 구조: MA10↔대파동, MA5↔중파동, 캔들↔소파동. 급 내 가격계>오실레이터.
+CANDLE_PATTERN_PARAMS = {
+    # 도지(시가=종가)를 음/양 교대의 '파괴'로 간주(보수적 기본값). False면 도지는 방향 없는
+    # 통과로 처리하지 않고 여전히 교대를 깨뜨리지 않는 완화 해석 — 초기값 True 권장.
+    "DOJI_BREAKS_ALTERNATION": True,
+}
+CONCORDANCE_PARAMS = {
+    "window_bars": 12,   # 상응 스토캐 층에서 같은 방향 패턴을 탐색하는 창(봉). WAVE db_recent_bars와 정합.
+    "min_cell_n": 20,    # 교차표(맥락×합치) 셀 판단 보류 임계 — n<이 값이면 '판단 보류' 표기.
+}
+
 # --- v2 캠페인 채점 파라미터 ---
 # 채점 단위 = 캠페인(T1: ENTRY-1→EXIT-1, T2: ENTRY-2→S7). 합산 = (1+T1)(1+T2)-1 − 수수료.
 # fee_per_fill: 체결 1회당 수수료(0.1% 가정). §10 미결 — 김박사 실계좌 기준 조정 대상.

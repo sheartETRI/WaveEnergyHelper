@@ -16,10 +16,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import List, Optional
 
+import numpy as np
 import pandas as pd
 
-from config.settings import STOCH_LAYERS
+from config.settings import MA_PATTERN_PARAMS, STOCH_LAYERS
+from indicators.ma_patterns import _is_declining_before, classify_pattern_kind
 from indicators.pattern_clean import classify_clean, ma_neckline_at_confirm
+
+# 확정(confirmed) = 넥라인 돌파 완료. candidate = 두 번째 바닥/천장 형성 + 넥라인 미돌파(대기).
+STAGE_CONFIRMED = "confirmed"
+STAGE_CANDIDATE = "candidate"
 
 # 스캔 대상 MA (MA5·MA10 중심; MA20은 문맥용). 필요 시 CORE 전체로 확장 가능.
 DEFAULT_MA_PERIODS: List[int] = [5, 10, 20]
@@ -28,6 +34,9 @@ STOCH_SUFFIXES: List[str] = [layer["label"] for layer in STOCH_LAYERS]
 # 방향 매핑: 바닥 패턴 → 매수(long), 봉 패턴 → 매도(short).
 _LONG = "long"
 _SHORT = "short"
+
+# 부호 반전 kind 매핑 (쌍바닥 공간 → 쌍봉 공간). ma_patterns._INVERT_KIND_MAP과 동일.
+_INVERT_KIND = {"HL": "LH", "LL": "HH", "EQ": "EQ"}
 
 
 @dataclass
@@ -42,9 +51,11 @@ class PatternEvent:
     kind: Optional[str]        # HL/LL (바닥) | HH/LH (봉) | None
     source: str                # "ma" | "stoch"
     clean: str                 # clean | not-clean | indeterminate | n/a
-    confirmed_pos: int         # iloc 위치
-    price_at_confirm: float     # 확정 봉 종가
-    strength: Optional[float]   # 검출기 확정값 (db/dt/tb/tt 컬럼값)
+    confirmed_pos: int         # iloc 위치 (candidate는 두 번째 극점 봉 위치)
+    price_at_confirm: float     # 확정 봉 종가 (candidate는 극점 봉 종가)
+    strength: Optional[float]   # 검출기 확정값 (db/dt/tb/tt 컬럼값). candidate는 None
+    # [4차 위임 B] 2단계 노출. confirmed=넥라인 돌파 확정 / candidate=형성 중·미돌파(승격 불가).
+    stage: str = STAGE_CONFIRMED
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -172,6 +183,181 @@ def scan_stoch_patterns(
     return events
 
 
+# ---------------------------------------------------------------- candidate (B)
+# 검출기 무수정 원칙의 명시적 예외(김박사 승인): 출력에 candidate 단계만 추가한다.
+# 내부 판정 로직·확정 정의([F7-a] kind+넥라인)는 불변 — 아래는 검출기가 이미 산출한
+# 피봇 컬럼(ma{p}_pivot_low/high)만 소비해 '형성 중 미돌파' 구조를 방출한다(스캐너 레이어).
+
+
+def _is_rising_before(values: np.ndarray, pos: int, decline_lookback: int) -> bool:
+    """_is_declining_before의 쌍봉 미러: pos가 decline_lookback 봉 전보다 높음(상승 중)."""
+    ref = pos - decline_lookback
+    if ref < 0 or np.isnan(values[pos]) or np.isnan(values[ref]):
+        return False
+    return values[pos] > values[ref]
+
+
+def _pivot_positions(full_df: pd.DataFrame, col: str) -> List[int]:
+    if col not in full_df.columns:
+        return []
+    s = full_df[col]
+    return [i for i in range(len(full_df)) if not pd.isna(s.iloc[i])]
+
+
+def ma_first_pivot_pos(full_df: pd.DataFrame, period: int, pat: str, confirm_pos: int) -> Optional[int]:
+    """확정 봉의 첫 바닥(천장) 피봇 위치 = ma{period}_{pat}_first_pos 컬럼값 (5차 위임 앵커)."""
+    fp_col = f"ma{period}_{pat}_first_pos"
+    if fp_col not in full_df.columns:
+        return None
+    raw = full_df[fp_col].iloc[confirm_pos]
+    if raw is None or pd.isna(raw):
+        return None
+    return int(raw)
+
+
+def _second_extreme_pos(
+    full_df: pd.DataFrame, period: int, pat: str, first_pos: int, confirm_pos: int
+) -> Optional[int]:
+    """확정 봉 기준 두 번째 극점(저점2/천장2) 위치 재구성 (ma_neckline_at_confirm과 동일 규칙)."""
+    piv_col = f"ma{period}_pivot_low" if pat == "db" else f"ma{period}_pivot_high"
+    if piv_col not in full_df.columns:
+        return None
+    s = full_df[piv_col]
+    ext = [i for i in range(first_pos + 1, confirm_pos) if not pd.isna(s.iloc[i])]
+    return ext[-1] if ext else None
+
+
+def scan_ma_candidates(
+    full_df: pd.DataFrame,
+    symbol: str,
+    tf: str,
+    periods: Optional[List[int]] = None,
+    *,
+    lookback: Optional[int] = None,
+    decline_lookback: Optional[int] = None,
+) -> List[PatternEvent]:
+    """형성 중(두 번째 극점 확정 + 넥라인 미돌파) MA 쌍바닥/쌍봉을 candidate로 방출.
+
+    검출기 확정 컬럼은 건드리지 않고 피봇 컬럼만 재해석한다. (period, pat)별로 가장 최근
+    미돌파 구조 1건만 방출(현재 대기 후보). kind는 잠정(넥라인 돌파 전이라 미확정).
+    """
+    if full_df is None or full_df.empty:
+        return []
+    pers = periods if periods is not None else DEFAULT_MA_PERIODS
+    lb = MA_PATTERN_PARAMS["lookback"] if lookback is None else lookback
+    dlb = MA_PATTERN_PARAMS["decline_lookback"] if decline_lookback is None else decline_lookback
+    close = full_df["close"] if "close" in full_df.columns else None
+    last = len(full_df) - 1
+    events: List[PatternEvent] = []
+
+    for period in pers:
+        ma_col = f"MA{period}"
+        if ma_col not in full_df.columns:
+            continue
+        values = full_df[ma_col].to_numpy(dtype="float64")
+        low_pos = _pivot_positions(full_df, f"ma{period}_pivot_low")
+        high_pos = _pivot_positions(full_df, f"ma{period}_pivot_high")
+
+        for pat, direction in (("db", _LONG), ("dt", _SHORT)):
+            ext_pos = low_pos if pat == "db" else high_pos
+            mid_pos = high_pos if pat == "db" else low_pos
+            best: Optional[PatternEvent] = None
+            best_pb = -1
+            for i in range(len(ext_pos) - 1):
+                pa, pb = ext_pos[i], ext_pos[i + 1]
+                if np.isnan(values[pa]) or np.isnan(values[pb]):
+                    continue
+                trend_ok = (
+                    _is_declining_before(values, pa, dlb) if pat == "db"
+                    else _is_rising_before(values, pa, dlb)
+                )
+                if not trend_ok:
+                    continue
+                mids = [m for m in mid_pos if pa < m < pb]
+                if not mids:
+                    continue
+                if pat == "db":
+                    neckline = max(values[m] for m in mids)
+                    if neckline <= max(values[pa], values[pb]):
+                        continue
+                    broken = any(
+                        values[p] > neckline for p in range(pb + 1, last + 1) if not np.isnan(values[p])
+                    )
+                else:
+                    neckline = min(values[m] for m in mids)
+                    if neckline >= min(values[pa], values[pb]):
+                        continue
+                    broken = any(
+                        values[p] < neckline for p in range(pb + 1, last + 1) if not np.isnan(values[p])
+                    )
+                if broken:
+                    continue  # 넥라인 돌파됨 → confirmed 영역(candidate 아님)
+                onset = pb + lb
+                if onset > last:
+                    continue  # 두 번째 극점 피봇이 아직 as-of로 확정되지 않음
+                # 잠정 kind: db는 저점2 vs 저점1(높아지면 HL), dt는 천장2 vs 천장1(낮아지면 LH).
+                raw_kind, _ = classify_pattern_kind(values[pa], values[pb])
+                kind = raw_kind if pat == "db" else _INVERT_KIND.get(raw_kind, raw_kind)
+                if pb > best_pb:
+                    best_pb = pb
+                    best = PatternEvent(
+                        symbol=symbol, tf=tf,
+                        kind_pattern=_pattern_name(pat, direction),
+                        ma_or_layer=f"MA{period}", direction=direction,
+                        confirmed_bar=pd.Timestamp(full_df.index[pb]),
+                        neckline_price=float(neckline),
+                        kind=kind, source="ma", clean="indeterminate",
+                        confirmed_pos=pb,
+                        price_at_confirm=float(close.iloc[pb]) if close is not None else float("nan"),
+                        strength=None, stage=STAGE_CANDIDATE,
+                    )
+            if best is not None:
+                events.append(best)
+    return events
+
+
+def candidate_lead_bars(
+    full_df: pd.DataFrame,
+    symbol: str,
+    tf: str,
+    periods: Optional[List[int]] = None,
+    *,
+    lookback: Optional[int] = None,
+) -> List[dict]:
+    """적시성 계측: confirmed MA db/dt 이벤트별 candidate 선행 봉수.
+
+    lead_bars = confirm_pos − (두번째극점 pb + lookback). 양수 = candidate가 확정보다 N봉
+    먼저 관측 가능, 음수/0 = 넥라인 확정의 구조적 후행성(빠른 돌파로 candidate 관측 창이 없음).
+    """
+    if full_df is None or full_df.empty:
+        return []
+    pers = periods if periods is not None else DEFAULT_MA_PERIODS
+    lb = MA_PATTERN_PARAMS["lookback"] if lookback is None else lookback
+    out: List[dict] = []
+    for period in pers:
+        for pat, direction in (("db", _LONG), ("dt", _SHORT)):
+            sig_col = f"ma{period}_{pat}"
+            fp_col = f"ma{period}_{pat}_first_pos"
+            if sig_col not in full_df.columns or fp_col not in full_df.columns:
+                continue
+            sig = full_df[sig_col]
+            for pos in range(len(full_df)):
+                if pd.isna(sig.iloc[pos]):
+                    continue
+                raw_fp = full_df[fp_col].iloc[pos]
+                if raw_fp is None or pd.isna(raw_fp):
+                    continue
+                pb = _second_extreme_pos(full_df, period, pat, int(raw_fp), pos)
+                if pb is None:
+                    continue
+                out.append({
+                    "symbol": symbol, "tf": tf, "period": period, "pat": pat,
+                    "direction": direction, "confirm_pos": pos,
+                    "candidate_onset_pos": pb + lb, "lead_bars": pos - (pb + lb),
+                })
+    return out
+
+
 def scan_dataframe(
     full_df: pd.DataFrame,
     symbol: str,
@@ -179,7 +365,10 @@ def scan_dataframe(
     ma_periods: Optional[List[int]] = None,
     stoch_suffixes: Optional[List[str]] = None,
 ) -> List[PatternEvent]:
-    """한 (symbol, tf)의 전 이력 확정 이벤트 (MA + 스토캐). confirmed_bar 오름차순 정렬."""
+    """한 (symbol, tf)의 전 이력 확정 이벤트 (MA + 스토캐). confirmed_bar 오름차순 정렬.
+
+    stage=confirmed만 반환한다(기존 동작 불변). candidate는 scan_ma_candidates로 별도 조회.
+    """
     events = scan_ma_patterns(full_df, symbol, tf, ma_periods)
     events += scan_stoch_patterns(full_df, symbol, tf, stoch_suffixes)
     events.sort(key=lambda e: (e.confirmed_bar, e.source, e.ma_or_layer))
@@ -226,7 +415,7 @@ def events_to_dataframe(events: List[PatternEvent]) -> pd.DataFrame:
             columns=[
                 "symbol", "tf", "kind_pattern", "ma_or_layer", "direction",
                 "confirmed_bar", "neckline_price", "kind", "source", "clean",
-                "confirmed_pos", "price_at_confirm", "strength",
+                "confirmed_pos", "price_at_confirm", "strength", "stage",
             ]
         )
     return pd.DataFrame([e.as_dict() for e in events])
