@@ -70,13 +70,25 @@ def render_slope_dashboard(symbol: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------- B. 월봉 대파동 위치
-def build_monthly_stoch_lines(symbol: str, pos: Optional[dict], n_bars: int) -> List[str]:
-    lines = [f"월봉(1M) 대파동 스토캐(40,20,20) 위치 · {symbol} — [관측 · 표본 희소, 통계/승격 아님]"]
+def _stoch_cand_str(c) -> str:
+    nl = "—" if getattr(c, "neckline_price", None) is None else f"{c.neckline_price:.4g}"
+    kd = f"({c.kind})" if getattr(c, "kind", None) else ""
+    pat = "쌍봉" if c.direction == "short" else "쌍바닥"
+    return f"{c.ma_or_layer} {pat}{kd} · 넥라인(K) {nl} 미돌파 [미확정]"
+
+
+def build_monthly_stoch_lines(symbol: str, pos: Optional[dict], n_bars: int, candidates=None) -> List[str]:
+    lines = [f"월봉(1M) 대대파동 스토캐(40,20,20) 위치 · {symbol} — [관측 · 표본 희소, 통계/승격 아님]"]
     if pos is None:
         lines.append("데이터 부족 — 월봉 스토캐 4층 산출 불가")
         return lines
     dline = f" (K {pos['k']:.1f}" + (f" · D {pos['d']:.1f}" if pos['d'] is not None else "") + ")"
     lines.append(f"현재: {pos['zone']} · {pos['direction']} 제스처{dline}")
+    if candidates:
+        for c in candidates[:2]:
+            lines.append(f"  형성 중 후보: {_stoch_cand_str(c)}")
+    else:
+        lines.append("  형성 중 후보: 없음(넥라인 미돌파 대기 없음)")
     lines.append(f"히스토리 {n_bars}개월 · MA60까지만 산출(MA120 불가) · 대파동 바닥 제스처 눈대중 아닌 수치 확인용")
     return lines
 
@@ -84,16 +96,21 @@ def build_monthly_stoch_lines(symbol: str, pos: Optional[dict], n_bars: int) -> 
 def render_monthly_stoch_panel(symbol: str) -> Optional[dict]:
     import streamlit as st
 
+    from analysis.pattern_scanner import scan_stoch_candidates
+    from analysis.trend_layer import TREND_STOCH_SUFFIX
+
     f1m = _load_full(symbol, "1M")
     n_bars = 0 if f1m is None else len(f1m)
     pos = None
+    candidates = []
     if f1m is not None:
         try:
             obs = add_trend_observation(f1m.copy())
             pos = monthly_stoch_position(obs)
+            candidates = scan_stoch_candidates(obs, symbol, "1M", suffixes=[TREND_STOCH_SUFFIX])
         except Exception:
             pos = None
-    lines = build_monthly_stoch_lines(symbol, pos, n_bars)
+    lines = build_monthly_stoch_lines(symbol, pos, n_bars, candidates)
     with st.container(border=True):
         st.markdown(f"**{lines[0]}**")
         for ln in lines[1:]:
@@ -103,6 +120,7 @@ def render_monthly_stoch_panel(symbol: str) -> Optional[dict]:
         append_observatory_journal({
             "ts": ts, "symbol": symbol, "tf": "1M", "kind": "monthly_stoch",
             "monthly_zone": pos["zone"], "monthly_direction": pos["direction"],
+            "n_candidates": len(candidates),
         })
     return pos
 
@@ -120,10 +138,13 @@ def build_precursor_lines(tf: str, pc: dict) -> List[str]:
         lines.append("최근 확정 전조: 없음(관측 창 내)")
     if pc["candidates"]:
         for c in pc["candidates"][:3]:
-            nl = "—" if getattr(c, "neckline_price", None) is None else f"{c.neckline_price:.6g}"
-            lines.append(f"  후보(candidate): {c.ma_or_layer} 쌍봉 · 넥라인 {nl} 하향 돌파 대기 [미확정]")
-    elif pc["state"] == "비정배열":
-        lines.append("  (대파동 스토캐 candidate 스캐너 부재 — 확정만 표시)")
+            if getattr(c, "source", None) == "stoch" or pc.get("source") == "stoch":
+                lines.append(f"  후보(candidate): {_stoch_cand_str(c)}")
+            else:
+                nl = "—" if getattr(c, "neckline_price", None) is None else f"{c.neckline_price:.6g}"
+                lines.append(f"  후보(candidate): {c.ma_or_layer} 쌍봉 · 넥라인 {nl} 하향 돌파 대기 [미확정]")
+    else:
+        lines.append("  후보(candidate): 없음(넥라인 미돌파 대기 없음)")
     return lines
 
 

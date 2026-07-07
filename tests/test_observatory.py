@@ -114,6 +114,51 @@ def test_precursor_channel_dispatch():
     assert out3["active"] is False and out3["channel"] is None
 
 
+def test_scan_stoch_candidates_pending_vs_confirmed():
+    from analysis.pattern_scanner import scan_stoch_candidates
+    sfx = "(20,10,10)"
+    n = 10
+    idx = pd.date_range("2020-01-01", periods=n, freq="1D")
+    base = {"close": [100.0] * n,
+            f"stoch_dt_candidate_{sfx}": [pd.NA] * n,
+            f"stoch_dt_{sfx}": [pd.NA] * n,
+            f"stoch_dt_neckline_{sfx}": [pd.NA] * n,
+            f"stoch_dt_kind_{sfx}": [pd.NA] * n}
+    df = pd.DataFrame(base, index=idx)
+    # 대기 후보: 두 번째 천장 마킹(pos7), 이후 확정 없음 → pending 방출.
+    df.iloc[7, df.columns.get_loc(f"stoch_dt_candidate_{sfx}")] = 80.0
+    df.iloc[7, df.columns.get_loc(f"stoch_dt_neckline_{sfx}")] = 60.0
+    df.iloc[7, df.columns.get_loc(f"stoch_dt_kind_{sfx}")] = "LH"
+    ev = scan_stoch_candidates(df, "BTCUSDT", "1d", suffixes=[sfx])
+    short = [e for e in ev if e.direction == "short"]
+    assert len(short) == 1
+    assert short[0].stage == "candidate" and short[0].kind == "LH"
+    assert short[0].ma_or_layer == sfx and short[0].source == "stoch"
+    assert short[0].neckline_price == 60.0
+    # 확정이 마킹 뒤에 오면 대기 후보 아님(방출 안 함).
+    df.iloc[9, df.columns.get_loc(f"stoch_dt_{sfx}")] = 85.0
+    ev2 = scan_stoch_candidates(df, "BTCUSDT", "1d", suffixes=[sfx])
+    assert [e for e in ev2 if e.direction == "short"] == []
+
+
+def test_stoch_candidate_lead_bars_definition():
+    from analysis.pattern_scanner import stoch_candidate_lead_bars
+    from config.settings import STOCH_PIVOT_PARAMS
+    sfx = "(20,10,10)"
+    n = 12
+    idx = pd.date_range("2020-01-01", periods=n, freq="1D")
+    df = pd.DataFrame({"close": [100.0] * n,
+                       f"stoch_dt_candidate_{sfx}": [pd.NA] * n,
+                       f"stoch_dt_{sfx}": [pd.NA] * n}, index=idx)
+    df.iloc[5, df.columns.get_loc(f"stoch_dt_candidate_{sfx}")] = 80.0   # 두 번째 극점 pos5
+    df.iloc[9, df.columns.get_loc(f"stoch_dt_{sfx}")] = 85.0             # 확정 pos9
+    rows = stoch_candidate_lead_bars(df, "BTCUSDT", "1d", suffixes=[sfx])
+    dt = [r for r in rows if r["pat"] == "dt"]
+    assert len(dt) == 1
+    lb = STOCH_PIVOT_PARAMS["lookback"]
+    assert dt[0]["lead_bars"] == 9 - (5 + lb)   # confirm − (pb + lookback)
+
+
 def test_observatory_journal_append_dedup():
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "obs.csv")
@@ -133,5 +178,7 @@ if __name__ == "__main__":
     test_monthly_stoch_position_zones()
     test_array_state_2p5()
     test_precursor_channel_dispatch()
+    test_scan_stoch_candidates_pending_vs_confirmed()
+    test_stoch_candidate_lead_bars_definition()
     test_observatory_journal_append_dedup()
     print("ALL OBSERVATORY TESTS PASSED")

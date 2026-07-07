@@ -144,19 +144,22 @@ def array_state(full: pd.DataFrame, pos: Optional[int] = None) -> str:
     return "기타"
 
 
-# 배열 상태 → 활성 전조 채널 (스펙 §2.5 표)
+# 배열 상태 → 활성 전조 채널 (스펙 §2.5 표). 10차 위임: 스토캐 채널 candidate 노출 추가.
 PRECURSOR_CHANNELS = {
     "정배열": {
         "channel": "이평선 10MA 쌍봉",
         "reason": "이평선이 살아 움직이는 국면 — 힘이 센 계기가 실제로 형성됨",
+        "source": "ma",
         "confirmed_col": "ma10_dt",
         "candidate_period": 10,
     },
     "비정배열": {
         "channel": "대파동 스토캐 쌍봉",
         "reason": "10MA가 눌린 국면 — 이평선 쌍봉은 형성이 어렵거나 늦으므로 빠른 계기를 읽음",
+        "source": "stoch",
         "confirmed_col": f"stoch_dt_{LARGE_STOCH_SUFFIX}",
-        "candidate_period": None,   # 스토캐 candidate 스캐너 부재 — 확정만
+        "stoch_suffix": LARGE_STOCH_SUFFIX,   # 대파동 (20,10,10)
+        "stoch_pat": "dt",                     # 쌍봉(하락 전조)
     },
 }
 
@@ -184,7 +187,7 @@ def precursor_channel(
     """
     p = (len(full) - 1) if (pos is None and full is not None) else pos
     st = array_state(full, p)
-    out = {"state": st, "channel": None, "reason": None,
+    out = {"state": st, "channel": None, "reason": None, "source": None,
            "confirmed_ts": None, "candidates": [], "active": st in PRECURSOR_CHANNELS}
     if st not in PRECURSOR_CHANNELS:
         out["reason"] = "정/비정배열 아님 — 활성 전조 채널 없음(관측)"
@@ -192,15 +195,19 @@ def precursor_channel(
     cfg = PRECURSOR_CHANNELS[st]
     out["channel"] = cfg["channel"]
     out["reason"] = cfg["reason"]
+    out["source"] = cfg["source"]
     out["confirmed_ts"] = _recent_confirmed(full, cfg["confirmed_col"], p, window)
-    if cfg["candidate_period"] is not None:
-        try:
+    # 전조 = 하락 전환 → 쌍봉(short) 후보만.
+    try:
+        if cfg["source"] == "ma":
             from analysis.pattern_scanner import scan_ma_candidates
             cands = scan_ma_candidates(full, symbol, tf, periods=[cfg["candidate_period"]])
-            # 전조=하락 전환 → 쌍봉(short) 후보만
-            out["candidates"] = [c for c in cands if getattr(c, "direction", None) == "short"]
-        except Exception:
-            out["candidates"] = []
+        else:  # stoch: 검출기 candidate 컬럼 노출(10차 위임 A)
+            from analysis.pattern_scanner import scan_stoch_candidates
+            cands = scan_stoch_candidates(full, symbol, tf, suffixes=[cfg["stoch_suffix"]])
+        out["candidates"] = [c for c in cands if getattr(c, "direction", None) == "short"]
+    except Exception:
+        out["candidates"] = []
     return out
 
 

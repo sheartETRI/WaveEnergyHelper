@@ -19,7 +19,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from config.settings import MA_PATTERN_PARAMS, STOCH_LAYERS
+from config.settings import MA_PATTERN_PARAMS, STOCH_LAYERS, STOCH_PIVOT_PARAMS
 from indicators.ma_patterns import _is_declining_before, classify_pattern_kind
 from indicators.pattern_clean import classify_clean, ma_neckline_at_confirm
 
@@ -314,6 +314,114 @@ def scan_ma_candidates(
             if best is not None:
                 events.append(best)
     return events
+
+
+# ---------------------------------------------------------------- 스토캐 candidate (10차 위임 A)
+# 스토캐 검출기(indicators/stochastic.py)는 이미 candidate 컬럼을 산출한다:
+#   stoch_{db,dt}_candidate_{suffix}  (두 번째 극점 마킹, kind+넥라인 포함, 넥라인 돌파 전).
+# PHASE4-B의 MA candidate와 대칭 — 검출기 무수정, 기존 컬럼을 이벤트로 **노출만** 한다.
+def _stoch_pat_cols(pat: str, suffix: str) -> dict:
+    return {
+        "candidate": f"stoch_{pat}_candidate_{suffix}",
+        "confirmed": f"stoch_{pat}_{suffix}",
+        "neckline": (f"stoch_neckline_{suffix}" if pat == "db" else f"stoch_dt_neckline_{suffix}"),
+        "kind": f"stoch_{pat}_kind_{suffix}",
+    }
+
+
+def scan_stoch_candidates(
+    full_df: pd.DataFrame,
+    symbol: str,
+    tf: str,
+    suffixes: Optional[List[str]] = None,
+) -> List[PatternEvent]:
+    """형성 중(두 번째 극점 마킹 + 넥라인 미돌파) 스토캐 쌍바닥/쌍봉을 candidate로 방출.
+
+    검출기가 이미 산출한 `stoch_{db,dt}_candidate_{suffix}` 컬럼을 노출만 한다(정본, 무수정).
+    (suffix, pat)별 가장 최근 마킹 1건 — 그 뒤로 확정(넥라인 돌파)이 없으면 '대기 후보'로 방출.
+    ★ 표시·저널 전용 — 승격·판정 금지(stage=candidate).
+    """
+    if full_df is None or full_df.empty:
+        return []
+    sfxs = suffixes if suffixes is not None else STOCH_SUFFIXES
+    close = full_df["close"] if "close" in full_df.columns else None
+    last = len(full_df) - 1
+    events: List[PatternEvent] = []
+
+    for sfx in sfxs:
+        for pat, direction in (("db", _LONG), ("dt", _SHORT)):
+            cols = _stoch_pat_cols(pat, sfx)
+            if cols["candidate"] not in full_df.columns or cols["confirmed"] not in full_df.columns:
+                continue
+            cand = full_df[cols["candidate"]]
+            conf = full_df[cols["confirmed"]]
+            cand_pos = [i for i in range(len(full_df)) if not pd.isna(cand.iloc[i])]
+            if not cand_pos:
+                continue
+            pb = cand_pos[-1]   # 가장 최근 두 번째 극점 마킹
+            # 그 뒤로 확정(넥라인 돌파)이 있으면 이미 confirmed → 대기 후보 아님.
+            if any(not pd.isna(conf.iloc[p]) for p in range(pb + 1, last + 1)):
+                continue
+            neck = None
+            if cols["neckline"] in full_df.columns:
+                seg = full_df[cols["neckline"]].iloc[pb:last + 1].dropna()
+                if not seg.empty:
+                    neck = float(seg.iloc[-1])
+            kind = None
+            if cols["kind"] in full_df.columns and not pd.isna(full_df[cols["kind"]].iloc[pb]):
+                kind = str(full_df[cols["kind"]].iloc[pb])
+            events.append(PatternEvent(
+                symbol=symbol, tf=tf,
+                kind_pattern=_pattern_name(pat, direction),
+                ma_or_layer=sfx, direction=direction,
+                confirmed_bar=pd.Timestamp(full_df.index[pb]),
+                neckline_price=neck, kind=kind, source="stoch", clean="indeterminate",
+                confirmed_pos=pb,
+                price_at_confirm=float(close.iloc[pb]) if close is not None else float("nan"),
+                strength=None, stage=STAGE_CANDIDATE,
+            ))
+    return events
+
+
+def stoch_candidate_lead_bars(
+    full_df: pd.DataFrame,
+    symbol: str,
+    tf: str,
+    suffixes: Optional[List[str]] = None,
+) -> List[dict]:
+    """적시성 계측(스토캐): confirmed 이벤트별 candidate 선행 봉수 (MA 채널과 동일 정의).
+
+    lead_bars = confirm_pos − (두번째극점 pb + 피봇 lookback). 양수=candidate 선행 관측 가능,
+    ≤0 = 넥라인 확정의 구조적 후행성(빠른 돌파). candidate 마킹 pb는 검출기 candidate 컬럼에서 취한다.
+    """
+    if full_df is None or full_df.empty:
+        return []
+    sfxs = suffixes if suffixes is not None else STOCH_SUFFIXES
+    lb = STOCH_PIVOT_PARAMS["lookback"]
+    out: List[dict] = []
+    for sfx in sfxs:
+        for pat, direction in (("db", _LONG), ("dt", _SHORT)):
+            cols = _stoch_pat_cols(pat, sfx)
+            if cols["candidate"] not in full_df.columns or cols["confirmed"] not in full_df.columns:
+                continue
+            cand = full_df[cols["candidate"]]
+            conf = full_df[cols["confirmed"]]
+            cand_pos = [i for i in range(len(full_df)) if not pd.isna(cand.iloc[i])]
+            if not cand_pos:
+                continue
+            for pos in range(len(full_df)):
+                if pd.isna(conf.iloc[pos]):
+                    continue
+                prev = [c for c in cand_pos if c <= pos]
+                if not prev:
+                    continue
+                pb = prev[-1]
+                out.append({
+                    "symbol": symbol, "tf": tf, "suffix": sfx, "pat": pat,
+                    "direction": direction, "confirm_pos": pos,
+                    "candidate_onset_pos": pb + lb, "lead_bars": pos - (pb + lb),
+                })
+    return out
 
 
 def candidate_lead_bars(
