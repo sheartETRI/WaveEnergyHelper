@@ -118,29 +118,29 @@ def test_truncated_empty_llm_response_uses_fallback(mock_key, mock_call):
 
 def test_opt_in_off_skips_generate_narration():
     """기본(off): generate_narration·캐시·폴백 경로 미진입."""
-    from main import render_wave_narration_if_enabled
+    from display.core_panels import render_wave_narration_if_enabled
 
     report = _minimal_report()
     radar = TransitionRadarContent(None, [], None)
     df = _struct_df("U1")
-    with patch("main.generate_narration") as mock_gen, patch(
-        "main.st",
+    with patch("display.core_panels.generate_narration") as mock_gen, patch(
+        "display.core_panels.st",
     ) as mock_st:
         render_wave_narration_if_enabled(False, report, "정배열", df, radar)
         mock_gen.assert_not_called()
         mock_st.markdown.assert_not_called()
 
 
-@patch("main.generate_narration")
+@patch("display.core_panels.generate_narration")
 def test_opt_in_on_calls_generate_narration(mock_gen):
     """체크 on → generate_narration 호출."""
-    from main import render_wave_narration_if_enabled
+    from display.core_panels import render_wave_narration_if_enabled
 
     mock_gen.return_value = MagicMock(body="해설 본문", extra_caption=None, source="llm")
     report = _minimal_report()
     radar = TransitionRadarContent(None, [], None)
     df = _struct_df("U1")
-    with patch("main.st") as mock_st:
+    with patch("display.core_panels.st") as mock_st:
         render_wave_narration_if_enabled(True, report, "정배열", df, radar)
         mock_gen.assert_called_once()
         assert mock_st.markdown.call_count >= 2
@@ -149,7 +149,7 @@ def test_opt_in_on_calls_generate_narration(mock_gen):
 def test_master_enabled_false_hides_checkbox_path():
     """enabled=False → UI·옵트인 모두 불가."""
     cfg = {"enabled": False}
-    from main import is_narration_ui_available, should_show_narration
+    from display.core_panels import is_narration_ui_available, should_show_narration
 
     assert not is_narration_ui_available(cfg)
     assert not should_show_narration(True, cfg)
