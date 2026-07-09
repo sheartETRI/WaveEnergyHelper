@@ -1,0 +1,8 @@
+{
+  "recorded": "2026-07-10",
+  "rule": "positive candidates {C2,C3,C2&C3} qualify if first-half pooled n>=30 AND fwd20 mean&median both > C0(first-half); pick top<=2 by mean uplift; none qualified.",
+  "c0_first_half": {"n": 58, "fwd20_mean": 0.0359, "fwd20_median": 0.0071},
+  "selected_conditions": [],
+  "carried_avoidance": ["C1"],
+  "note": "C2/C3 both worse than C0 in exploration -> hypotheses 2/3 not supported in-sample -> 0 positive selected. C1 carried as avoidance test. Second half scores C0 + C1 only."
+}
