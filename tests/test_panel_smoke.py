@@ -110,10 +110,16 @@ def test_context_panels_render_fast():
 
 @pytest.mark.skipif(
     not os.environ.get("RUN_SLOW"),
-    reason="사전계산 4종은 히스토리 재계산으로 각 ~1분 소요. RUN_SLOW=1 로 실행.",
+    reason="사전계산 4종은 히스토리 재계산으로 매우 느림(stability ~68s, wave_tracker >5분). RUN_SLOW=1.",
 )
 def test_precomputed_panels_render_slow():
-    """사전계산 4종(stability/tracker/confirmation/lifecycle) 어댑터 렌더 — 느림(opt-in)."""
+    """사전계산 4종(stability/tracker/confirmation/lifecycle) 어댑터 렌더 — 매우 느림(opt-in).
+
+    어댑터 배선은 legacy main.py와 동일 호출 패턴(공유 캐시로 오히려 fetch 절감). stability는
+    ~68s/500행으로 검증됨. wave_tracker/confirmation/lifecycle은 get_*_timeline 내부가 봉당
+    재계산이라 개별 >5분 — 사전계산 패널의 pre-existing 특성(11차 무관, 관측 opt-in). 앱에서는
+    기본 off + render_panel_safe 격리라 부팅/일반 사용에 영향 없음.
+    """
     ctx = _live_context()
     pre = [p for p in CONTEXT_PANELS if p.category == CAT_PRECOMPUTED]
     ctx.ui = {p.key: True for p in pre}
