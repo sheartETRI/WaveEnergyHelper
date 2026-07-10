@@ -5,9 +5,8 @@ BINANCE_BASE_URL = "https://api.binance.com/api/v3/klines"
 SUPPORTED_SYMBOLS = [
     "BTCUSDT",
     "ETHUSDT",
-    "USDT.D",
-    "BTC.D",
-    "ETH.D",
+    "BNBUSDT",
+    "SOLUSDT",
 ]
 TIMEFRAMES = [
     "1m", "3m", "5m", "15m", "30m",

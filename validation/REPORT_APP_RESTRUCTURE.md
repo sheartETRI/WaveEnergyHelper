@@ -173,11 +173,11 @@ import하지 않으며 analysis 모듈 무수정. **11차로 인한 신규 테�
 
 ## 7. 미결 / 김박사 확인 요청
 
-1. **① 심볼 구성 불일치 (확인 요청)**: 위임 문서는 "BTC/ETH/BNB/SOL 4심볼"이라 했으나
-   `config.SUPPORTED_SYMBOLS`는 `[BTCUSDT, ETHUSDT, USDT.D, BTC.D, ETH.D]` 5개. BTC/ETH만
-   Binance klines fetch 성공(각 500봉), 도미넌스 3종은 0봉(klines 미지원). BNB/SOL은 config에 없음
-   (단 forward 저널엔 BNBUSDT 데이터 존재). **config 수정은 analysis 인접이라 11차 무수정** — 심볼
-   목록 확정을 요청(도미넌스 데이터 소스 별도? BNB/SOL 추가?).
+1. **① 심볼 구성 불일치 → ✅ 해소 (11차 후속, 김박사 확정)**: `config.SUPPORTED_SYMBOLS`를
+   `["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT"]`로 교체(도미넌스 3종 제거). 도미넌스는 config
+   목록 항목으로만 존재했고 이를 참조하는 패널·코드·분기는 전무(전수 grep 확인) → 레거시 격리 대상
+   없음. 4심볼 모두 fetch 500봉 확인 + 심볼 셀렉터/3탭 렌더 스모크 확인(BTCUSDT 부팅, SOLUSDT
+   3탭, 콘솔 에러 0). 표시·설정 변경만(분석 무수정). 커밋 아래 §8-후속.
 2. **② wave_paths pre-existing 예외**: 구 CSV 스키마('survival_bars' 부재). 분석/CSV 재생성 필요
    (11차 범위 밖). 현재 앱은 격리로 계속. → 후속 라운드에서 CSV 재생성 또는 분석 정합 결정 요청.
 3. **③ 사전계산 패널 성능(pre-existing)**: stability ~68s, wave_tracker/confirmation/lifecycle는
