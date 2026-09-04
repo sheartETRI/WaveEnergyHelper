@@ -80,6 +80,7 @@ from display.wave_entry_filter_refinement_ui import render_wave_entry_filter_ref
 from display.wave_robustness_validation_ui import render_wave_robustness_validation_panel
 from display.wave_final_synthesis_ui import render_wave_final_synthesis_panel
 from display.wave_forward_observation_ui import render_wave_forward_observation_panel
+from display.wave_align_gate_ui import render_wave_align_gate_panel
 from charts.plotly_builder import render_chart
 
 
@@ -370,6 +371,7 @@ def main():
     show_robustness_validation = st.sidebar.checkbox("Show Robustness Validation", value=False)
     show_final_synthesis = st.sidebar.checkbox("Show Final Synthesis", value=False)
     show_forward_observation = st.sidebar.checkbox("Show Forward Observation", value=False)
+    show_align_gate = st.sidebar.checkbox("Show F2-b Align Gate (record-only)", value=False)
     as_of_text = st.sidebar.text_input(
         "기준 시점 (백트레이스)",
         value="",
@@ -639,6 +641,9 @@ def main():
 
             if show_forward_observation:
                 render_wave_forward_observation_panel(symbol, interval)
+
+            if show_align_gate:
+                render_wave_align_gate_panel(symbol, interval)
 
             # --- Rendering ---
             render_chart(
