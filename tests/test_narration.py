@@ -126,7 +126,9 @@ def test_opt_in_off_skips_generate_narration():
     with patch("main.generate_narration") as mock_gen, patch(
         "main.st",
     ) as mock_st:
-        render_wave_narration_if_enabled(False, report, "정배열", df, radar)
+        # 게이트 컨텍스트는 필수 인자다 (UI 항목 2 강제)
+        render_wave_narration_if_enabled(False, report, "정배열", df, radar,
+                                         "[4h 게이트 폐쇄]")
         mock_gen.assert_not_called()
         mock_st.markdown.assert_not_called()
 
@@ -141,7 +143,8 @@ def test_opt_in_on_calls_generate_narration(mock_gen):
     radar = TransitionRadarContent(None, [], None)
     df = _struct_df("U1")
     with patch("main.st") as mock_st:
-        render_wave_narration_if_enabled(True, report, "정배열", df, radar)
+        render_wave_narration_if_enabled(True, report, "정배열", df, radar,
+                                         "[4h 게이트 폐쇄]")
         mock_gen.assert_called_once()
         assert mock_st.markdown.call_count >= 2
 

@@ -81,6 +81,17 @@ from display.wave_robustness_validation_ui import render_wave_robustness_validat
 from display.wave_final_synthesis_ui import render_wave_final_synthesis_panel
 from display.wave_forward_observation_ui import render_wave_forward_observation_panel
 from display.wave_align_gate_ui import render_wave_align_gate_panel
+from display.wave_gate_context import (
+    STRUCT_LINE_MISSING,
+    gate_label,
+    promoted_htf_available,
+    struct_reference,
+)
+from display.wave_gate_panel_ui import (
+    render_data_freshness,
+    render_gate_panel,
+    render_tracking_status,
+)
 from charts.plotly_builder import render_chart
 
 
@@ -104,8 +115,12 @@ def _pattern_text(ws):
     return text
 
 
-def render_wave_summary(report, alignment):
-    """파동에너지 분석 결과 요약 패널을 차트 위에 표시한다."""
+def render_wave_summary(report, alignment, gate_context):
+    """파동에너지 분석 결과 요약 패널을 차트 위에 표시한다.
+
+    gate_context 는 필수다 — 파동 문구가 상위 게이트 상태 없이 단독으로 표시되는
+    경로를 남기지 않기 위한 강제다 (인자 없이 호출하면 TypeError).
+    """
     st.subheader("파동에너지 분석")
     c1, c2, c3, c4 = st.columns(4)
 
@@ -149,8 +164,13 @@ def render_wave_summary(report, alignment):
     else:
         c4.metric("소파동 타이밍 (Bot)", "검증불가", delta_color="off")
 
-    st.markdown(f"### {report.verdict}")
+    # 항목 2 — 파동 문구 단독 표시 금지. 상위 게이트 상태를 반드시 병기한다.
+    st.markdown(f"### {report.verdict} {gate_context}")
     st.caption(f"MA 배열: {alignment}")
+    st.caption(
+        "게이트 라벨은 상위 TF 상태 기술이다. 파동 문구와 게이트는 각각 별개의 "
+        "관측이며, 둘 다 매매 지시가 아니다."
+    )
     if report.notes:
         st.caption(" / ".join(report.notes))
 
@@ -183,9 +203,13 @@ def render_transition_radar_content(content):
         st.caption(content.recent_caption)
 
 
-def render_wave_narration(report, alignment, df, radar_content):
-    """AI 해설 — Gemini OpenAI 호환 (표시 계층)."""
-    st.markdown("**AI 해설**")
+def render_wave_narration(report, alignment, df, radar_content, gate_context):
+    """AI 해설 — Gemini OpenAI 호환 (표시 계층).
+
+    gate_context 필수 (항목 2 강제). 해설도 파동 결론을 문장으로 옮기는 경로이므로
+    게이트 상태를 함께 노출한다.
+    """
+    st.markdown(f"**AI 해설** {gate_context}")
     last_ts = df.index[-1] if df is not None and not df.empty else None
     result = generate_narration(report, alignment, radar_content, last_ts)
     st.markdown(result.body)
@@ -200,13 +224,14 @@ def render_wave_narration_if_enabled(
     alignment,
     df,
     radar_content,
+    gate_context,
     *,
     config=None,
 ):
     """옵트인일 때만 해설 섹션·generate_narration 진입 (off 시 호출 0)."""
     if not should_show_narration(user_opt_in, config):
         return
-    render_wave_narration(report, alignment, df, radar_content)
+    render_wave_narration(report, alignment, df, radar_content, gate_context)
 
 
 def _is_transition(hit):
@@ -307,6 +332,9 @@ def render_dynamics_trace(df):
 
 def main():
     st.set_page_config(layout="wide", page_title=" ")
+
+    # 항목 1 — 게이트 패널은 사이드바 토글이 아니라 메인 상단 고정이다.
+    render_gate_panel()
 
     # --- Sidebar ---
     st.sidebar.header("Chart Settings")
@@ -441,12 +469,13 @@ def main():
                     report = analyze_wave_energy(df, symbol, interval)
             else:
                 report = analyze_wave_energy(df, symbol, interval)
-            render_wave_summary(report, alignment)
+            gate_context = gate_label(symbol, interval)
+            render_wave_summary(report, alignment, gate_context)
             trace_df = prepare_trace_dataframe(df)
             radar_content = build_transition_radar(trace_df, trace_transitions(trace_df))
             render_transition_radar_content(radar_content)
             render_wave_narration_if_enabled(
-                show_ai_narration, report, alignment, df, radar_content,
+                show_ai_narration, report, alignment, df, radar_content, gate_context,
             )
 
             if debug_dynamics_trace:
@@ -645,9 +674,21 @@ def main():
             if show_align_gate:
                 render_wave_align_gate_panel(symbol, interval)
 
+            # 항목 5·6 — 기록 현황과 신선도 (성과 지표 없음)
+            render_tracking_status()
+            render_data_freshness(symbol, interval, df)
+
+            # 항목 4 — 패턴 저점 기준선 (표시 전용, 미검출·퇴화 시 비표시)
+            struct_ref = None
+            if promoted_htf_available(interval) and df is not None and not df.empty:
+                struct_ref = struct_reference(symbol, interval, str(df.index[-1]))
+            if struct_ref is None:
+                st.caption(f"패턴 저점 기준선: {STRUCT_LINE_MISSING}")
+
             # --- Rendering ---
             render_chart(
                 df, symbol, interval,
+                struct_reference=struct_ref,
                 show_stochastic=show_stoch,
                 stochastic_view_mode=stochastic_view_mode,
                 show_stoch_fill=show_stoch_fill,
