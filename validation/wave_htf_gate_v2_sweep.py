@@ -27,12 +27,16 @@ from analysis.wave_htf_gate import (
     TRIGGER_LABEL,
     bnb_core_overlap,
     calibration_verdict,
+    delta_expectancy,
+    expectancy_20,
+    gate_mask,
     fractal_correlation,
     gate_table,
     judge,
 )
 from analysis.wave_htf_gate_v2 import (
     GATE_NOTE,
+    GATE_VERSION_V1,
     GATE_VERSION_V2,
     PAIRS_V2,
     R0_MIN_EXPECTED_N,
@@ -343,6 +347,45 @@ def write_report(
             L.append("")
         L.append("G_WAVE 열은 'G_ALIGN 없이 파동 상태만으로 충분한가'의 참고 자료로만 읽는다 (§4.2).")
         L.append("")
+        L.append("### TF쌍별 Δ 분해 (§4.2, 판정 미사용)")
+        L.append("")
+        L.append("통합 Δ 가 어디서 나오는지 분해한다. **사후 부분집합 선택이므로 판정 근거가 아니다.**")
+        L.append("")
+        L.append("| 게이트 | pair | E[G_ALIGN] | E[G_BOTH] | Δ | n(G_BOTH) |")
+        L.append("|---|---|---|---|---|---|")
+        for ver in (GATE_VERSION_V2, GATE_VERSION_V1):
+            for pair, d in test["per_pair"].get(ver, {}).items():
+                L.append(f"| `{ver}` | {pair} | {_fmt(d['e_align'])} | {_fmt(d['e_both'])} | "
+                         f"{_fmt(d['delta'])} | {d['n_both']} |")
+        L.append("")
+        L.append("### C1 사후 완화 감사 (§0 C1, 판정 미사용)")
+        L.append("")
+        L.append("C1 은 R1 결과를 보고 내린 게이트 완화다. 그 완화가 **결론을 바꿨는지**만 확인한다. "
+                 "더 나은 게이트를 고르기 위한 비교가 아니며, 판정은 사전등록대로 "
+                 f"`{GATE_VERSION_V2}` 로만 한다.")
+        L.append("")
+        v1b = test["v1_result"]["bootstrap"]
+        v2b = test["result"]["bootstrap"]
+        L.append("| 게이트 | Δ | 95% CI | n(G_ALIGN) | n(G_BOTH) | 판정 |")
+        L.append("|---|---|---|---|---|---|")
+        L.append(f"| `{GATE_VERSION_V2}` (사전등록) | {_fmt(v2b.get('delta'))} | "
+                 f"[{_fmt(v2b.get('ci_low'))}, {_fmt(v2b.get('ci_high'))}] | "
+                 f"{v2b.get('n_align')} | {v2b.get('n_both')} | {test['result']['verdict']} |")
+        L.append(f"| `{GATE_VERSION_V1}` (R1 원안) | {_fmt(v1b.get('delta'))} | "
+                 f"[{_fmt(v1b.get('ci_low'))}, {_fmt(v1b.get('ci_high'))}] | "
+                 f"{v1b.get('n_align')} | {v1b.get('n_both')} | {test['v1_result']['verdict']} |")
+        L.append("")
+        L.extend(_gate_table_md(test["v1_tables"]))
+        L.append("")
+        same = test["v1_result"]["verdict"] == test["result"]["verdict"]
+        L.append(
+            ("**C1 은 결론을 바꾸지 않았다.** 두 게이트 모두 같은 판정이고 Δ 부호도 같다. "
+             "즉 이번 결론은 사후 완화에 의존하지 않는다."
+             if same else
+             "**주의: C1 이 결론을 바꿨다.** 사전등록 게이트와 R1 원안 게이트의 판정이 다르다. "
+             "이 경우 본 라운드의 결론은 게이트 선택에 의존하므로 그대로 채택해서는 안 된다.")
+        )
+        L.append("")
         L.append("### BNB 단독 — Filter_BNB_CORE 중첩률 (§4.2)")
         L.append("")
         o = test["bnb"]
@@ -412,6 +455,20 @@ def write_report(
     L.append("- **event_rate 환산 근사**: 6h event_rate 는 4h 실측을 봉길이 비례로 환산한 값이며 "
              "실측이 아니다. 1h event_rate 도 R1 의 3주 관측 창에서 나온 값이라 "
              "장기 구간에 그대로 적용하면 편향될 수 있다.")
+    if test is not None:
+        pp = test["per_pair"].get(GATE_VERSION_V2, {})
+        if len(pp) > 1:
+            signs = ", ".join(f"{p} Δ={_fmt(d['delta'])}" for p, d in pp.items())
+            L.append("- **통합 Δ 는 TF쌍 간 상쇄의 결과다**: " + signs + ". "
+                     "사전등록된 주 비교는 잔존 쌍 통합 하나뿐이므로 판정은 통합값으로 한다. "
+                     "쌍별 부호가 갈린다는 사실 자체는 '상위 TF 파동 상태의 효과가 TF쌍에 따라 "
+                     "다르다'는 관측이지만, 사후 부분집합 선택이라 이 라운드에서 결론으로 삼지 않는다. "
+                     "검정하려면 TF쌍을 사전 고정한 새 스펙이 필요하다.")
+        L.append("- **C1 은 결과적으로 불필요했다**: R1 에서 1d 완전정배열 기저율이 0이었던 것은 "
+                 "게이트 정의가 아니라 관측 창(하락 국면 9개월) 탓이었다. 2021–2026 구간에서는 "
+                 f"v1 게이트도 충분히 열려 n(G_BOTH) = {test['v1_result']['bootstrap'].get('n_both')} "
+                 "이며 검정이 가능하다. 즉 C3(창 확대) 하나만으로 검정력 문제가 풀렸고, "
+                 "C1(게이트 완화)은 사후적으로 보면 필요 없었다. 위 감사표대로 결론도 바뀌지 않았다.")
     L.append("- **상태 타임라인 구현**: 봉별 재계산 시 후행 "
              f"{STATE_WINDOW_BARS}봉으로 절단해 O(N²) 비용을 낮췄다. 무절단 "
              "`wave_tracker.run_timeline` 과 상태열이 일치함을 패리티 테스트로 강제한다 "
@@ -451,12 +508,36 @@ def run_main_test(surviving: list[str]) -> dict | None:
         for sym in SYMBOLS_V2:
             tables[f"{pair}|{sym}"] = gate_table(sub[sub["symbol"] == sym], f"{pair}|{sym}")
 
+    # C1(사후 완화) 감사 — v1 게이트로 같은 검정을 돌려 결론이 바뀌는지만 확인한다.
+    # 판정에는 쓰지 않는다 (§5: 게이트 스윕 금지). 목적은 '완화가 답을 바꿨는가'다.
+    v1_frames = [build_pair_events_v2(p, GATE_VERSION_V1) for p in PAIRS_V2]
+    v1_frames = [f for f in v1_frames if not f.empty]
+    v1_pooled = pd.concat(v1_frames, ignore_index=True)
+    v1_pooled = v1_pooled[v1_pooled["pair"].isin(surviving)]
+
+    per_pair = {}
+    for ver, df in ((GATE_VERSION_V2, pooled), (GATE_VERSION_V1, v1_pooled)):
+        per_pair[ver] = {
+            p: {
+                "e_align": expectancy_20(sub[gate_mask(sub, "G_ALIGN")]),
+                "e_both": expectancy_20(sub[gate_mask(sub, "G_BOTH")]),
+                "delta": delta_expectancy(sub),
+                "n_both": int(gate_mask(sub, "G_BOTH").sum()),
+            }
+            for p in PAIRS_V2
+            for sub in [df[df["pair"] == p]]
+            if not sub.empty
+        }
+
     return {
         "pooled": pooled,
         "all_events": all_events,
         "tables": tables,
         "result": judge(pooled),
         "bnb": bnb_core_overlap(pooled),
+        "v1_result": judge(v1_pooled),
+        "v1_tables": gate_table(v1_pooled, "V1_POOLED"),
+        "per_pair": per_pair,
     }
 
 
