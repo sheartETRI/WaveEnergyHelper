@@ -893,6 +893,30 @@ def _create_synced_chart_figure(
     return fig
 
 
+STRUCT_LINE_LABEL = "패턴 저점 기준선 (검증 중)"
+
+
+def _add_struct_reference_lines(fig, ref: dict) -> None:
+    """패턴 저점과 기준선을 가격 축에 얹는다 (표시 전용).
+
+    라벨은 상태 기술형으로 고정한다 — "손절 권고" 류 표현을 쓰지 않는다.
+    """
+    low = ref.get("reference_low")
+    line = ref.get("line_price")
+    if low is None or line is None:
+        return
+    fig.add_hline(
+        y=low, line_dash="dot", line_color="#8D6E63", line_width=1, row=1, col=1,
+        annotation_text="직전 확정 패턴 저점", annotation_position="right",
+        annotation_font_size=10,
+    )
+    fig.add_hline(
+        y=line, line_dash="dash", line_color="#EF5350", line_width=1, row=1, col=1,
+        annotation_text=STRUCT_LINE_LABEL, annotation_position="right",
+        annotation_font_size=10,
+    )
+
+
 def render_chart(
     df,
     symbol,
@@ -909,8 +933,14 @@ def render_chart(
     stability_aligned=None,
     show_wave_tracker=False,
     wave_tracker_aligned=None,
+    struct_reference=None,
 ):
-    """Renders price, volume, and indicators in one synchronized Plotly chart."""
+    """Renders price, volume, and indicators in one synchronized Plotly chart.
+
+    struct_reference: 항목 4 — 직전 확정 swing 저점과 ×0.995 기준선.
+    표시 전용이며 손절 권고가 아니다. 값 산출은 호출부(display)가 기존 모듈에서
+    가져오며 여기서 계산하지 않는다. None 이면 라인을 그리지 않는다.
+    """
     if df is None or df.empty:
         return
 
@@ -931,4 +961,7 @@ def render_chart(
         show_wave_tracker=show_wave_tracker,
         wave_tracker_aligned=wave_tracker_aligned,
     )
+    if struct_reference:
+        _add_struct_reference_lines(fig, struct_reference)
+
     st.plotly_chart(fig, width="stretch", config={"scrollZoom": True, "displaylogo": False})

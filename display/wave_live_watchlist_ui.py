@@ -53,7 +53,26 @@ def _load_report_snippets():
     return ranking[:8], heatmap[:8], conclusion
 
 
+def _gate_badge(sym: str, tf: str, rows) -> str:
+    """항목 3 — 게이트 통과/비통과 뱃지. 기대값 숫자는 표시하지 않는다."""
+    from display.wave_gate_context import gate_state_for, promoted_htf
+
+    htf = promoted_htf(tf)
+    if htf is None:
+        return "<span style='color:#BDBDBD'>게이트 미적용 TF</span>"
+    row = gate_state_for(sym, htf, rows)
+    if row.get("gate_align") is None:
+        return "<span style='color:#BDBDBD'>게이트 상태 불명</span>"
+    if row.get("gate_align"):
+        return ("<span style='background:#2E7D32;color:#fff;padding:1px 6px;"
+                f"border-radius:8px;font-size:0.78rem'>{htf} 게이트 통과</span>")
+    return ("<span style='background:#9E9E9E;color:#fff;padding:1px 6px;"
+            f"border-radius:8px;font-size:0.78rem'>{htf} 게이트 비통과</span>")
+
+
 def render_wave_live_watchlist_panel(symbol: str, interval: str) -> None:
+    from display.wave_gate_context import GATE_PROFILE_NOTE, gate_rows
+
     st.markdown("### Live Watchlist")
 
     df = load_live_watchlist()
@@ -69,12 +88,17 @@ def render_wave_live_watchlist_panel(symbol: str, interval: str) -> None:
     st.markdown("**Current Candidates**")
     if not active.empty:
         show = active.sort_values("watchlist_score", ascending=False).head(8)
+        rows = gate_rows()
         for _, row in show.iterrows():
-            st.caption(
-                f"- {row.get('symbol', '')} {row.get('timeframe', '')} "
-                f"{row.get('rule', '')}: score={row.get('watchlist_score', '—')}, "
-                f"bars={row.get('bars_since_signal', '—')}, {row.get('freshness', '')}"
+            sym, tf = str(row.get("symbol", "")), str(row.get("timeframe", ""))
+            st.markdown(
+                f"<div style='font-size:0.86rem'>· {sym} {tf} "
+                f"{row.get('rule', '')} — score={row.get('watchlist_score', '—')}, "
+                f"bars={row.get('bars_since_signal', '—')}, {row.get('freshness', '')} "
+                f"{_gate_badge(sym, tf, rows)}</div>",
+                unsafe_allow_html=True,
             )
+        st.caption(GATE_PROFILE_NOTE)
     else:
         st.caption("—")
 
