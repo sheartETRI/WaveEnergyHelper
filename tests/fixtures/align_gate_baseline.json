@@ -1,0 +1,22 @@
+{
+  "note": "SPEC_WAVE_ALIGN_GATE_FORWARD §3 무개입 회귀 기준선. 전방 추적 중 변경 금지.",
+  "frozen_at": "2026-09-04",
+  "gate": {
+    "ohlcv_fixture": "align_gate_ohlcv_BTCUSDT_4h.csv",
+    "bars": 482,
+    "flag_sha256": "181ebdb93de14ad283310667535376fd3bf1f9c67bbf3b8d14c17c17d3061bea",
+    "open_bars": 106,
+    "last_20": "11111111111111111111"
+  },
+  "trigger": {
+    "journal_fixture": "align_gate_journal_slice_1h.csv",
+    "rows": 1200,
+    "event_count": 910,
+    "event_ids_sha256": "5bfefaf86d399827a195e45ae3fd517b79533b2c4c167c6c5141d1e8ce9715ab"
+  },
+  "asof": {
+    "joined": 268,
+    "align_true": 155,
+    "pairs_sha256": "6182d2648ee19ef27ca0ba8ba913deabbde755380bfbc6037b3862e94291c7ec"
+  }
+}
