@@ -24,6 +24,10 @@ TRACKING_START = pd.Timestamp("2026-09-01")
 # 헌장이 동결된 시점. 무개입 커밋 감사는 이 시점부터가 의미 있다
 # (그 이전 커밋은 헌장·배선을 수립한 작업 자체다).
 CHARTER_FROZEN_AT = pd.Timestamp("2026-09-04")
+# 추적 개시 선언 (헌장 §6). 감사 기준선은 이 값을 기록한 커밋이며,
+# audit_baseline_commit() 이 런타임에 해석한다.
+TRACKING_OPENED_AT_UTC = pd.Timestamp("2026-09-04T02:51:23")
+SIDECAR_ROWS_AT_OPEN = 4083
 TRACKING_MONTHS = 6
 REVIEW_DUE = TRACKING_START + pd.DateOffset(months=TRACKING_MONTHS)
 

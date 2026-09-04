@@ -18,6 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis.wave_align_gate_forward import (
     CHARTER_FROZEN_AT,
+    SIDECAR_ROWS_AT_OPEN,
+    TRACKING_OPENED_AT_UTC,
     INTEGRITY_FILES,
     PROMOTED_LTF_TO_HTF,
     REVIEW_RULE,
@@ -61,17 +63,37 @@ def load_live_journal() -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------ 무개입
-def integrity_commits(since: pd.Timestamp = CHARTER_FROZEN_AT) -> list[dict]:
-    """추적 기간 중 정의 파일에 발생한 커밋 (헌장 §3 감사용).
+def audit_baseline_commit() -> str:
+    """감사 기준 커밋 — 추적 개시를 선언한 커밋 (헌장을 마지막으로 고친 커밋).
 
-    git 의 --since 날짜 파싱에 기대지 않고 전체 로그를 받아 Python 에서 거른다.
-    감사가 위반을 놓치는 쪽으로 실패하면 안 되기 때문이다.
+    커밋 해시는 커밋 시점에야 정해지므로 파일에 박지 않고 여기서 해석한다.
+    §3 커밋 감사는 이 커밋 **이후**의 변경만 대상으로 한다.
     """
+    try:
+        return subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--",
+             "docs/SPEC_WAVE_ALIGN_GATE_FORWARD.md"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def integrity_commits(baseline: str | None = None) -> list[dict]:
+    """감사 기준 커밋 **이후** 정의 파일에 발생한 커밋 (헌장 §3).
+
+    기준선은 추적 개시 커밋(헌장을 마지막으로 고친 커밋)이다. 개시 커밋 자체와
+    그 이전의 배선 작업은 감사 대상이 아니다.
+    기준선을 해석하지 못하면 날짜 기준(CHARTER_FROZEN_AT)으로 되돌아간다 —
+    감사는 놓치는 쪽이 아니라 과하게 잡는 쪽으로 실패해야 한다.
+    """
+    base = baseline if baseline is not None else audit_baseline_commit()
     rows: list[dict] = []
     for rel in INTEGRITY_FILES:
+        rng = [f"{base}..HEAD"] if base else []
         try:
             out = subprocess.run(
-                ["git", "log", "--format=%h|%aI|%s", "--", rel],
+                ["git", "log", *rng, "--format=%h|%aI|%s", "--", rel],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             ).stdout.strip()
         except Exception as exc:  # noqa: BLE001 — 감사 정보이므로 실패해도 계속
@@ -86,7 +108,7 @@ def integrity_commits(since: pd.Timestamp = CHARTER_FROZEN_AT) -> list[dict]:
             ts = pd.Timestamp(iso)
             if ts.tzinfo is not None:
                 ts = ts.tz_localize(None)  # 커밋 지역시각 기준으로 비교
-            if ts < since:
+            if not base and ts < CHARTER_FROZEN_AT:
                 continue
             rows.append({"file": rel, "commit": h, "date": str(ts.date()),
                          "subject": subject})
@@ -188,6 +210,9 @@ def cmd_report() -> None:
     L.append(f"- 현재 {status['now'].date()} · 경과 {status['elapsed_days']}일 · "
              f"기한 도달 {'예' if status['due_reached'] else '아니오'}")
     L.append(f"- 전방 평가 대상 이벤트 {len(fwd)}건 (승격 쌍 · 결과 확정분)")
+    L.append(f"- 추적 개시 {TRACKING_OPENED_AT_UTC.isoformat()}Z · "
+             f"개시 시점 사이드카 {SIDECAR_ROWS_AT_OPEN}행 · "
+             f"감사 기준 커밋 `{audit_baseline_commit()[:7] or '미해석'}`")
     if not status["due_reached"]:
         L.append("")
         L.append("**기한 미도달 — 아래 수치는 중간 관측이며 재검토 판정의 근거가 아니다.**")
@@ -214,7 +239,8 @@ def cmd_report() -> None:
         L.append("- **테스트가 깨져 있다. 정의가 바뀌었다면 이 추적은 무효이며 "
                  "기간을 리셋하고 그 사실을 남겨야 한다 (헌장 §3-5).**")
     L.append("")
-    L.append(f"헌장 동결({CHARTER_FROZEN_AT.date()}) 이후 정의 파일 커밋 "
+    L.append(f"감사 기준 커밋 `{audit_baseline_commit()[:7] or '미해석'}` "
+             f"(추적 개시, {TRACKING_OPENED_AT_UTC.date()}) 이후 정의 파일 커밋 "
              f"(그 이전 커밋은 헌장·배선 수립 작업 자체이므로 감사 대상이 아니다):")
     L.append("")
     if commits:
