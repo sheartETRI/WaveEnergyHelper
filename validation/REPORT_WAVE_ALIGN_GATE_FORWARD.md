@@ -20,14 +20,13 @@ SPEC_WAVE_ALIGN_GATE §6 전방 추적. **새 판정이 아니라 승격 유지/
 
 ## 3. 무개입 감사 (헌장 §3)
 
-- 회귀 테스트 `tests/test_align_gate_forward_integrity.py`: **PASS** (18 passed in 2.24s)
+- 회귀 테스트 `tests/test_align_gate_forward_integrity.py`: **PASS** (18 passed in 2.10s)
 
-추적 시작(2026-09-01) 이후 정의 파일 커밋:
+헌장 동결(2026-09-04) 이후 정의 파일 커밋 (그 이전 커밋은 헌장·배선 수립 작업 자체이므로 감사 대상이 아니다):
 
 | 파일 | 커밋 | 날짜 | 제목 |
 |---|---|---|---|
-| `analysis/wave_htf_gate_v2.py` | 6e18397 | 2026-09-03 | 2nd update |
-| `analysis/wave_htf_gate.py` | 6e18397 | 2026-09-03 | 2nd update |
+| `analysis/wave_align_gate_forward.py` | a2e1059 | 2026-09-04 | §6 전방 추적 배선 (1/3) — 동결 헌장 + gate_align 기록 전용 플래그 |
 
 **커밋이 존재한다. 각 건이 정의를 바꿨는지 확인해야 한다** — 회귀 테스트 통과는 산출물 동치성만 보장하며, 리팩터링은 통과할 수 있다.
 

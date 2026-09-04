@@ -62,21 +62,34 @@ def load_live_journal() -> pd.DataFrame:
 
 # ------------------------------------------------------------------ 무개입
 def integrity_commits(since: pd.Timestamp = CHARTER_FROZEN_AT) -> list[dict]:
-    """추적 기간 중 정의 파일에 발생한 커밋 (헌장 §3 감사용)."""
+    """추적 기간 중 정의 파일에 발생한 커밋 (헌장 §3 감사용).
+
+    git 의 --since 날짜 파싱에 기대지 않고 전체 로그를 받아 Python 에서 거른다.
+    감사가 위반을 놓치는 쪽으로 실패하면 안 되기 때문이다.
+    """
     rows: list[dict] = []
     for rel in INTEGRITY_FILES:
         try:
             out = subprocess.run(
-                ["git", "log", f"--since={since.date()}", "--format=%h|%ad|%s",
-                 "--date=short", "--", rel],
+                ["git", "log", "--format=%h|%aI|%s", "--", rel],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             ).stdout.strip()
         except Exception as exc:  # noqa: BLE001 — 감사 정보이므로 실패해도 계속
-            rows.append({"file": rel, "commit": "", "date": "", "subject": f"git 실패: {exc}"})
+            rows.append({"file": rel, "commit": "", "date": "",
+                         "subject": f"git 실패: {exc} (수동 확인 필요)"})
             continue
         for line in filter(None, out.splitlines()):
-            h, d, s = (line.split("|", 2) + ["", "", ""])[:3]
-            rows.append({"file": rel, "commit": h, "date": d, "subject": s})
+            parts = line.split("|", 2)
+            if len(parts) != 3:
+                continue
+            h, iso, subject = parts
+            ts = pd.Timestamp(iso)
+            if ts.tzinfo is not None:
+                ts = ts.tz_localize(None)  # 커밋 지역시각 기준으로 비교
+            if ts < since:
+                continue
+            rows.append({"file": rel, "commit": h, "date": str(ts.date()),
+                         "subject": subject})
     return rows
 
 
