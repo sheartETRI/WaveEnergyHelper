@@ -118,16 +118,28 @@ def annotate_gate_align(
     j["timestamp"] = pd.to_datetime(j["timestamp"])
     parts = []
 
+    def _unevaluated(frame: pd.DataFrame, scope: str, htf) -> pd.DataFrame:
+        out = frame.copy()
+        out["gate_htf"] = htf
+        out["gate_align"] = pd.Series(pd.NA, index=out.index, dtype=object)
+        out["gate_scope"] = scope
+        out["gate_htf_open_time"] = pd.NaT
+        out["gate_htf_close_time"] = pd.NaT
+        return out
+
     for ltf, sub in j.groupby("timeframe", sort=False):
         htf = PROMOTED_LTF_TO_HTF.get(str(ltf))
         if htf is None:
-            out = sub.copy()
-            out["gate_htf"] = None
-            out["gate_align"] = pd.NA
-            out["gate_scope"] = "NOT_PROMOTED"
-            out["gate_htf_open_time"] = pd.NaT
-            out["gate_htf_close_time"] = pd.NaT
-            parts.append(out)
+            parts.append(_unevaluated(sub, "NOT_PROMOTED", None))
+            continue
+
+        # 승격 심볼 밖의 이벤트는 평가하지 않되 **누락시키지도 않는다**.
+        # 조용히 사라지면 6개월 뒤 감사에서 표본 손실을 알아챌 수 없다.
+        in_scope = sub["symbol"].isin(SYMBOLS_V2)
+        if (~in_scope).any():
+            parts.append(_unevaluated(sub[~in_scope], "OUT_OF_SCOPE_SYMBOL", htf))
+        sub = sub[in_scope]
+        if sub.empty:
             continue
 
         frames = [

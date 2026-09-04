@@ -24,7 +24,7 @@ from analysis.wave_structure_confirmation import (
 from analysis.wave_volume_energy import _load_ohlcv, add_volume_features, extract_volume_at
 
 TARGET_SYMBOLS = ("ETHUSDT", "BTCUSDT", "SOLUSDT", "BNBUSDT")
-TIMEFRAMES = ("1h", "4h", "1d")
+TIMEFRAMES = ("1h", "4h", "6h", "1d")
 WATCH_RULES = ("RULE_A", "RULE_B", "RULE_C")
 SCAN_BARS = 500
 FRESHNESS_ACTIVE = 10
