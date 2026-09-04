@@ -17,6 +17,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis.wave_align_gate_forward import (
+    AUDIT_BASELINE_COMMIT,
     CHARTER_FROZEN_AT,
     SIDECAR_ROWS_AT_OPEN,
     TRACKING_OPENED_AT_UTC,
@@ -64,17 +65,19 @@ def load_live_journal() -> pd.DataFrame:
 
 # ------------------------------------------------------------------ 무개입
 def audit_baseline_commit() -> str:
-    """감사 기준 커밋 — 추적 개시를 선언한 커밋 (헌장을 마지막으로 고친 커밋).
+    """감사 기준 커밋 — 추적 개시를 선언한 커밋. **상수로 고정**돼 있다.
 
-    커밋 해시는 커밋 시점에야 정해지므로 파일에 박지 않고 여기서 해석한다.
-    §3 커밋 감사는 이 커밋 **이후**의 변경만 대상으로 한다.
+    이전에는 "헌장을 마지막으로 고친 커밋"을 런타임 해석했는데, 그러면 추적 기간 중
+    헌장이 수정될 때 기준점이 전진해 그 이전 커밋들이 감사 범위에서 조용히 빠진다.
+    고정값을 전체 해시로 확장해 돌려주고, 저장소에서 찾을 수 없으면 빈 문자열을
+    반환해 날짜 기준 폴백(감사를 과하게 잡는 쪽)으로 떨어뜨린다.
     """
     try:
-        return subprocess.run(
-            ["git", "log", "-1", "--format=%H", "--",
-             "docs/SPEC_WAVE_ALIGN_GATE_FORWARD.md"],
+        res = subprocess.run(
+            ["git", "rev-parse", AUDIT_BASELINE_COMMIT],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
-        ).stdout.strip()
+        )
+        return res.stdout.strip() if res.returncode == 0 else ""
     except Exception:  # noqa: BLE001
         return ""
 

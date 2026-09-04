@@ -264,3 +264,35 @@ def test_forward_slice_keeps_only_promoted_events_after_tracking_start():
     })
     out = forward_slice(sidecar)
     assert list(out["event_id"]) == ["B"]
+
+
+# ------------------------------------------------ 감사 기준 커밋 고정 (작업 ①)
+def test_audit_baseline_commit_is_pinned():
+    """감사 기준 커밋이 추적 개시 커밋에 고정돼 있어야 한다.
+
+    추적 기간 중 헌장 파일이 수정되면(예전처럼 런타임 해석이라면) 감사 기준점이
+    전진해 그 이전 커밋들이 감사 범위에서 조용히 빠진다. 그래서 상수로 못박고
+    여기서 단언한다.
+
+    **추적 기간 중 이 테스트가 깨지면 감사 기준점이 움직였다는 뜻이다.
+    이 테스트를 갱신해 통과시키는 것은 감사 우회다. 깨졌다면 기준점을 움직인
+    변경(헌장 수정 등) 자체를 되돌려야 한다.** 갱신이 허용되는 유일한 경우는
+    헌장 §3-5 에 따른 추적 리셋이며, 그때는 리셋 사유가 커밋 메시지에 남아야 한다.
+    """
+    from validation.wave_align_gate_forward_sweep import audit_baseline_commit
+
+    from analysis.wave_align_gate_forward import AUDIT_BASELINE_COMMIT
+
+    expected = "1906f76c9b80db48892d86602bd51ffd2a852b1a"
+    assert AUDIT_BASELINE_COMMIT == expected[: len(AUDIT_BASELINE_COMMIT)]
+    assert audit_baseline_commit() == expected, (
+        "감사 기준 커밋이 추적 개시 커밋과 다르다 — 기준점이 이동했다."
+    )
+
+
+def test_the_integrity_test_file_is_itself_audited():
+    """이 테스트 파일을 고치는 커밋도 §3 감사표에 잡혀야 한다.
+
+    감사 장치를 조용히 고쳐 통과시키는 우회를 막는다.
+    """
+    assert "tests/test_align_gate_forward_integrity.py" in INTEGRITY_FILES

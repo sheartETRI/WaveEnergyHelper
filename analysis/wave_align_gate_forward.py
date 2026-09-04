@@ -28,6 +28,10 @@ CHARTER_FROZEN_AT = pd.Timestamp("2026-09-04")
 # audit_baseline_commit() 이 런타임에 해석한다.
 TRACKING_OPENED_AT_UTC = pd.Timestamp("2026-09-04T02:51:23")
 SIDECAR_ROWS_AT_OPEN = 4083
+# 감사 기준 커밋을 **상수로 고정**한다. 런타임 해석(헌장을 마지막으로 고친 커밋)에
+# 맡기면 추적 기간 중 헌장이 수정될 때 기준점이 전진해, 그 이전 커밋들이 감사
+# 범위에서 조용히 빠진다. 이 값의 변경은 추적 리셋을 동반할 때만 허용된다.
+AUDIT_BASELINE_COMMIT = "1906f76"
 TRACKING_MONTHS = 6
 REVIEW_DUE = TRACKING_START + pd.DateOffset(months=TRACKING_MONTHS)
 
@@ -53,6 +57,8 @@ INTEGRITY_FILES = (
     "analysis/wave_live_forward_journal.py",  # 이벤트 저널
     "indicators/moving_averages.py",       # MA 계산
     "config/settings.py",                  # MA 기간 · 레이어 정의
+    # 감사 장치 자체도 감사 대상이다 — 회귀 테스트를 고쳐 통과시키는 우회를 잡기 위해.
+    "tests/test_align_gate_forward_integrity.py",
 )
 
 SIDECAR_COLS = (
