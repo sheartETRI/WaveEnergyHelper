@@ -74,9 +74,11 @@ def render_sidebar() -> dict:
     st.sidebar.divider()
     st.sidebar.header("차트")
     show_stoch = st.sidebar.checkbox("스토캐 패널", value=True)
+    # 값은 plotly_builder가 분기하는 문자열 그대로여야 한다("Separated" 철자 주의).
     stoch_view = st.sidebar.radio(
-        "스토캐 표시", options=["Stacked", "Separate"], index=0, horizontal=True,
+        "스토캐 표시", options=["Stacked", "Separated"], index=0, horizontal=True,
         disabled=not show_stoch,
+        help="Stacked=3층 한 패널, Separated=레이어별 패널 분리",
     )
     show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
 

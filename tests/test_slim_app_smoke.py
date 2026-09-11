@@ -51,34 +51,61 @@ def _pipeline_frame():
     return df
 
 
-def test_chart_figure_builds_with_slim_flags():
-    """main.py가 넘기는 플래그 조합으로 figure가 만들어진다(MACD 없이도)."""
+def _figure(df, **kwargs):
     from charts.plotly_builder import _create_synced_chart_figure
 
+    base = dict(
+        show_stochastic=True,
+        stochastic_view_mode="Stacked",
+        show_stoch_fill=True,
+        show_macd=False,  # 슬림 구성은 MACD를 계산하지 않는다
+        show_rsi=True,
+        show_rsi_fill=True,
+    )
+    base.update(kwargs)
+    return _create_synced_chart_figure(df, "BTCUSDT", "1h", **base)
+
+
+def test_chart_figure_builds_with_slim_flags():
+    """main.py가 넘기는 플래그 조합으로 figure가 만들어진다(MACD 없이도)."""
     df = _pipeline_frame()
-    for view_mode in ("Stacked", "Separate"):
-        fig = _create_synced_chart_figure(
-            df, "BTCUSDT", "1h",
-            show_stochastic=True,
-            stochastic_view_mode=view_mode,
-            show_stoch_fill=True,
-            show_macd=False,      # 슬림 구성은 MACD를 계산하지 않는다
-            show_rsi=True,
-            show_rsi_fill=True,
-        )
+    for view_mode in ("Stacked", "Separated"):
+        fig = _figure(df, stochastic_view_mode=view_mode)
         assert fig is not None
         assert len(fig.data) > 0, f"{view_mode}: 트레이스가 비었다"
 
 
+def test_stoch_view_mode_values_are_honored():
+    """사이드바가 넘기는 문자열이 plotly_builder의 분기값과 실제로 일치한다.
+
+    철자가 틀리면(예: "Separate") 조용히 Stacked로 떨어지므로, 행 구성이 달라지는지로 확인.
+    """
+    import main
+    from charts.plotly_builder import _get_synced_chart_rows
+
+    stacked = _get_synced_chart_rows(True, "Stacked", False, True)
+    separated = _get_synced_chart_rows(True, "Separated", False, True)
+    kinds_stacked = [r["kind"] for r in stacked]
+    kinds_separated = [r["kind"] for r in separated]
+    assert "stoch_stacked" in kinds_stacked
+    assert "stoch_layer" in kinds_separated and "stoch_stacked" not in kinds_separated
+    assert len(separated) > len(stacked)
+
+    # main.py 사이드바의 선택지가 그 두 값과 정확히 같아야 한다.
+    source = (os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    with open(os.path.join(source, "main.py"), encoding="utf-8") as fh:
+        body = fh.read()
+    assert '"Stacked", "Separated"' in body, "사이드바 선택지가 분기값과 어긋났다"
+    assert main is not None
+
+
 def test_chart_figure_builds_with_panels_off():
     """스토캐·RSI 패널을 모두 끈 경우에도 캔들만으로 figure가 만들어진다."""
-    from charts.plotly_builder import _create_synced_chart_figure
-
     df = _pipeline_frame()
-    fig = _create_synced_chart_figure(
-        df, "BTCUSDT", "1h",
+    fig = _figure(
+        df,
         show_stochastic=False, show_stoch_fill=False,
-        show_macd=False, show_rsi=False, show_rsi_fill=False,
+        show_rsi=False, show_rsi_fill=False,
     )
     assert fig is not None and len(fig.data) > 0
 

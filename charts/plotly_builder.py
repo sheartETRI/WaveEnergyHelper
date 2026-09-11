@@ -13,8 +13,6 @@ from config.settings import (
     STOCH_LAYERS,
     STOCH_MAX_Y,
 )
-from display.stability_verdict import STABLE_COL, STRIP_COLORS, duration_at
-from analysis.wave_tracker import STATE_COLORS
 
 
 COLOR_BULL = "#ff0000"
@@ -657,50 +655,12 @@ def add_ma_dispersion_panel(fig, df, row_index):
             )
 
 
-def add_family_strip_panel(
-    fig,
-    x_index,
-    families,
-    row_index,
-    panel_title: str,
-    hover_raw,
-    hover_stable,
-    hover_duration,
-):
-    """가로 family 띠 — 마커 스트립 + tooltip."""
-    x_list = list(x_index)
-    colors = [STRIP_COLORS.get(str(f), "#BDBDBD") if pd.notna(f) else "#f5f5f5" for f in families]
-    hover_text = []
-    for x, r, s, d in zip(x_list, hover_raw, hover_stable, hover_duration):
-        ts = pd.Timestamp(x).strftime("%Y-%m-%d")
-        hover_text.append(
-            f"{ts}<br>raw:<br>{r}<br>stable:<br>{s}<br>duration:<br>{d} bars"
-        )
-    fig.add_trace(
-        go.Scatter(
-            x=x_list,
-            y=[1.0] * len(x_list),
-            mode="markers",
-            marker=dict(symbol="square", size=10, color=colors, line=dict(width=0)),
-            text=hover_text,
-            hoverinfo="text",
-            name=panel_title,
-            showlegend=False,
-        ),
-        row=row_index,
-        col=1,
-    )
-    fig.update_yaxes(visible=False, range=[0, 2], row=row_index, col=1)
-
-
 def _get_synced_chart_rows(
     show_stochastic: bool,
     stochastic_view_mode: str,
     show_macd: bool,
     show_rsi: bool,
     show_ma_dispersion: bool = False,
-    show_stability: bool = False,
-    show_wave_tracker: bool = False,
 ) -> list[dict]:
     rows = [
         {"kind": "price", "title": "Price", "height": 520},
@@ -730,13 +690,6 @@ def _get_synced_chart_rows(
     if show_ma_dispersion:
         rows.append({"kind": "ma_dispersion", "title": "MA Dispersion", "height": 200})
 
-    if show_stability:
-        rows.append({"kind": "family_raw", "title": "Raw Family", "height": 56})
-        rows.append({"kind": "family_stable", "title": "Stable Family (3)", "height": 56})
-
-    if show_wave_tracker:
-        rows.append({"kind": "wave_tracker", "title": "Wave Tracker", "height": 56})
-
     return rows
 
 
@@ -757,10 +710,6 @@ def _create_synced_chart_figure(
     show_rsi_fill=True,
     show_ma_patterns=False,
     show_ma_dispersion=False,
-    show_stability=False,
-    stability_aligned=None,
-    show_wave_tracker=False,
-    wave_tracker_aligned=None,
 ):
     chart_df = _prepare_chart_df(df)
     rows = _get_synced_chart_rows(
@@ -769,8 +718,6 @@ def _create_synced_chart_figure(
         show_macd,
         show_rsi,
         show_ma_dispersion,
-        show_stability,
-        show_wave_tracker,
     )
 
     fig = make_subplots(
@@ -814,55 +761,6 @@ def _create_synced_chart_figure(
         elif kind == "ma_dispersion":
             add_ma_dispersion_panel(fig, chart_df, row_index)
             fig.update_yaxes(title_text="Dispersion", row=row_index, col=1)
-        elif kind in ("family_raw", "family_stable") and stability_aligned is not None:
-            strip_df = stability_aligned.set_index("timestamp").reindex(chart_df.index)
-            raw_seq = strip_df["family"].fillna("NEUTRAL").tolist()
-            stable_seq = strip_df[STABLE_COL].fillna("NEUTRAL").tolist()
-            durations = [
-                duration_at(stable_seq, i) for i in range(len(stable_seq))
-            ]
-            fam_col = "family" if kind == "family_raw" else STABLE_COL
-            add_family_strip_panel(
-                fig,
-                chart_df.index,
-                strip_df[fam_col].fillna("NEUTRAL").tolist(),
-                row_index,
-                row["title"],
-                raw_seq,
-                stable_seq,
-                durations,
-            )
-        elif kind == "wave_tracker" and wave_tracker_aligned is not None:
-            strip_df = wave_tracker_aligned.set_index("timestamp").reindex(chart_df.index)
-            states = strip_df["state"].fillna("NONE").tolist()
-            reasons = strip_df["reason"].fillna("").tolist()
-            durations = strip_df["duration"].fillna(0).astype(int).tolist()
-            hover_raw = states
-            hover_stable = reasons
-            hover_dur = durations
-            colors = [STATE_COLORS.get(str(s), "#BDBDBD") for s in states]
-            x_list = list(chart_df.index)
-            hover_text = [
-                f"{pd.Timestamp(x).strftime('%Y-%m-%d')}<br>"
-                f"state:<br>{st}<br>reason:<br>{r}<br>duration:<br>{d} bars"
-                for x, st, r, d in zip(x_list, states, reasons, durations)
-            ]
-            fig.add_trace(
-                go.Scatter(
-                    x=x_list,
-                    y=[1.0] * len(x_list),
-                    mode="markers",
-                    marker=dict(symbol="square", size=10, color=colors, line=dict(width=0)),
-                    text=hover_text,
-                    hoverinfo="text",
-                    name="Wave Tracker",
-                    showlegend=False,
-                ),
-                row=row_index,
-                col=1,
-            )
-            fig.update_yaxes(visible=False, range=[0, 2], row=row_index, col=1)
-
     total_height = sum(row["height"] for row in rows) + 60
     fig.update_layout(
         height=total_height,
@@ -905,10 +803,6 @@ def render_chart(
     show_rsi_fill=True,
     show_ma_patterns=False,
     show_ma_dispersion=False,
-    show_stability=False,
-    stability_aligned=None,
-    show_wave_tracker=False,
-    wave_tracker_aligned=None,
 ):
     """Renders price, volume, and indicators in one synchronized Plotly chart."""
     if df is None or df.empty:
@@ -926,9 +820,5 @@ def render_chart(
         show_rsi_fill=show_rsi_fill,
         show_ma_patterns=show_ma_patterns,
         show_ma_dispersion=show_ma_dispersion,
-        show_stability=show_stability,
-        stability_aligned=stability_aligned,
-        show_wave_tracker=show_wave_tracker,
-        wave_tracker_aligned=wave_tracker_aligned,
     )
     st.plotly_chart(fig, width="stretch", config={"scrollZoom": True, "displaylogo": False})
