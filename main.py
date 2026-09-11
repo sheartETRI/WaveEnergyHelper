@@ -1,45 +1,125 @@
-# main.py — WaveEnergyHelper 진입점 (11차 위임: 표시 레이어 3탭 재구성).
+# main.py — WaveEnergyHelper 진입점 (signal-alarm: 차트 + 알람 전용 슬림 구성).
 #
-# 열면 계기판이 먼저 보이고, 상세 분석은 필요할 때 들어가는 앱.
-#   [탭1] 계기판   — 심볼 선택 → slope/월봉/전조 계기판 + 캠페인 카드 (display.v2_campaign_view)
-#   [탭2] 상세 분석 — 45패널 카테고리 레지스트리 루프 (display.detail_tab)
-#   [탭3] 저널     — forward·관측 계기판 최근 기록 (display.journal_tab)
+# 네 가지만 본다:
+#   · 차트 (캔들 + 이평 + 스토캐 3층 스택 + RSI)
+#   · 스토캐 쌍바닥 / 쌍봉 검출
+#   · RSI 과매도 / 과매수 진입
+# 검출기는 기존 것을 그대로 쓴다(indicators/). 알람 패널만 신규(display/alarm_panel.py).
 #
-# 조립부만 담당한다. 분석 로직·검출기·엔진 무수정. 45개 개별 import/호출은 레지스트리로 이관됨
-# (구조 상세: docs/앱_사용법.md). 이전 v1 조립본은 legacy_main.py에 보존.
+# 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
 import streamlit as st
 
-from config.settings import SUPPORTED_SYMBOLS
-from display.detail_tab import render_detail_sidebar, render_detail_tab
-from display.journal_tab import render_journal_tab
-from display.v2_campaign_view import render_v2_campaign_view
+from charts.plotly_builder import render_chart
+from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
+from data.binance import fetch_klines, get_auto_limit
+from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
+from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
+from indicators.moving_averages import add_moving_averages
+from indicators.oscillators import add_rsi
+from indicators.stochastic import add_stochastic_slow_layers
+
+# 레이어 선택 표시용 — "대(20,10,10)" 형태. 값은 STOCH_LAYERS의 label.
+_ROLE_KO = {"Top": "대", "Mid": "중", "Bot": "소"}
+_LAYER_CHOICES = {f"{_ROLE_KO.get(l['name'], l['name'])}{l['label']}": l["label"] for l in STOCH_LAYERS}
+
+DEFAULT_INTERVAL = "1h"
+
+
+def load_frame(symbol: str, interval: str):
+    """OHLCV 적재 → 지표 계산. 실패 시 None.
+
+    fetch/build/지표는 각자 st.cache_data(ttl=600)를 갖고 있어 여기서 추가 캐시는 두지 않는다.
+    """
+    fetch_interval = get_fetch_interval(interval)
+    raw = fetch_klines(symbol, fetch_interval, get_auto_limit(interval))
+    if not raw:
+        return None
+
+    df = build_dataframe(raw)
+    if df is None or df.empty:
+        return None
+    if interval in CUSTOM_INTERVALS:
+        df = resample_timeframe(df, interval)
+
+    df = add_moving_averages(df)
+    df = add_stochastic_slow_layers(df)
+    df = add_rsi(df)
+    return df
+
+
+def render_sidebar() -> dict:
+    """전역 필터만 사이드바에 둔다(본문은 메인 영역)."""
+    st.sidebar.header("대상")
+    symbol = st.sidebar.selectbox("심볼", options=SUPPORTED_SYMBOLS, index=0)
+    interval = st.sidebar.selectbox(
+        "타임프레임",
+        options=TIMEFRAMES,
+        index=TIMEFRAMES.index(DEFAULT_INTERVAL) if DEFAULT_INTERVAL in TIMEFRAMES else 0,
+    )
+
+    st.sidebar.divider()
+    st.sidebar.header("알람")
+    history_bars = st.sidebar.slider(
+        "이력 구간 (봉)", min_value=20, max_value=500, value=DEFAULT_HISTORY_BARS, step=10,
+        help="최근 몇 봉까지의 신호를 이력 표에 보여줄지",
+    )
+    include_candidates = st.sidebar.checkbox(
+        "후보 신호 포함", value=True,
+        help="두 번째 피봇까지 성립했으나 넥라인 돌파 전인 미확정 패턴",
+    )
+    layer_names = st.sidebar.multiselect(
+        "스토캐 레이어", options=list(_LAYER_CHOICES), default=list(_LAYER_CHOICES),
+    )
+
+    st.sidebar.divider()
+    st.sidebar.header("차트")
+    show_stoch = st.sidebar.checkbox("스토캐 패널", value=True)
+    stoch_view = st.sidebar.radio(
+        "스토캐 표시", options=["Stacked", "Separate"], index=0, horizontal=True,
+        disabled=not show_stoch,
+    )
+    show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
+
+    return {
+        "symbol": symbol,
+        "interval": interval,
+        "history_bars": history_bars,
+        "include_candidates": include_candidates,
+        "layers": [_LAYER_CHOICES[name] for name in layer_names],
+        "show_stoch": show_stoch,
+        "stoch_view": stoch_view,
+        "show_rsi": show_rsi,
+    }
 
 
 def main():
-    st.set_page_config(layout="wide", page_title="WaveEnergyHelper")
+    st.set_page_config(layout="wide", page_title="WaveEnergyHelper — 알람")
+    cfg = render_sidebar()
+    symbol, interval = cfg["symbol"], cfg["interval"]
 
-    # 공유 심볼(계기판·상세 분석 공통). TF·지표·패널 토글은 상세 분석 탭 전용 사이드바에서.
-    st.sidebar.header("심볼")
-    symbol = st.sidebar.selectbox("Symbol", options=SUPPORTED_SYMBOLS, index=0, key="global_symbol")
-    st.sidebar.divider()
-    detail_cfg = render_detail_sidebar()
+    with st.spinner(f"{symbol} {interval} 적재 중..."):
+        df = load_frame(symbol, interval)
 
-    tab_dash, tab_detail, tab_journal = st.tabs(["계기판", "상세 분석", "저널"])
+    if df is None or df.empty:
+        st.error(f"{symbol} {interval} 데이터를 불러오지 못했습니다.")
+        return
 
-    with tab_dash:
-        try:
-            render_v2_campaign_view(symbol)
-        except Exception as exc:  # noqa: BLE001 — 계기판 실패해도 앱은 계속
-            st.warning(f"계기판 렌더 실패(앱 계속): {exc}")
+    render_alarm_panel(
+        df, symbol, interval,
+        history_bars=cfg["history_bars"],
+        include_candidates=cfg["include_candidates"],
+        layers=cfg["layers"] or None,
+    )
 
-    with tab_detail:
-        render_detail_tab(symbol, detail_cfg)
-
-    with tab_journal:
-        try:
-            render_journal_tab()
-        except Exception as exc:  # noqa: BLE001
-            st.warning(f"저널 탭 렌더 실패(앱 계속): {exc}")
+    render_chart(
+        df, symbol, interval,
+        show_stochastic=cfg["show_stoch"],
+        stochastic_view_mode=cfg["stoch_view"],
+        show_stoch_fill=cfg["show_stoch"],
+        show_macd=False,
+        show_rsi=cfg["show_rsi"],
+        show_rsi_fill=cfg["show_rsi"],
+    )
 
 
 if __name__ == "__main__":
