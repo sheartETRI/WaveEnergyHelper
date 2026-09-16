@@ -9,17 +9,23 @@ indicators.oscillators.add_rsi, indicators.oscillators.add_macd 가 이미 기�
   · 스토캐 쌍봉    stoch_dt_{suffix}        (동, 반전 공간 대칭)
   · RSI 과매도     rsi_oversold_flag        (구역 진입 교차 봉)
   · RSI 과매수     rsi_overbought_flag      (동)
-  · MACD 골든크로스  macd_hist_prev < 0 ≤ macd_hist   (시그널선 상향 교차 확정 봉)
-  · MACD 데드크로스  macd_hist_prev > 0 ≥ macd_hist   (동, 대칭)
-  · MACD 0선 상향    macd 의 음→양 전이 봉             (직전 봉은 이 레이어에서 shift)
-  · MACD 0선 하향    macd 의 양→음 전이 봉             (동, 대칭)
+  · MACD 골든크로스  macd_hist_prev < 0 ≤ macd_hist 인 교차 봉 t, 그리고 t+1 봉의 macd_hist ≥ 0
+  · MACD 데드크로스  macd_hist_prev > 0 ≥ macd_hist 인 교차 봉 t, 그리고 t+1 봉의 macd_hist ≤ 0
+  · MACD 0선 상향    macd 의 음→양 전이 봉 t, 그리고 t+1 봉의 macd ≥ 0   (직전 봉은 이 레이어에서 shift)
+  · MACD 0선 하향    macd 의 양→음 전이 봉 t, 그리고 t+1 봉의 macd ≤ 0   (동, 대칭)
 
 알람은 상태가 아니라 엣지다. 쌍바닥/쌍봉 컬럼은 확정 봉에만 값이 들어오므로 그 자체가
 엣지다. 반면 RSI 구역 플래그는 레벨 상태이므로 False→True 전이만 뽑는다 — 과매도 구간이
 30봉 이어질 때 30번 울리지 않게 하려는 것. MACD 도 마찬가지로 부호 상태가 아니라 부호가
 바뀐 봉(직전 값이 반대 부호)에서만 1회다. 직전 값이 결측(워밍업)이면 전이로 치지 않는다.
-MACD_PARAMS(12,26,9) 와 검출 컬럼은 여기서 손대지 않고, 채터링 억제(최소 이격·쿨다운)도
-두지 않는다 — 빈도는 관측 보고 대상이고 억제 여부는 상위 결정.
+
+MACD 4종은 여기에 "다음 봉 확정" 규칙이 하나 더 붙는다: 교차 봉 t 바로 다음 봉 t+1 에서도
+전이된 부호가 유지될 때만 발화하고, 이벤트 timestamp 는 확정 봉 t+1(발화 시점)이다. 교차
+봉 시각은 detail 에 적는다. t+1 에서 부호가 되돌아가면(왕복 교차) 정의상 발화하지 않는다 —
+0 근처 진동에서 골든/데드가 연달아 울리는 채터링을 이 한 규칙으로 걸러내려는 것. 교차 봉이
+df 의 마지막 봉이면 확정 봉이 아직 없으므로 보류한다(lookahead 없음). 발화 지연은 항상
+정확히 1봉. 크기 임계값·쿨다운·창 같은 추가 파라미터는 두지 않는다.
+MACD_PARAMS(12,26,9) 와 검출 컬럼은 여기서 손대지 않는다.
 
 streamlit 의존 없음(순수 pandas) — 테스트 가능. 표시는 display.alarm_panel 담당.
 """
@@ -136,25 +142,38 @@ def _flag_entry_positions(flag: pd.Series) -> pd.Index:
     return truthy.index[truthy & ~prev]
 
 
-def _sign_flip_positions(current: pd.Series, previous: pd.Series, upward: bool) -> pd.Index:
-    """부호 전이 봉의 인덱스 — upward: previous < 0 ≤ current, downward: previous > 0 ≥ current.
+@dataclass(frozen=True)
+class MacdEvent:
+    """MACD 이벤트 한 건 — 확정 봉(발화 시점)과 교차 봉."""
+
+    timestamp: pd.Timestamp   # 확정 봉 t+1 (알람 timestamp·차트 마커 위치)
+    cross_ts: pd.Timestamp    # 교차 봉 t
+
+
+def _confirmed_flip_events(current: pd.Series, previous: pd.Series, upward: bool) -> list[MacdEvent]:
+    """다음 봉 확정 부호 전이 — 교차 봉 t 와 확정 봉 t+1 의 쌍.
+
+    upward:   previous[t] < 0 ≤ current[t]  그리고  current[t+1] ≥ 0
+    downward: previous[t] > 0 ≥ current[t]  그리고  current[t+1] ≤ 0
 
     직전 값이 결측이면(EMA 워밍업·첫 봉) 비교가 False 라 전이로 잡히지 않는다. 0 자체는
-    "도달한 쪽"에 넣는다(0 ≤ current) — 정확히 0 에서 한 번만 울리고 그 다음 봉엔 직전
-    값이 0 이라 반대 조건도 성립하지 않는다.
+    "도달한 쪽"에 넣는다(0 ≤ current). t+1 이 없으면(교차 봉이 마지막 봉) shift(-1) 이
+    결측이라 보류된다 — lookahead 없음. t+1 에서 부호가 되돌아가면 발화하지 않는다.
     """
     cur = pd.to_numeric(current, errors="coerce").astype(float)
     prev = pd.to_numeric(previous, errors="coerce").astype(float)
+    nxt = cur.shift(-1)
     if upward:
-        hit = (prev < 0) & (cur >= 0)
+        hit = (prev < 0) & (cur >= 0) & (nxt >= 0)
     else:
-        hit = (prev > 0) & (cur <= 0)
-    hit = hit.fillna(False).astype(bool)
-    return hit.index[hit]
+        hit = (prev > 0) & (cur <= 0) & (nxt <= 0)
+    hit = hit.fillna(False).astype(bool).to_numpy()
+    index = cur.index
+    return [MacdEvent(timestamp=index[t + 1], cross_ts=index[t]) for t in hit.nonzero()[0]]
 
 
-def macd_event_positions(df: pd.DataFrame) -> dict[str, pd.Index]:
-    """MACD 4종 이벤트의 봉 인덱스. add_macd 컬럼이 없으면 빈 dict.
+def macd_events(df: pd.DataFrame) -> dict[str, list[MacdEvent]]:
+    """MACD 4종 이벤트(확정 봉·교차 봉 쌍). add_macd 컬럼이 없으면 빈 dict.
 
     크로스는 add_macd 가 기록한 macd_hist / macd_hist_prev 를 그대로 비교한다. 0선은
     macd 컬럼의 부호 전이인데 직전 값 컬럼이 없으므로 이 레이어에서 shift(1) 한다.
@@ -162,17 +181,25 @@ def macd_event_positions(df: pd.DataFrame) -> dict[str, pd.Index]:
     """
     if df is None or df.empty:
         return {}
-    out: dict[str, pd.Index] = {}
+    out: dict[str, list[MacdEvent]] = {}
     if "macd_hist" in df.columns and "macd_hist_prev" in df.columns:
         hist, hist_prev = df["macd_hist"], df["macd_hist_prev"]
-        out[KIND_MACD_GOLDEN] = _sign_flip_positions(hist, hist_prev, upward=True)
-        out[KIND_MACD_DEAD] = _sign_flip_positions(hist, hist_prev, upward=False)
+        out[KIND_MACD_GOLDEN] = _confirmed_flip_events(hist, hist_prev, upward=True)
+        out[KIND_MACD_DEAD] = _confirmed_flip_events(hist, hist_prev, upward=False)
     if "macd" in df.columns:
         macd = df["macd"]
         macd_prev = macd.shift(1)
-        out[KIND_MACD_ZERO_UP] = _sign_flip_positions(macd, macd_prev, upward=True)
-        out[KIND_MACD_ZERO_DOWN] = _sign_flip_positions(macd, macd_prev, upward=False)
+        out[KIND_MACD_ZERO_UP] = _confirmed_flip_events(macd, macd_prev, upward=True)
+        out[KIND_MACD_ZERO_DOWN] = _confirmed_flip_events(macd, macd_prev, upward=False)
     return out
+
+
+def macd_event_positions(df: pd.DataFrame) -> dict[str, pd.Index]:
+    """MACD 4종 이벤트의 확정 봉 인덱스(차트 마커 위치). macd_events 의 timestamp 만 추린 것."""
+    return {
+        kind: pd.DatetimeIndex([e.timestamp for e in events])
+        for kind, events in macd_events(df).items()
+    }
 
 
 def _stoch_signals_for_layer(
@@ -248,14 +275,15 @@ def _float_or_none(value) -> Optional[float]:
 
 
 def _macd_signals(df: pd.DataFrame) -> list[AlarmSignal]:
-    """MACD 골든/데드크로스·0선 상향/하향 이벤트.
+    """MACD 골든/데드크로스·0선 상향/하향 이벤트(다음 봉 확정).
 
-    value: 크로스는 이벤트 봉의 macd_hist, 0선은 macd. detail 은 반대편 값(크로스가
-    0선 위/아래 어디서 났는지, 0선 전이 때 hist 가 얼마였는지) — 상태 기술만.
+    timestamp 는 확정 봉. value: 크로스는 확정 봉의 macd_hist, 0선은 macd. detail 은
+    "교차 <교차 봉 시각> · <반대편 값>" (크로스가 0선 위/아래 어디서 났는지, 0선 전이 때
+    hist 가 얼마였는지) — 상태 기술만.
     """
     out: list[AlarmSignal] = []
-    positions = macd_event_positions(df)
-    if not positions:
+    events = macd_events(df)
+    if not events:
         return out
     value_col = {
         KIND_MACD_GOLDEN: "macd_hist",
@@ -270,13 +298,17 @@ def _macd_signals(df: pd.DataFrame) -> list[AlarmSignal]:
         KIND_MACD_ZERO_DOWN: ("macd_hist", "hist"),
     }
     for kind in MACD_KINDS:
-        if kind not in positions:
+        if kind not in events:
             continue
         label, direction, severity = _KIND_META[kind]
         col, (o_col, o_name) = value_col[kind], other_col[kind]
-        for ts in positions[kind]:
+        for event in events[kind]:
+            ts = event.timestamp
             value = _float_or_none(df.at[ts, col])
             other = _float_or_none(df.at[ts, o_col]) if o_col in df.columns else None
+            detail = f"교차 {event.cross_ts:%Y-%m-%d %H:%M}"
+            if other is not None:
+                detail += f" · {o_name} {other:.4g}"
             out.append(
                 AlarmSignal(
                     timestamp=ts,
@@ -286,7 +318,7 @@ def _macd_signals(df: pd.DataFrame) -> list[AlarmSignal]:
                     severity=severity,
                     layer=None,
                     value=value,
-                    detail="" if other is None else f"{o_name} {other:.4g}",
+                    detail=detail,
                 )
             )
     return out
