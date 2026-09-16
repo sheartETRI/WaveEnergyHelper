@@ -23,7 +23,7 @@ from display.alarm_panel import (
     format_signal_line,
 )
 from indicators.moving_averages import add_moving_averages
-from indicators.oscillators import add_rsi
+from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
 
 # MA 240까지 쓰므로 워밍업을 넉넉히 둔다(차트 RECENT_WINDOW=150).
@@ -47,6 +47,7 @@ def _pipeline_frame():
     )
     df = add_moving_averages(df)
     df = add_stochastic_slow_layers(df)
+    df = add_macd(df)
     df = add_rsi(df)
     return df
 
@@ -58,7 +59,7 @@ def _figure(df, **kwargs):
         show_stochastic=True,
         stochastic_view_mode="Stacked",
         show_stoch_fill=True,
-        show_macd=False,  # 슬림 구성은 MACD를 계산하지 않는다
+        show_macd=True,
         show_rsi=True,
         show_rsi_fill=True,
     )
@@ -67,12 +68,34 @@ def _figure(df, **kwargs):
 
 
 def test_chart_figure_builds_with_slim_flags():
-    """main.py가 넘기는 플래그 조합으로 figure가 만들어진다(MACD 없이도)."""
+    """main.py가 넘기는 플래그 조합으로 figure가 만들어진다(MACD 패널 켬/끔 모두)."""
     df = _pipeline_frame()
     for view_mode in ("Stacked", "Separated"):
-        fig = _figure(df, stochastic_view_mode=view_mode)
-        assert fig is not None
-        assert len(fig.data) > 0, f"{view_mode}: 트레이스가 비었다"
+        for show_macd in (True, False):
+            fig = _figure(df, stochastic_view_mode=view_mode, show_macd=show_macd)
+            assert fig is not None
+            assert len(fig.data) > 0, f"{view_mode}: 트레이스가 비었다"
+
+
+def test_macd_panel_carries_alarm_event_markers():
+    """MACD 패널에 알람 이벤트 마커(GC/DC/0↑/0↓)가 알람 목록과 같은 봉에 찍힌다."""
+    from analysis.alarm_signals import MACD_KINDS, macd_event_positions
+
+    df = _pipeline_frame()
+    fig = _figure(df, show_macd=True)
+    traces = {t.name: t for t in fig.data if t.name in ("GC", "DC", "0↑", "0↓")}
+    assert set(traces) == {"GC", "DC", "0↑", "0↓"}, "랜덤워크 700봉이면 4종 모두 있어야 한다"
+
+    positions = macd_event_positions(df)
+    name_of = dict(zip(MACD_KINDS, ("GC", "DC", "0↑", "0↓")))
+    for kind, name in name_of.items():
+        assert list(pd.to_datetime(traces[name].x)) == list(positions[kind])
+        # y 는 이벤트 봉의 macd 값(선 교차점) 위에 찍힌다.
+        assert np.allclose(np.asarray(traces[name].y, dtype=float), df.loc[positions[kind], "macd"].to_numpy())
+
+    # MACD 패널을 끄면 마커도 없다.
+    fig_off = _figure(df, show_macd=False)
+    assert not any(t.name in ("GC", "DC", "0↑", "0↓") for t in fig_off.data)
 
 
 def test_stoch_view_mode_values_are_honored():
@@ -125,6 +148,11 @@ def test_alarm_panel_pure_builders():
     for s in signals:
         line = format_signal_line(s)
         assert s.label in line and s.layer_name in line
+        # 권고형 문구 금지 — 라벨 체계(상태 기술)까지만. ("과매수/과매도"는 구역 이름이라 허용)
+        assert not any(bad in line for bad in ("매수 신호", "매도 신호", "추천", "진입하", "청산하"))
+    macd_lines = [format_signal_line(s) for s in signals if s.layer_name == "MACD"]
+    assert macd_lines, "MACD 신호가 이력 창에 하나도 없으면 연결이 끊긴 것"
+    assert all(("hist " in line) or ("MACD " in line) for line in macd_lines)
 
     # 마지막 봉 줄은 해당 봉 신호만 뽑는다.
     current = build_current_bar_lines(signals, df.index[-1])
