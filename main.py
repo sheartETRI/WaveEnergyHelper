@@ -15,6 +15,7 @@ from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, T
 from data.binance import fetch_klines, get_auto_limit
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
+from display.code_version import render_code_version
 from indicators.moving_averages import add_moving_averages
 from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
@@ -105,6 +106,8 @@ def render_sidebar() -> dict:
         index=list(CHART_HEIGHT_OPTIONS).index(DEFAULT_CHART_HEIGHT),
         help="Streamlit 은 화면 높이를 읽지 못해 선택식. 세로 확대·축소는 차트 위 휠로.",
     )
+
+    render_code_version()   # 사이드바 맨 아래: 기동 HEAD · 기동 시각 · 경로
 
     return {
         "symbol": symbol,
