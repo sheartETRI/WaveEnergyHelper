@@ -211,31 +211,108 @@ def test_chart_vertical_controls_settings():
     높이는 선택값 그대로, 가격 행 비중 ≥ 0.75, 캡션·config 상수 존재."""
     from charts.plotly_builder import (
         CHART_CONTROLS_CAPTION, CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, PLOTLY_CONFIG,
-        PRICE_ROW_SHARE, _row_heights, _get_synced_chart_rows,
+        _row_heights, _get_synced_chart_rows,
     )
 
     df = _pipeline_frame()
     for height in CHART_HEIGHT_OPTIONS:
         fig = _figure(df, chart_height=height)
         layout = fig.layout
-        assert layout.height == height
+        assert layout.height >= height   # 최소 패널 높이 보장을 위해 올려 잡힐 수 있다
         assert layout.dragmode == "pan"
         yaxes = [v for k, v in layout.to_plotly_json().items() if k.startswith("yaxis")]
         assert yaxes and all(ax.get("fixedrange") is False for ax in yaxes), "모든 y축 fixedrange=False 명시"
         xaxes = [v for k, v in layout.to_plotly_json().items() if k.startswith("xaxis")]
         assert all(not ax.get("rangeslider", {}).get("visible", False) for ax in xaxes), "rangeslider 꺼짐"
-        # 가격(첫 행) y축 도메인 폭이 전체의 0.75×(1-간격) 이상 — 지표 패널이 가격을 누르지 않는다.
+        # 가격(첫 행) y축 도메인 폭이 5패널 기준 0.5×(1-간격) 이상.
         y0, y1 = layout.yaxis.domain
-        assert (y1 - y0) >= PRICE_ROW_SHARE * 0.9, f"가격 행 도메인 {y1 - y0:.2f}"
+        assert (y1 - y0) >= 0.5 * (1 - 0.04 * 4) - 1e-9, f"가격 행 도메인 {y1 - y0:.2f}"
 
     assert DEFAULT_CHART_HEIGHT in CHART_HEIGHT_OPTIONS and DEFAULT_CHART_HEIGHT == 800
     assert PLOTLY_CONFIG["scrollZoom"] is True and PLOTLY_CONFIG["doubleClick"] == "reset"
     assert all(word in CHART_CONTROLS_CAPTION for word in ("휠", "축", "더블클릭"))
-    # row_heights: 가격 = PRICE_ROW_SHARE, 나머지 합 = 1-share, 합계 1.
     rows = _get_synced_chart_rows(True, "Separated", True, True)
     heights = _row_heights(rows)
-    assert abs(sum(heights) - 1.0) < 1e-9 and heights[0] == PRICE_ROW_SHARE and PRICE_ROW_SHARE >= 0.75
-    assert _row_heights([{"kind": "price", "weight": 0}]) == [1.0]
+    assert abs(sum(heights) - 1.0) < 1e-9
+    assert _row_heights([{"kind": "price"}]) == [1.0]
+
+
+def test_chart_panel_shares_and_min_height():
+    """패널 비중: 5개 기준 0.50/0.06/0.18/0.14/0.12, 꺼진 패널은 가격 흡수, 간격 0.04,
+    하위 패널(가격·거래량 제외) 실제 px ≥ 80 (미달이면 전체 높이 상향)."""
+    from charts.plotly_builder import (
+        MIN_SUBPANEL_PX, VERTICAL_SPACING, _effective_chart_height, _get_synced_chart_rows,
+        _row_heights, _row_pixels,
+    )
+
+    five = _get_synced_chart_rows(True, "Stacked", True, True)
+    assert [r["kind"] for r in five] == ["price", "volume", "stoch_stacked", "macd", "rsi"]
+    assert [round(h, 4) for h in _row_heights(five)] == [0.5, 0.06, 0.18, 0.14, 0.12]
+    three = _get_synced_chart_rows(True, "Stacked", False, False)   # MACD·RSI 꺼짐 → 가격 흡수
+    assert [round(h, 4) for h in _row_heights(three)] == [0.76, 0.06, 0.18]
+    assert VERTICAL_SPACING >= 0.04
+
+    df = _pipeline_frame()
+    for height in (600, 800, 1000):
+        fig = _figure(df, chart_height=height)
+        heights = _row_heights(five)
+        eff = _effective_chart_height(five, heights, height)
+        assert fig.layout.height == eff >= height
+        px = _row_pixels(heights, eff)
+        for row, p in zip(five, px):
+            if row["kind"] not in ("price", "volume"):
+                assert p >= MIN_SUBPANEL_PX - 1e-6, f"{row['kind']} {p:.1f}px @ {height}"
+    # 이미 충분하면 올리지 않는다.
+    assert _effective_chart_height(five, _row_heights(five), 1000) == 1000
+
+
+def test_chart_titles_removed_and_y_fitted():
+    """서브플롯 제목 annotation 없음, 가격·거래량·MACD y 는 표시 창(최근 150봉) 데이터에 밀착,
+    uirevision 은 심볼|TF, 거래량 눈금 3개 이하·SI 포맷·0 시작, 스토캐 참조선 20/80 만,
+    하위 패널 마커는 텍스트 없이 마커만."""
+    from charts.plotly_builder import RECENT_WINDOW, STOCH_GUIDES, _create_synced_chart_figure
+
+    df = _pipeline_frame()
+    fig = _figure(df)
+    layout = fig.layout
+    assert not layout.annotations, "서브플롯 제목이 남아 있다"
+    assert layout.uirevision == "BTCUSDT|1h"
+    fig2 = _create_synced_chart_figure(df, "ETHUSDT", "4h", show_macd=True)
+    assert fig2.layout.uirevision == "ETHUSDT|4h"
+
+    win = df.iloc[-RECENT_WINDOW:]
+    lo, hi = layout.yaxis.range
+    ma_cols = [c for c in win.columns if c.startswith("MA") and c[2:].isdigit()]
+    data_lo = min(win["low"].min(), win[ma_cols].min().min())
+    data_hi = max(win["high"].max(), win[ma_cols].max().max())
+    span = data_hi - data_lo
+    assert data_lo - span * 0.05 <= lo <= data_lo and data_hi <= hi <= data_hi + span * 0.05, "가격 y 가 창에 밀착하지 않음"
+    assert layout.yaxis.autorange is False
+    # 전체 데이터 범위보다 좁아야 진짜 밀착이다(랜덤워크 700봉 전체 폭 > 최근 150봉 폭).
+    assert (hi - lo) < (df["high"].max() - df["low"].min())
+
+    vol = layout.yaxis2
+    assert vol.nticks == 3 and vol.tickformat == "~s" and vol.rangemode == "tozero"
+    assert vol.range[0] == 0 and vol.range[1] >= win["volume"].max()
+
+    macd_ax = layout.yaxis4
+    m_lo = win[["macd", "macd_signal", "macd_hist"]].min().min()
+    m_hi = win[["macd", "macd_signal", "macd_hist"]].max().max()
+    assert macd_ax.range[0] <= m_lo and macd_ax.range[1] >= m_hi
+
+    assert STOCH_GUIDES == (20, 80)
+    # 스토캐 stacked 패널(yaxis3)의 수평 참조선: 3층 × 2 + 층 구분선 2 = 8.
+    # (hoverinfo skip + 선 폭 > 0. 채움 폴리곤은 hoverinfo skip 이지만 선 폭 0.)
+    guides = [t for t in fig.data if t.yaxis == "y3" and t.mode == "lines" and t.hoverinfo == "skip"
+              and (t.line.width or 0) > 0]
+    assert len(guides) == 3 * len(STOCH_GUIDES) + 2
+    assert layout.yaxis3.showgrid is False
+
+    # 하위 패널 마커(스토캐·RSI·MACD)는 mode "markers" (텍스트 없음), 호버 템플릿 있음.
+    sub_markers = [t for t in fig.data
+                   if getattr(t, "yaxis", "y") != "y" and "markers" in (getattr(t, "mode", None) or "")]
+    assert sub_markers
+    assert all(t.mode == "markers" and t.hovertemplate for t in sub_markers)
 
 
 def test_main_wires_chart_height_and_controls():
