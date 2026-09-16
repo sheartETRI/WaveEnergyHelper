@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from analysis.alarm_signals import recent_signals, scan_alarm_signals
 from config.settings import STOCH_LAYERS
 from display.alarm_panel import (
+    MACD_DELAY_NOTE,
     build_bar_caption,
     build_current_bar_lines,
     build_header,
@@ -90,8 +91,13 @@ def test_macd_panel_carries_alarm_event_markers():
     name_of = dict(zip(MACD_KINDS, ("GC", "DC", "0↑", "0↓")))
     for kind, name in name_of.items():
         assert list(pd.to_datetime(traces[name].x)) == list(positions[kind])
-        # y 는 이벤트 봉의 macd 값(선 교차점) 위에 찍힌다.
+        # y 는 확정 봉의 macd 값 위에 찍힌다.
         assert np.allclose(np.asarray(traces[name].y, dtype=float), df.loc[positions[kind], "macd"].to_numpy())
+    # 마커는 확정 봉(교차 봉 +1)에 찍힌다 — 교차 봉에 찍으면 사후 이동 표시가 된다.
+    from analysis.alarm_signals import macd_events
+    for kind, events in macd_events(df).items():
+        for e in events:
+            assert df.index.get_loc(e.timestamp) == df.index.get_loc(e.cross_ts) + 1
 
     # MACD 패널을 끄면 마커도 없다.
     fig_off = _figure(df, show_macd=False)
@@ -142,6 +148,9 @@ def test_alarm_panel_pure_builders():
     assert "BTCUSDT 1h" in lines[0]
     assert "마지막 봉" in lines[1]
     assert "RSI 구역" in lines[2]
+    # MACD 가 계산된 프레임이면 1봉 지연 안내가 붙고, 없으면 안 붙는다.
+    assert lines[3] == MACD_DELAY_NOTE and "1봉" in MACD_DELAY_NOTE
+    assert MACD_DELAY_NOTE not in build_status_lines(df.drop(columns=["macd"]), "BTCUSDT", "1h")
 
     signals = recent_signals(df, bars=200)
     assert signals, "200봉 창에서 신호가 전무하면 환산이 끊긴 것"
@@ -153,6 +162,7 @@ def test_alarm_panel_pure_builders():
     macd_lines = [format_signal_line(s) for s in signals if s.layer_name == "MACD"]
     assert macd_lines, "MACD 신호가 이력 창에 하나도 없으면 연결이 끊긴 것"
     assert all(("hist " in line) or ("MACD " in line) for line in macd_lines)
+    assert all("교차 " in line for line in macd_lines), "교차 봉 시각이 비고로 보여야 한다"
 
     # 마지막 봉 줄은 해당 봉 신호만 뽑는다.
     current = build_current_bar_lines(signals, df.index[-1])
@@ -180,6 +190,32 @@ def test_main_module_contract():
     # 표시명은 대/중/소 접두가 붙어야 한다(사이드바 가독성).
     assert all(name[0] in "대중소" for name in main._LAYER_CHOICES)
     assert main.DEFAULT_INTERVAL in __import__("config.settings", fromlist=["x"]).TIMEFRAMES
+
+
+def test_macd_panel_default_off_only_for_15m():
+    """'MACD 패널' 토글 기본값 — 15m 만 꺼짐, 그 외 TF 는 켬. 사이드바가 그 함수를 실제로 쓴다."""
+    import main
+    from config.settings import TIMEFRAMES
+
+    assert main.macd_panel_default("15m") is False
+    for tf in TIMEFRAMES:
+        assert main.macd_panel_default(tf) is (tf != "15m")
+    source = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(source, "main.py"), encoding="utf-8") as fh:
+        body = fh.read()
+    assert "value=macd_panel_default(interval)" in body
+
+
+def test_load_frame_without_macd_skips_macd_alarms():
+    """토글 꺼짐(with_macd=False) 경로: MACD 컬럼이 없어 알람 4종이 조용히 빠지고 스토캐·RSI 는 그대로."""
+    from analysis.alarm_signals import MACD_KINDS
+
+    df = _pipeline_frame()
+    with_macd = scan_alarm_signals(df)
+    without = scan_alarm_signals(df.drop(columns=[c for c in df.columns if c.startswith("macd")]))
+    assert any(s.kind in MACD_KINDS for s in with_macd)
+    assert not any(s.kind in MACD_KINDS for s in without)
+    assert [s for s in with_macd if s.kind not in MACD_KINDS] == without
 
 
 if __name__ == "__main__":

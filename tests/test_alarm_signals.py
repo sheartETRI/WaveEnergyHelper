@@ -21,6 +21,7 @@ from analysis.alarm_signals import (
     SEV_CONFIRMED,
     MACD_KINDS,
     macd_event_positions,
+    macd_events,
     recent_signals,
     rsi_zone,
     scan_alarm_signals,
@@ -88,43 +89,53 @@ def _macd_kinds(df):
     return {kind: [s.timestamp for s in scan_alarm_signals(df, layers=[]) if s.kind == kind] for kind in MACD_KINDS}
 
 
-def test_macd_golden_cross_once_at_cross_bar():
-    """hist 가 음→양으로 바뀌는 봉에서 정확히 1건. 양수 유지 구간엔 0건."""
-    # hist: nan, -2, -1, +1, +2, +3  (idx3 에서 상향 교차, 이후 양수 유지)
+def _hist_frame(hist):
+    """hist 값을 직접 심는 프레임 — macd = hist, signal = 0 (0선 전이도 hist 와 동일 봉)."""
+    return _macd_frame(macd=hist, signal=[0.0] * len(hist))
+
+
+# 규칙: 교차 봉 t (prev 부호 반대, cur 전이 부호) + t+1 에서 부호 유지 → 발화. timestamp = t+1.
+
+
+def test_macd_golden_cross_fires_on_confirmation_bar():
+    """hist 음→양 교차 봉 t 다음 봉이 양수를 유지하면 t+1 에서 정확히 1건. 이후 유지 구간 0건."""
+    # hist: nan, -2, -1, +1, +2, +3  (교차 idx3, 확정 idx4)
     df = _macd_frame(macd=[1, 1, 1, 3, 4, 5], signal=[1, 3, 2, 2, 2, 2])
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_GOLDEN] == [df.index[3]]
+    assert kinds[KIND_MACD_GOLDEN] == [df.index[4]]
     assert kinds[KIND_MACD_DEAD] == []
     golden = [s for s in scan_alarm_signals(df, layers=[]) if s.kind == KIND_MACD_GOLDEN][0]
     assert golden.layer is None and golden.layer_name == "MACD" and golden.metric_name == "hist"
     assert golden.severity == SEV_CONFIRMED and golden.direction == "bull"
-    assert golden.value == float(df["macd_hist"].iloc[3])   # 이벤트 봉의 hist
-    assert golden.detail == "MACD 3"                         # 반대편 값(0선 위)
+    assert golden.value == float(df["macd_hist"].iloc[4])       # 확정 봉의 hist
+    # detail: 교차 봉 시각 + 반대편 값(확정 봉의 macd, 0선 위)
+    assert golden.detail == f"교차 {df.index[3]:%Y-%m-%d %H:%M} · MACD 4"
 
 
 def test_macd_dead_cross_symmetric():
-    """hist 양→음 전이 봉에서 데드크로스 1건, 골든 0건."""
-    # hist: nan, +2, +1, -1, -2
+    """hist 양→음 교차 후 다음 봉도 음수면 확정 봉에서 데드크로스 1건, 골든 0건."""
+    # hist: nan, +2, +1, -1, -2  (교차 idx3, 확정 idx4)
     df = _macd_frame(macd=[5, 5, 5, 5, 5], signal=[5, 3, 4, 6, 7])
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_DEAD] == [df.index[3]]
+    assert kinds[KIND_MACD_DEAD] == [df.index[4]]
     assert kinds[KIND_MACD_GOLDEN] == []
     dead = [s for s in scan_alarm_signals(df, layers=[]) if s.kind == KIND_MACD_DEAD][0]
-    assert dead.direction == "bear" and dead.value == float(df["macd_hist"].iloc[3])
+    assert dead.direction == "bear" and dead.value == float(df["macd_hist"].iloc[4])
+    assert dead.detail.startswith(f"교차 {df.index[3]:%Y-%m-%d %H:%M}")
 
 
 def test_macd_zero_line_transitions():
-    """macd 부호 전이 봉에서만 0선 상향/하향 각 1건. value 는 그 봉의 macd."""
-    # macd: -2, -1, +1, +2, -1, -3  → 상향 idx2, 하향 idx4. signal = macd 로 hist 0 고정(크로스 없음).
-    macd = [-2, -1, 1, 2, -1, -3]
-    df = _macd_frame(macd=macd, signal=macd)
+    """macd 부호 전이 봉 t + 유지 봉 t+1 → 0선 상향/하향 각 1건(timestamp t+1). value 는 확정 봉의 macd."""
+    # macd: -2, -1, +1, +2, -1, -3, -4  → 상향 교차 idx2(확정 idx3), 하향 교차 idx4(확정 idx5).
+    macd = [-2, -1, 1, 2, -1, -3, -4]
+    df = _macd_frame(macd=macd, signal=macd)   # hist 0 고정 → 크로스 없음
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_ZERO_UP] == [df.index[2]]
-    assert kinds[KIND_MACD_ZERO_DOWN] == [df.index[4]]
+    assert kinds[KIND_MACD_ZERO_UP] == [df.index[3]]
+    assert kinds[KIND_MACD_ZERO_DOWN] == [df.index[5]]
     assert kinds[KIND_MACD_GOLDEN] == [] and kinds[KIND_MACD_DEAD] == []
     up = [s for s in scan_alarm_signals(df, layers=[]) if s.kind == KIND_MACD_ZERO_UP][0]
-    assert up.value == 1.0 and up.metric_name == "MACD" and up.layer_name == "MACD"
-    assert up.detail == "hist 0"
+    assert up.value == 2.0 and up.metric_name == "MACD" and up.layer_name == "MACD"
+    assert up.detail == f"교차 {df.index[2]:%Y-%m-%d %H:%M} · hist 0"
 
 
 def test_macd_no_cross_region_is_silent():
@@ -135,61 +146,89 @@ def test_macd_no_cross_region_is_silent():
     assert all(v == [] for v in _macd_kinds(df).values())
 
 
-def test_macd_repeated_crosses_fire_each_time():
-    """0 근처 진동 — 교차마다 1건씩, 교차 사이 유지 봉에서는 안 울린다(채터링 억제 없음)."""
-    # hist: nan, -1, +1, +1, -1, -1, +1, -1  → 골든 idx2, idx6 / 데드 idx4, idx7
-    macd = [0, 0, 0, 0, 0, 0, 0, 0]
-    signal = [0, 1, -1, -1, 1, 1, -1, 1]
-    df = _macd_frame(macd=macd, signal=signal)
+def test_macd_immediate_reversal_does_not_fire():
+    """교차 직후 다음 봉에서 부호가 되돌아가면(왕복 교차) 골든·데드 모두 미발화 — 억제 목적."""
+    # hist: nan, -1, +1, -1, -1, -1  → idx2 상향 교차 but idx3 음수(왕복) → 골든 없음.
+    #   idx3 은 하향 교차이고 idx4 음수 유지 → 데드 1건(idx4).
+    df = _hist_frame([0, -1, 1, -1, -1, -1])
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_GOLDEN] == [df.index[2], df.index[6]]
-    assert kinds[KIND_MACD_DEAD] == [df.index[4], df.index[7]]
-    # macd 는 0 고정 → 부호 전이 없음
-    assert kinds[KIND_MACD_ZERO_UP] == [] and kinds[KIND_MACD_ZERO_DOWN] == []
+    assert kinds[KIND_MACD_GOLDEN] == []
+    assert kinds[KIND_MACD_DEAD] == [df.index[4]]
+    # 0선도 같은 규칙(여기선 macd = hist).
+    assert kinds[KIND_MACD_ZERO_UP] == [] and kinds[KIND_MACD_ZERO_DOWN] == [df.index[4]]
 
-    # 0선도 같은 규칙: -,+,-,+ 교대면 매 전이마다.
-    df = _macd_frame(macd=[-1, 1, -1, 1], signal=[-1, 1, -1, 1])
+    # 한 봉짜리 스파이크가 연달아도(−,+,−,+,−) 전부 왕복 → 0건.
+    df = _hist_frame([0, -1, 1, -1, 1, -1, -1])
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_ZERO_UP] == [df.index[1], df.index[3]]
-    assert kinds[KIND_MACD_ZERO_DOWN] == [df.index[2]]
+    assert kinds[KIND_MACD_GOLDEN] == []
+    assert kinds[KIND_MACD_DEAD] == [df.index[6]]   # 마지막 하향(idx5)만 idx6 에서 유지 확인
+
+
+def test_macd_repeated_confirmed_crosses_fire_each_time():
+    """유지가 확인된 교차는 매번 1건씩 — 억제는 왕복만 거른다(쿨다운 없음)."""
+    # hist: nan, -1, +1, +1, -1, -1, +1, +1, -1, -1
+    #   교차 idx2(확정 idx3) 골든 / idx4(확정 idx5) 데드 / idx6(확정 idx7) 골든 / idx8(확정 idx9) 데드
+    df = _hist_frame([0, -1, 1, 1, -1, -1, 1, 1, -1, -1])
+    kinds = _macd_kinds(df)
+    assert kinds[KIND_MACD_GOLDEN] == [df.index[3], df.index[7]]
+    assert kinds[KIND_MACD_DEAD] == [df.index[5], df.index[9]]
+
+
+def test_macd_cross_on_last_bar_is_held():
+    """교차 봉이 마지막 봉이면 확정 봉이 없으므로 보류(lookahead 없음). 봉이 하나 더 오면 발화."""
+    df = _hist_frame([0, -1, -1, 1])                 # 교차 idx3 = 마지막 봉
+    assert all(v == [] for v in _macd_kinds(df).values())
+    df_next = _hist_frame([0, -1, -1, 1, 1])         # 다음 봉 유지 → idx4 에서 발화
+    kinds = _macd_kinds(df_next)
+    assert kinds[KIND_MACD_GOLDEN] == [df_next.index[4]]
+    df_rev = _hist_frame([0, -1, -1, 1, -1])         # 다음 봉 되돌림 → 여전히 0건(골든)
+    assert _macd_kinds(df_rev)[KIND_MACD_GOLDEN] == []
 
 
 def test_macd_zero_boundary_fires_once():
     """정확히 0 에 닿는 봉은 '도달한 쪽' 1회만 — 다음 봉엔 직전값이 0 이라 재발화 없음."""
-    # hist: nan, -1, 0, +1 → 골든 idx2 한 번. 데드는 없음.
-    df = _macd_frame(macd=[0, 0, 0, 0], signal=[0, 1, 0, -1])
+    # hist: nan, -1, 0, +1, +2 → 교차 idx2(0 ≥ 0 상향), idx3 유지(+1) → 골든 idx3 한 번. 데드 없음.
+    df = _macd_frame(macd=[0, 0, 0, 0, 0], signal=[0, 1, 0, -1, -2])
     kinds = _macd_kinds(df)
-    assert kinds[KIND_MACD_GOLDEN] == [df.index[2]]
+    assert kinds[KIND_MACD_GOLDEN] == [df.index[3]]
     assert kinds[KIND_MACD_DEAD] == []
 
 
 def test_macd_nan_warmup_is_not_an_event():
     """EMA 워밍업이 NaN 으로 남는 변형을 물려도 결측→값 경계에서 알람이 안 난다."""
     # 앞 3봉 결측 후 hist 가 +1 로 시작 (직전 결측): 골든 아님. macd 도 +2 로 시작: 0선 상향 아님.
-    df = _macd_frame(macd=[np.nan, np.nan, np.nan, 2, 3], signal=[np.nan, np.nan, np.nan, 1, 1])
+    df = _macd_frame(macd=[np.nan, np.nan, np.nan, 2, 3, 4], signal=[np.nan, np.nan, np.nan, 1, 1, 1])
     assert all(v == [] for v in _macd_kinds(df).values())
     # 결측 후 첫 유효값이 음수여도 마찬가지(하향 아님).
-    df = _macd_frame(macd=[np.nan, np.nan, -2, -3], signal=[np.nan, np.nan, -1, -1])
+    df = _macd_frame(macd=[np.nan, np.nan, -2, -3, -4], signal=[np.nan, np.nan, -1, -1, -1])
     assert all(v == [] for v in _macd_kinds(df).values())
     # 첫 봉(hist_prev NaN)이 양수여도 골든 아님 — add_macd 첫 봉과 같은 상황.
-    df = _macd_frame(macd=[3, 4], signal=[1, 1])
+    df = _macd_frame(macd=[3, 4, 5], signal=[1, 1, 1])
+    assert _macd_kinds(df)[KIND_MACD_GOLDEN] == []
+    # 확정 봉(t+1)이 결측이면 확정 불가 → 보류.
+    df = _hist_frame([0, -1, 1, np.nan, 1])
     assert _macd_kinds(df)[KIND_MACD_GOLDEN] == []
 
 
 def test_macd_missing_columns_skipped_and_positions_shared():
-    """macd 컬럼이 없으면 조용히 건너뛰고, macd_event_positions 는 스캔 결과와 같은 봉을 준다."""
+    """macd 컬럼이 없으면 조용히 건너뛰고, macd_event_positions / macd_events 는 스캔 결과와 같은 확정 봉을 준다."""
     idx = _index(4)
     assert macd_event_positions(pd.DataFrame({"close": [1.0, 2.0, 3.0, 4.0]}, index=idx)) == {}
-    df = _macd_frame(macd=[-1, 1, -1, 1], signal=[0, 0, 0, 0])   # hist = macd
+    assert macd_events(pd.DataFrame({"close": [1.0, 2.0, 3.0, 4.0]}, index=idx)) == {}
+    df = _hist_frame([0, -1, 1, 1, -1, -1, 1, 1])   # 골든 확정 idx3·idx7, 데드 확정 idx5
     positions = macd_event_positions(df)
+    events = macd_events(df)
     kinds = _macd_kinds(df)
     for kind in MACD_KINDS:
         assert list(positions[kind]) == kinds[kind]
+        assert [e.timestamp for e in events[kind]] == kinds[kind]
+        # 교차 봉은 항상 확정 봉 바로 앞.
+        assert all(df.index.get_loc(e.timestamp) == df.index.get_loc(e.cross_ts) + 1 for e in events[kind])
     # hist_prev 컬럼만 빠지면 크로스 2종만 빠지고 0선은 남는다.
     partial = df.drop(columns=["macd_hist_prev"])
     kinds = _macd_kinds(partial)
     assert kinds[KIND_MACD_GOLDEN] == [] and kinds[KIND_MACD_DEAD] == []
-    assert kinds[KIND_MACD_ZERO_UP] == [df.index[1], df.index[3]]
+    assert kinds[KIND_MACD_ZERO_UP] == [df.index[3], df.index[7]]
 
 
 def test_stoch_confirmed_events_only_on_valued_bars():
@@ -336,25 +375,30 @@ def test_real_pipeline_smoke():
 
     signals = scan_alarm_signals(df)
     assert signals, "랜덤워크 600봉에서 신호가 하나도 없으면 환산 레이어가 컬럼을 못 읽은 것"
-    # MACD 4종이 실제 add_macd 컬럼에서 나오고, 각 이벤트 봉은 정의대로 부호가 바뀐 봉이다.
+    # MACD 4종이 실제 add_macd 컬럼에서 나오고, 각 이벤트는 "교차 봉 t + 유지 봉 t+1" 정의를 만족한다.
     macd_signals = [s for s in signals if s.kind in MACD_KINDS]
     assert {s.kind for s in macd_signals} == set(MACD_KINDS)
+    hist, macd = df["macd_hist"], df["macd"]
     for s in macd_signals:
-        pos = df.index.get_loc(s.timestamp)
-        assert pos > 0
+        pos = df.index.get_loc(s.timestamp)   # 확정 봉
+        assert pos >= 2
+        t = pos - 1                            # 교차 봉
+        assert s.detail.startswith(f"교차 {df.index[t]:%Y-%m-%d %H:%M}")
         if s.kind == KIND_MACD_GOLDEN:
-            assert df["macd_hist_prev"].iloc[pos] < 0 <= df["macd_hist"].iloc[pos]
+            assert hist.iloc[t - 1] < 0 <= hist.iloc[t] and hist.iloc[pos] >= 0
         elif s.kind == KIND_MACD_DEAD:
-            assert df["macd_hist_prev"].iloc[pos] > 0 >= df["macd_hist"].iloc[pos]
+            assert hist.iloc[t - 1] > 0 >= hist.iloc[t] and hist.iloc[pos] <= 0
         elif s.kind == KIND_MACD_ZERO_UP:
-            assert df["macd"].iloc[pos - 1] < 0 <= df["macd"].iloc[pos]
+            assert macd.iloc[t - 1] < 0 <= macd.iloc[t] and macd.iloc[pos] >= 0
         elif s.kind == KIND_MACD_ZERO_DOWN:
-            assert df["macd"].iloc[pos - 1] > 0 >= df["macd"].iloc[pos]
-    # 크로스 봉 수 == hist 부호 전이 수 (교차마다 1건, 유지 봉 0건)
-    sign = np.sign(df["macd_hist"].fillna(0))
-    flips = int(((sign != sign.shift(1)) & sign.shift(1).notna() & (sign != 0) & (sign.shift(1) != 0)).sum())
+            assert macd.iloc[t - 1] > 0 >= macd.iloc[t] and macd.iloc[pos] <= 0
+    # 크로스 건수 == (hist 부호 전이 중 다음 봉이 유지된 것) 수 — 왕복 교차만 빠진다.
+    sign = np.sign(hist.fillna(0))
+    flip = (sign != sign.shift(1)) & sign.shift(1).notna() & (sign != 0) & (sign.shift(1) != 0)
+    held = flip & (sign.shift(-1) == sign)
     n_cross = sum(1 for s in macd_signals if s.kind in (KIND_MACD_GOLDEN, KIND_MACD_DEAD))
-    assert n_cross == flips
+    assert n_cross == int(held.sum())
+    assert n_cross < int(flip.sum()), "랜덤워크 600봉에 왕복 교차가 하나도 없을 수는 없다"
     # 시간순 보장 + 모든 신호가 df 인덱스 위에 있어야 한다.
     stamps = [s.timestamp for s in signals]
     assert stamps == sorted(stamps)
