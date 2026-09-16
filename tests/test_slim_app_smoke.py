@@ -206,6 +206,52 @@ def test_macd_panel_default_off_only_for_15m():
     assert "value=macd_panel_default(interval)" in body
 
 
+def test_chart_vertical_controls_settings():
+    """세로 조작성 설정 계층 — 모든 y축 fixedrange=False, rangeslider 꺼짐, dragmode pan,
+    높이는 선택값 그대로, 가격 행 비중 ≥ 0.75, 캡션·config 상수 존재."""
+    from charts.plotly_builder import (
+        CHART_CONTROLS_CAPTION, CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, PLOTLY_CONFIG,
+        PRICE_ROW_SHARE, _row_heights, _get_synced_chart_rows,
+    )
+
+    df = _pipeline_frame()
+    for height in CHART_HEIGHT_OPTIONS:
+        fig = _figure(df, chart_height=height)
+        layout = fig.layout
+        assert layout.height == height
+        assert layout.dragmode == "pan"
+        yaxes = [v for k, v in layout.to_plotly_json().items() if k.startswith("yaxis")]
+        assert yaxes and all(ax.get("fixedrange") is False for ax in yaxes), "모든 y축 fixedrange=False 명시"
+        xaxes = [v for k, v in layout.to_plotly_json().items() if k.startswith("xaxis")]
+        assert all(not ax.get("rangeslider", {}).get("visible", False) for ax in xaxes), "rangeslider 꺼짐"
+        # 가격(첫 행) y축 도메인 폭이 전체의 0.75×(1-간격) 이상 — 지표 패널이 가격을 누르지 않는다.
+        y0, y1 = layout.yaxis.domain
+        assert (y1 - y0) >= PRICE_ROW_SHARE * 0.9, f"가격 행 도메인 {y1 - y0:.2f}"
+
+    assert DEFAULT_CHART_HEIGHT in CHART_HEIGHT_OPTIONS and DEFAULT_CHART_HEIGHT == 800
+    assert PLOTLY_CONFIG["scrollZoom"] is True and PLOTLY_CONFIG["doubleClick"] == "reset"
+    assert all(word in CHART_CONTROLS_CAPTION for word in ("휠", "축", "더블클릭"))
+    # row_heights: 가격 = PRICE_ROW_SHARE, 나머지 합 = 1-share, 합계 1.
+    rows = _get_synced_chart_rows(True, "Separated", True, True)
+    heights = _row_heights(rows)
+    assert abs(sum(heights) - 1.0) < 1e-9 and heights[0] == PRICE_ROW_SHARE and PRICE_ROW_SHARE >= 0.75
+    assert _row_heights([{"kind": "price", "weight": 0}]) == [1.0]
+
+
+def test_main_wires_chart_height_and_controls():
+    """main.py: wide 레이아웃, 차트 높이 셀렉트(600/800/1000, 기본 800), render_chart 에 chart_height 전달,
+    render_chart 는 캡션·config 를 붙인다."""
+    source = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(source, "main.py"), encoding="utf-8") as fh:
+        body = fh.read()
+    assert 'layout="wide"' in body
+    assert "CHART_HEIGHT_OPTIONS" in body and "chart_height=cfg[\"chart_height\"]" in body
+    with open(os.path.join(source, "charts", "plotly_builder.py"), encoding="utf-8") as fh:
+        chart_src = fh.read()
+    assert 'st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)' in chart_src
+    assert "st.caption(CHART_CONTROLS_CAPTION)" in chart_src
+
+
 def test_load_frame_without_macd_skips_macd_alarms():
     """토글 꺼짐(with_macd=False) 경로: MACD 컬럼이 없어 알람 4종이 조용히 빠지고 스토캐·RSI 는 그대로."""
     from analysis.alarm_signals import MACD_KINDS
