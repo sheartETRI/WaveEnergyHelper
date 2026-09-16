@@ -26,6 +26,9 @@ from analysis.alarm_signals import (
 # 기본 이력 창(봉). 사이드바에서 조절.
 DEFAULT_HISTORY_BARS = 120
 
+# MACD 4종의 발화 지연 안내 — 규칙은 analysis.alarm_signals(다음 봉 확정). 항상 정확히 1봉.
+MACD_DELAY_NOTE = "MACD 크로스·0선 신호는 교차 다음 봉이 부호를 유지해야 표시됩니다(교차 봉 +1봉 지연, 시각은 확정 봉)."
+
 _ZONE_ICON = {"과매도": "🔵", "과매수": "🔴", "중립": "⚪", "-": "⚪"}
 
 
@@ -69,13 +72,21 @@ def build_bar_caption(df: pd.DataFrame) -> str:
     return f"마지막 봉 {last_ts:%Y-%m-%d %H:%M} (미확정 가능){price}"
 
 
+def has_macd(df: pd.DataFrame) -> bool:
+    """MACD 알람이 가능한 프레임인지(add_macd 를 거쳤는지). 지연 안내 표시 여부 결정."""
+    return df is not None and not df.empty and "macd" in df.columns
+
+
 def build_status_lines(df: pd.DataFrame, symbol: str, interval: str) -> List[str]:
-    """상태 요약 전체 — 제목, 마지막 봉, 현재 RSI 구역. 텍스트 요약/테스트용."""
+    """상태 요약 전체 — 제목, 마지막 봉, 현재 RSI 구역, (MACD 있으면) 지연 안내. 텍스트 요약/테스트용."""
     head = build_header(symbol, interval)
     if df is None or df.empty:
         return [head, "데이터 없음"]
     zone = rsi_zone(df)
-    return [head, build_bar_caption(df), f"RSI 구역 {_ZONE_ICON.get(zone, '⚪')} {zone}"]
+    lines = [head, build_bar_caption(df), f"RSI 구역 {_ZONE_ICON.get(zone, '⚪')} {zone}"]
+    if has_macd(df):
+        lines.append(MACD_DELAY_NOTE)
+    return lines
 
 
 def build_current_bar_lines(signals: List[AlarmSignal], last_ts) -> List[str]:
@@ -114,6 +125,8 @@ def render_alarm_panel(
         col_bar.metric("마지막 봉", f"{df.index[-1]:%m-%d %H:%M}", help="미확정(진행 중) 봉일 수 있음")
         col_count.metric(f"최근 {history_bars}봉 신호", f"{len(signals)}건")
         st.caption(build_bar_caption(df))
+        if has_macd(df):
+            st.caption(MACD_DELAY_NOTE)
 
         st.markdown("**마지막 봉 알람**")
         if current:

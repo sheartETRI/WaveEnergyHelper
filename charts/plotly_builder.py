@@ -363,7 +363,8 @@ def add_macd_panel(fig, df, row_index):
 
 
 # MACD 알람 이벤트 마커 — 스토캐 DB/DT(원, 초록/빨강)·TB/TT(마름모) 관례를 그대로 잇는다.
-# (라벨, 마커 모양, 색, 텍스트 위치). 위치 y 는 이벤트 봉의 macd 값(두 선의 교차점 / 0선 근처).
+# (라벨, 마커 모양, 색, 텍스트 위치). x 는 확정 봉(교차 봉 +1, 알람 발화 시점) — 교차 봉에
+# 찍으면 사후에 마커가 생기는 표시가 된다. y 는 확정 봉의 macd 값.
 _MACD_EVENT_STYLE = {
     KIND_MACD_GOLDEN: ("GC", "circle", "#0B8F45", "top center"),
     KIND_MACD_DEAD: ("DC", "circle", "#C62828", "bottom center"),
@@ -375,7 +376,8 @@ _MACD_EVENT_STYLE = {
 def add_macd_event_markers(fig, df, row_index):
     """Adds MACD cross / zero-line event labels on the MACD panel.
 
-    이벤트 위치는 analysis.alarm_signals.macd_event_positions 가 정한다(알람 목록과 동일 봉).
+    이벤트 위치는 analysis.alarm_signals.macd_event_positions 가 정한다(알람 목록과 동일한
+    확정 봉 — 다음 봉 확정 규칙 포함).
     """
     if "macd" not in df.columns:
         return

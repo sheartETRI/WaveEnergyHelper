@@ -25,10 +25,21 @@ _LAYER_CHOICES = {f"{_ROLE_KO.get(l['name'], l['name'])}{l['label']}": l["label"
 
 DEFAULT_INTERVAL = "1h"
 
+# "MACD 패널" 토글이 기본 꺼지는 TF. 15m 은 크로스 채터링이 가장 잦아 기본 꺼짐 — 켜면 다른 TF와
+# 정의·동작이 같다(정의 차등 없음). 토글은 MACD 계산·알람·차트 패널을 함께 켜고 끈다.
+MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 
-def load_frame(symbol: str, interval: str):
+
+def macd_panel_default(interval: str) -> bool:
+    """'MACD 패널' 토글 기본값 — 15m 만 꺼짐, 나머지 켬."""
+    return interval not in MACD_PANEL_DEFAULT_OFF_INTERVALS
+
+
+def load_frame(symbol: str, interval: str, with_macd: bool = True):
     """OHLCV 적재 → 지표 계산. 실패 시 None.
 
+    with_macd=False 면 add_macd 를 건너뛴다 → MACD 컬럼이 없어 알람 레이어가 MACD 4종을 조용히
+    건너뛰고 차트에도 MACD 패널이 없다("MACD 패널" 토글 꺼짐).
     fetch/build/지표는 각자 st.cache_data(ttl=600)를 갖고 있어 여기서 추가 캐시는 두지 않는다.
     """
     fetch_interval = get_fetch_interval(interval)
@@ -44,7 +55,8 @@ def load_frame(symbol: str, interval: str):
 
     df = add_moving_averages(df)
     df = add_stochastic_slow_layers(df)
-    df = add_macd(df)
+    if with_macd:
+        df = add_macd(df)
     df = add_rsi(df)
     return df
 
@@ -82,7 +94,11 @@ def render_sidebar() -> dict:
         disabled=not show_stoch,
         help="Stacked=3층 한 패널, Separated=레이어별 패널 분리",
     )
-    show_macd = st.sidebar.checkbox("MACD 패널", value=True)
+    # key 없이 value 만 바꾸면 TF 전환 시 새 위젯으로 잡혀 기본값이 TF 별로 적용된다.
+    show_macd = st.sidebar.checkbox(
+        "MACD 패널", value=macd_panel_default(interval),
+        help="MACD 계산·크로스/0선 알람·차트 패널을 함께 켜고 끕니다. 15m 은 기본 꺼짐(켜면 동일 동작).",
+    )
     show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
 
     return {
@@ -104,7 +120,7 @@ def main():
     symbol, interval = cfg["symbol"], cfg["interval"]
 
     with st.spinner(f"{symbol} {interval} 적재 중..."):
-        df = load_frame(symbol, interval)
+        df = load_frame(symbol, interval, with_macd=cfg["show_macd"])
 
     if df is None or df.empty:
         st.error(f"{symbol} {interval} 데이터를 불러오지 못했습니다.")
