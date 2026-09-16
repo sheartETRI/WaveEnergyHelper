@@ -117,10 +117,12 @@ def _adapt_wave_lifecycle(ctx) -> None:
 
 
 def _adapt_chart(ctx) -> None:
+    # aeba3d3 에서 차트가 파동 연구 체인에서 분리되며 stability/wave_tracker 스트립 오버레이
+    # (show_stability·stability_aligned·show_wave_tracker·wave_tracker_aligned)가 render_chart
+    # 에서 제거됐다. 호출부를 현재 시그니처에 맞춘다 — 그 오버레이는 이미 없으므로 동작 변경 없음.
+    # (Stability Verdict / Wave Tracker 패널 자체는 CAT_PRECOMPUTED 어댑터로 그대로 렌더된다.)
     from charts.plotly_builder import render_chart
     f = ctx.indicator_flags
-    show_stab = bool(ctx.ui.get("show_stability_verdict"))
-    show_wt = bool(ctx.ui.get("show_wave_tracker"))
     render_chart(
         ctx.df, ctx.symbol, ctx.interval,
         show_stochastic=f.show_stoch,
@@ -131,10 +133,6 @@ def _adapt_chart(ctx) -> None:
         show_rsi_fill=f.show_rsi,
         show_ma_patterns=f.show_ma_patterns,
         show_ma_dispersion=f.show_ma_dispersion,
-        show_stability=show_stab,
-        stability_aligned=ctx.stability_aligned() if show_stab else None,
-        show_wave_tracker=show_wt,
-        wave_tracker_aligned=ctx.wave_tracker_aligned() if show_wt else None,
     )
 
 
