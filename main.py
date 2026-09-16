@@ -10,7 +10,7 @@
 # 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
 import streamlit as st
 
-from charts.plotly_builder import render_chart
+from charts.plotly_builder import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, render_chart
 from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
 from data.binance import fetch_klines, get_auto_limit
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
@@ -100,6 +100,11 @@ def render_sidebar() -> dict:
         help="MACD 계산·크로스/0선 알람·차트 패널을 함께 켜고 끕니다. 15m 은 기본 꺼짐(켜면 동일 동작).",
     )
     show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
+    chart_height = st.sidebar.selectbox(
+        "차트 높이 (px)", options=list(CHART_HEIGHT_OPTIONS),
+        index=list(CHART_HEIGHT_OPTIONS).index(DEFAULT_CHART_HEIGHT),
+        help="Streamlit 은 화면 높이를 읽지 못해 선택식. 세로 확대·축소는 차트 위 휠로.",
+    )
 
     return {
         "symbol": symbol,
@@ -111,6 +116,7 @@ def render_sidebar() -> dict:
         "stoch_view": stoch_view,
         "show_macd": show_macd,
         "show_rsi": show_rsi,
+        "chart_height": chart_height,
     }
 
 
@@ -141,6 +147,7 @@ def main():
         show_macd=cfg["show_macd"],
         show_rsi=cfg["show_rsi"],
         show_rsi_fill=cfg["show_rsi"],
+        chart_height=cfg["chart_height"],
     )
 
 

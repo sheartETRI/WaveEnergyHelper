@@ -28,6 +28,20 @@ TV_BACKGROUND = "#ffffff"
 TV_TEXT = "#191c24"
 TV_GRID = "rgba(42, 46, 57, 0.12)"
 RECENT_WINDOW = 150
+
+# --- 세로 조작성 설정 (설정 계층만, 데이터·지표 무관) ---
+# 차트 전체 높이(px): Streamlit 은 뷰포트 높이를 읽지 못하므로 사이드바 선택식.
+CHART_HEIGHT_OPTIONS = (600, 800, 1000)
+DEFAULT_CHART_HEIGHT = 800
+# 가격 서브플롯의 세로 비중. 지표 패널이 가격을 눌러 납작해지지 않게 0.75 이상으로 고정하고,
+# 나머지 패널이 남은 비중을 각자의 weight 비율로 나눈다.
+PRICE_ROW_SHARE = 0.75
+# 화면 캡션용 조작법 요약(휠 / 축 위 휠 / 더블클릭). config 의 scrollZoom·doubleClick 과 짝.
+CHART_CONTROLS_CAPTION = (
+    "조작: 휠 = 커서 기준 확대·축소  ·  축(눈금) 위에서 휠 = 그 축만 확대·축소  ·  "
+    "더블클릭 = 초기 범위로  ·  드래그 = 이동"
+)
+PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset", "displaylogo": False}
 STOCH_DISPLAY_LAYERS = [
     {"panel_title": "Large wave", "suffix": "(20,10,10)"},
     {"panel_title": "Mid wave", "suffix": "(10,5,5)"},
@@ -710,9 +724,10 @@ def _get_synced_chart_rows(
     show_rsi: bool,
     show_ma_dispersion: bool = False,
 ) -> list[dict]:
+    # weight 는 가격 이외 패널들 사이의 상대 비중(가격 행은 PRICE_ROW_SHARE 로 고정, _row_heights 참조).
     rows = [
-        {"kind": "price", "title": "Price", "height": 520},
-        {"kind": "volume", "title": "Volume", "height": 130},
+        {"kind": "price", "title": "Price", "weight": 0},
+        {"kind": "volume", "title": "Volume", "weight": 130},
     ]
 
     if show_stochastic:
@@ -722,23 +737,33 @@ def _get_synced_chart_rows(
                     {
                         "kind": "stoch_layer",
                         "title": layer["panel_title"],
-                        "height": 240,
+                        "weight": 240,
                         "suffix": layer["suffix"],
                     }
                 )
         else:
-            rows.append({"kind": "stoch_stacked", "title": "Stochastic Slow", "height": 270})
+            rows.append({"kind": "stoch_stacked", "title": "Stochastic Slow", "weight": 270})
 
     if show_macd:
-        rows.append({"kind": "macd", "title": "MACD", "height": 240})
+        rows.append({"kind": "macd", "title": "MACD", "weight": 240})
 
     if show_rsi:
-        rows.append({"kind": "rsi", "title": "RSI", "height": 240})
+        rows.append({"kind": "rsi", "title": "RSI", "weight": 240})
 
     if show_ma_dispersion:
-        rows.append({"kind": "ma_dispersion", "title": "MA Dispersion", "height": 200})
+        rows.append({"kind": "ma_dispersion", "title": "MA Dispersion", "weight": 200})
 
     return rows
+
+
+def _row_heights(rows: list[dict]) -> list[float]:
+    """make_subplots row_heights — 가격 행 PRICE_ROW_SHARE, 나머지는 (1-share) 를 weight 비율로."""
+    others = [row["weight"] for row in rows if row["kind"] != "price"]
+    if not others:
+        return [1.0]
+    total = float(sum(others))
+    rest = 1.0 - PRICE_ROW_SHARE
+    return [PRICE_ROW_SHARE if row["kind"] == "price" else rest * row["weight"] / total for row in rows]
 
 
 def _apply_recent_window(fig, df):
@@ -758,6 +783,7 @@ def _create_synced_chart_figure(
     show_rsi_fill=True,
     show_ma_patterns=False,
     show_ma_dispersion=False,
+    chart_height=DEFAULT_CHART_HEIGHT,
 ):
     chart_df = _prepare_chart_df(df)
     rows = _get_synced_chart_rows(
@@ -773,7 +799,7 @@ def _create_synced_chart_figure(
         cols=1,
         shared_xaxes=True,
         vertical_spacing=0.018,
-        row_heights=[row["height"] for row in rows],
+        row_heights=_row_heights(rows),
         subplot_titles=[f"{symbol} {display_interval}" if row["kind"] == "price" else row["title"] for row in rows],
     )
 
@@ -809,15 +835,14 @@ def _create_synced_chart_figure(
         elif kind == "ma_dispersion":
             add_ma_dispersion_panel(fig, chart_df, row_index)
             fig.update_yaxes(title_text="Dispersion", row=row_index, col=1)
-    total_height = sum(row["height"] for row in rows) + 60
     fig.update_layout(
-        height=total_height,
+        height=int(chart_height),
         template="plotly_white",
         paper_bgcolor=TV_BACKGROUND,
         plot_bgcolor=TV_BACKGROUND,
         font=dict(color=TV_TEXT),
         hovermode="x unified",
-        dragmode="pan",
+        dragmode="pan",   # 휠이 줌을 담당(scrollZoom) → 드래그는 이동
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
         margin=dict(l=50, r=20, t=45, b=30),
     )
@@ -834,7 +859,8 @@ def _create_synced_chart_figure(
         spikecolor="rgba(25, 28, 36, 0.35)",
         spikethickness=1,
     )
-    fig.update_yaxes(showgrid=True, gridcolor=TV_GRID, zeroline=False, showline=False)
+    # 모든 서브플롯 y축을 명시적으로 조작 가능하게(fixedrange=False): 휠·드래그·축 위 휠이 세로로도 듣는다.
+    fig.update_yaxes(showgrid=True, gridcolor=TV_GRID, zeroline=False, showline=False, fixedrange=False)
     _apply_recent_window(fig, chart_df)
     return fig
 
@@ -851,8 +877,12 @@ def render_chart(
     show_rsi_fill=True,
     show_ma_patterns=False,
     show_ma_dispersion=False,
+    chart_height=DEFAULT_CHART_HEIGHT,
 ):
-    """Renders price, volume, and indicators in one synchronized Plotly chart."""
+    """Renders price, volume, and indicators in one synchronized Plotly chart.
+
+    chart_height: 전체 px 높이(사이드바 선택). 조작법 캡션을 차트 아래에 같이 낸다.
+    """
     if df is None or df.empty:
         return
 
@@ -868,5 +898,8 @@ def render_chart(
         show_rsi_fill=show_rsi_fill,
         show_ma_patterns=show_ma_patterns,
         show_ma_dispersion=show_ma_dispersion,
+        chart_height=chart_height,
     )
-    st.plotly_chart(fig, width="stretch", config={"scrollZoom": True, "displaylogo": False})
+    # width="stretch" 는 use_container_width=True 의 현행 표기(1.58 에서 후자는 deprecated).
+    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+    st.caption(CHART_CONTROLS_CAPTION)
