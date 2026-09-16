@@ -33,15 +33,23 @@ RECENT_WINDOW = 150
 # 차트 전체 높이(px): Streamlit 은 뷰포트 높이를 읽지 못하므로 사이드바 선택식.
 CHART_HEIGHT_OPTIONS = (600, 800, 1000)
 DEFAULT_CHART_HEIGHT = 800
-# 가격 서브플롯의 세로 비중. 지표 패널이 가격을 눌러 납작해지지 않게 0.75 이상으로 고정하고,
-# 나머지 패널이 남은 비중을 각자의 weight 비율로 나눈다.
-PRICE_ROW_SHARE = 0.75
+# 패널 비중(5개 전부 켠 기준): 가격 0.50 / 거래량 0.06 / 스토캐 0.18 / MACD 0.14 / RSI 0.12.
+# 꺼진 패널의 비중은 가격이 흡수한다. Separated 스토캐는 0.18 을 3층이 나눈다.
+PANEL_SHARES = {"volume": 0.06, "stoch_stacked": 0.18, "stoch_layer": 0.18 / 3, "macd": 0.14, "rsi": 0.12,
+                "ma_dispersion": 0.10}
+VERTICAL_SPACING = 0.04
+# 하위 패널(가격·거래량 제외) 최소 픽셀 높이. 미달이면 차트 전체 높이를 올려 잡는다.
+# 거래량은 0.06 비중의 얇은 막대 스트립이라 예외 — 포함하면 어떤 선택값이든 1333px 이상이 된다.
+MIN_SUBPANEL_PX = 80
+CHART_MARGIN = dict(l=50, r=20, t=30, b=30)
 # 화면 캡션용 조작법 요약(휠 / 축 위 휠 / 더블클릭). config 의 scrollZoom·doubleClick 과 짝.
 CHART_CONTROLS_CAPTION = (
     "조작: 휠 = 커서 기준 확대·축소  ·  축(눈금) 위에서 휠 = 그 축만 확대·축소  ·  "
     "더블클릭 = 초기 범위로  ·  드래그 = 이동"
 )
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset", "displaylogo": False}
+# 스토캐 참조선: 레이어당 20/80 두 줄만.
+STOCH_GUIDES = (20, 80)
 STOCH_DISPLAY_LAYERS = [
     {"panel_title": "Large wave", "suffix": "(20,10,10)"},
     {"panel_title": "Mid wave", "suffix": "(10,5,5)"},
@@ -162,7 +170,7 @@ def add_masked_fill_segments(fig, x_index, series, mask, baseline, row_index, fi
         )
 
 
-def add_stochastic_db_markers(fig, df, row_index, db_col, y_offset=0.0):
+def add_stochastic_db_markers(fig, df, row_index, db_col, y_offset=0.0, show_text=True):
     """Adds stochastic DB pattern labels using a precomputed column."""
     if db_col not in df.columns:
         return
@@ -175,10 +183,11 @@ def add_stochastic_db_markers(fig, df, row_index, db_col, y_offset=0.0):
         go.Scatter(
             x=points.index,
             y=points[db_col] + y_offset,
-            mode="markers+text",
+            mode="markers+text" if show_text else "markers",
             name="DB",
             text=["DB"] * len(points),
             textposition="top center",
+            hovertemplate="DB %{x}<br>%{y:.1f}<extra></extra>",
             textfont=dict(color="#0B8F45", size=11),
             marker=dict(symbol="circle", size=8, color="#0B8F45", line=dict(color="#FFFFFF", width=1)),
         ),
@@ -187,7 +196,7 @@ def add_stochastic_db_markers(fig, df, row_index, db_col, y_offset=0.0):
     )
 
 
-def add_stochastic_dt_markers(fig, df, row_index, dt_col, y_offset=0.0):
+def add_stochastic_dt_markers(fig, df, row_index, dt_col, y_offset=0.0, show_text=True):
     """Adds stochastic DT pattern labels using a precomputed column."""
     if dt_col not in df.columns:
         return
@@ -200,10 +209,11 @@ def add_stochastic_dt_markers(fig, df, row_index, dt_col, y_offset=0.0):
         go.Scatter(
             x=points.index,
             y=points[dt_col] + y_offset,
-            mode="markers+text",
+            mode="markers+text" if show_text else "markers",
             name="DT",
             text=["DT"] * len(points),
             textposition="bottom center",
+            hovertemplate="DT %{x}<br>%{y:.1f}<extra></extra>",
             textfont=dict(color="#C62828", size=11),
             marker=dict(symbol="circle", size=8, color="#C62828", line=dict(color="#FFFFFF", width=1)),
         ),
@@ -212,7 +222,7 @@ def add_stochastic_dt_markers(fig, df, row_index, dt_col, y_offset=0.0):
     )
 
 
-def add_stochastic_tb_markers(fig, df, row_index, tb_col, y_offset=0.0):
+def add_stochastic_tb_markers(fig, df, row_index, tb_col, y_offset=0.0, show_text=True):
     """Adds stochastic triple-bottom (TB) labels. DB와 구분되는 색(teal)."""
     if tb_col not in df.columns:
         return
@@ -225,10 +235,11 @@ def add_stochastic_tb_markers(fig, df, row_index, tb_col, y_offset=0.0):
         go.Scatter(
             x=points.index,
             y=points[tb_col] + y_offset,
-            mode="markers+text",
+            mode="markers+text" if show_text else "markers",
             name="TB",
             text=["TB"] * len(points),
             textposition="top center",
+            hovertemplate="TB %{x}<br>%{y:.1f}<extra></extra>",
             textfont=dict(color="#1565C0", size=11),
             marker=dict(symbol="diamond", size=9, color="#1565C0", line=dict(color="#FFFFFF", width=1)),
         ),
@@ -237,7 +248,7 @@ def add_stochastic_tb_markers(fig, df, row_index, tb_col, y_offset=0.0):
     )
 
 
-def add_stochastic_tt_markers(fig, df, row_index, tt_col, y_offset=0.0):
+def add_stochastic_tt_markers(fig, df, row_index, tt_col, y_offset=0.0, show_text=True):
     """Adds stochastic triple-top (TT) labels. DT와 구분되는 색(magenta)."""
     if tt_col not in df.columns:
         return
@@ -250,10 +261,11 @@ def add_stochastic_tt_markers(fig, df, row_index, tt_col, y_offset=0.0):
         go.Scatter(
             x=points.index,
             y=points[tt_col] + y_offset,
-            mode="markers+text",
+            mode="markers+text" if show_text else "markers",
             name="TT",
             text=["TT"] * len(points),
             textposition="bottom center",
+            hovertemplate="TT %{x}<br>%{y:.1f}<extra></extra>",
             textfont=dict(color="#AD1457", size=11),
             marker=dict(symbol="diamond", size=9, color="#AD1457", line=dict(color="#FFFFFF", width=1)),
         ),
@@ -291,25 +303,15 @@ def add_stacked_stochastic_panel(fig, df, row_index, show_fill=True):
             col=1,
         )
 
-        for guide_value in (20, 50, 80):
+        # 레이어당 참조선은 20/80 두 줄만(50 선·y 그리드는 층마다 겹쳐 줄무늬가 되므로 제거).
+        for guide_value in STOCH_GUIDES:
             add_horizontal_line_trace(fig, df.index, guide_value + offset, row_index)
 
-        add_stochastic_db_markers(
-            fig,
-            df,
-            row_index,
-            f"stoch_db_{label}",
-            y_offset=offset,
-        )
-        add_stochastic_dt_markers(
-            fig,
-            df,
-            row_index,
-            f"stoch_dt_{label}",
-            y_offset=offset,
-        )
-        add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{label}", y_offset=offset)
-        add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{label}", y_offset=offset)
+        # 하위 패널 마커는 텍스트 없이 마커+호버만(7일 뷰에 라벨 수십 개는 판독 불가).
+        add_stochastic_db_markers(fig, df, row_index, f"stoch_db_{label}", y_offset=offset, show_text=False)
+        add_stochastic_dt_markers(fig, df, row_index, f"stoch_dt_{label}", y_offset=offset, show_text=False)
+        add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{label}", y_offset=offset, show_text=False)
+        add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{label}", y_offset=offset, show_text=False)
 
     for separator in [STOCH_BAND + STOCH_GAP / 2, STOCH_BAND * 2 + STOCH_GAP * 1.5]:
         add_horizontal_line_trace(fig, df.index, separator, row_index, color="rgba(80,80,80,0.7)", dash="solid", width=1.0)
@@ -333,7 +335,7 @@ def add_single_stochastic_layer_panel(fig, df, row_index, layer_suffix, panel_ti
         add_masked_fill_segments(fig, df.index, df[k_col], below_mask, 20, row_index, "rgba(0, 0, 255, 0.22)")
         add_masked_fill_segments(fig, df.index, df[k_col], above_mask, 80, row_index, "rgba(255, 0, 0, 0.22)")
 
-    for guide_value in (20, 50, 80):
+    for guide_value in STOCH_GUIDES:
         add_horizontal_line_trace(fig, df.index, guide_value, row_index)
 
     fig.add_trace(
@@ -347,10 +349,10 @@ def add_single_stochastic_layer_panel(fig, df, row_index, layer_suffix, panel_ti
         col=1,
     )
 
-    add_stochastic_db_markers(fig, df, row_index, db_col)
-    add_stochastic_dt_markers(fig, df, row_index, dt_col)
-    add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{layer_suffix}")
-    add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{layer_suffix}")
+    add_stochastic_db_markers(fig, df, row_index, db_col, show_text=False)
+    add_stochastic_dt_markers(fig, df, row_index, dt_col, show_text=False)
+    add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{layer_suffix}", show_text=False)
+    add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{layer_suffix}", show_text=False)
 
 
 def add_macd_panel(fig, df, row_index):
@@ -404,11 +406,12 @@ def add_macd_event_markers(fig, df, row_index):
             go.Scatter(
                 x=positions,
                 y=df.loc[positions, "macd"],
-                mode="markers+text",
+                mode="markers",   # 하위 패널: 텍스트 숨김, 마커+호버만
                 name=text,
                 text=[text] * len(positions),
                 textposition=text_position,
                 textfont=dict(color=color, size=11),
+                hovertemplate=text + " %{x}<br>MACD %{y:.4g}<extra></extra>",
                 marker=dict(symbol=symbol, size=8, color=color, line=dict(color="#FFFFFF", width=1)),
             ),
             row=row_index,
@@ -431,8 +434,8 @@ def add_rsi_panel(fig, df, row_index, show_fill=True):
     add_horizontal_line_trace(fig, df.index, os_, row_index, color="rgba(0,255,255,0.5)")
     add_horizontal_line_trace(fig, df.index, mid, row_index, color="rgba(0,128,0,0.8)", dash="dot")
     fig.add_trace(go.Scatter(x=df.index, y=df["rsi"], mode="lines", name="RSI", line=dict(color="#000000", width=1.4)), row=row_index, col=1)
-    add_stochastic_db_markers(fig, df, row_index, "rsi_db")
-    add_stochastic_dt_markers(fig, df, row_index, "rsi_dt")
+    add_stochastic_db_markers(fig, df, row_index, "rsi_db", show_text=False)
+    add_stochastic_dt_markers(fig, df, row_index, "rsi_dt", show_text=False)
 
 
 def _prepare_chart_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -757,13 +760,64 @@ def _get_synced_chart_rows(
 
 
 def _row_heights(rows: list[dict]) -> list[float]:
-    """make_subplots row_heights — 가격 행 PRICE_ROW_SHARE, 나머지는 (1-share) 를 weight 비율로."""
-    others = [row["weight"] for row in rows if row["kind"] != "price"]
-    if not others:
-        return [1.0]
-    total = float(sum(others))
-    rest = 1.0 - PRICE_ROW_SHARE
-    return [PRICE_ROW_SHARE if row["kind"] == "price" else rest * row["weight"] / total for row in rows]
+    """make_subplots row_heights — 표시 중인 패널 집합 기준 절대 비중. 꺼진 패널 비중은 가격이 흡수."""
+    shares = [PANEL_SHARES.get(row["kind"], 0.0) for row in rows]
+    price_share = 1.0 - sum(s for row, s in zip(rows, shares) if row["kind"] != "price")
+    return [price_share if row["kind"] == "price" else s for row, s in zip(rows, shares)]
+
+
+def _row_pixels(heights: list[float], chart_height: int, spacing: float = VERTICAL_SPACING) -> list[float]:
+    """행별 실제 픽셀 높이 — (전체 - 마진) × 비중 × (1 - 간격 총합)."""
+    plot_px = chart_height - CHART_MARGIN["t"] - CHART_MARGIN["b"]
+    usable = 1.0 - spacing * (len(heights) - 1)
+    return [plot_px * h * usable for h in heights]
+
+
+def _effective_chart_height(rows: list[dict], heights: list[float], chart_height: int) -> int:
+    """하위 패널(가격·거래량 제외)이 MIN_SUBPANEL_PX 미만이면 전체 높이를 올려 잡는다."""
+    usable = 1.0 - VERTICAL_SPACING * (len(rows) - 1)
+    margins = CHART_MARGIN["t"] + CHART_MARGIN["b"]
+    need = chart_height
+    for row, h in zip(rows, heights):
+        if row["kind"] in ("price", "volume") or h <= 0:
+            continue
+        need = max(need, int(MIN_SUBPANEL_PX / (h * usable) + margins) + 1)
+    return int(need)
+
+
+def _window_df(df):
+    return df.iloc[-RECENT_WINDOW:] if len(df) > RECENT_WINDOW else df
+
+
+def _padded(lo, hi, pad=0.02):
+    if pd.isna(lo) or pd.isna(hi):
+        return None
+    span = (hi - lo) or abs(hi) or 1.0
+    return [lo - span * pad, hi + span * pad]
+
+
+def _fit_yaxes_to_window(fig, df, rows):
+    """초기 렌더의 y 범위를 표시 창(최근 RECENT_WINDOW 봉)에 밀착.
+
+    Plotly autorange 는 x 범위를 무시하고 전체 데이터로 y 를 잡는다(1000봉 적재 시 가격 축이
+    61k~83k 처럼 넓어짐). 가격·거래량·MACD 는 창 안 값으로 range 를 명시한다. 더블클릭(reset)은
+    이 초기 range 로 돌아온다. 스토캐·RSI 는 고정 스케일이라 대상 아님.
+    """
+    win = _window_df(df)
+    for row_index, row in enumerate(rows, start=1):
+        kind = row["kind"]
+        rng = None
+        if kind == "price" and {"low", "high"}.issubset(win.columns):
+            cols = [c for c in win.columns if c in ("low", "high") or (c.startswith("MA") and c[2:].isdigit())]
+            rng = _padded(win[cols].min().min(), win[cols].max().max())
+        elif kind == "volume" and "volume" in win.columns:
+            hi = win["volume"].max()
+            rng = None if pd.isna(hi) else [0, float(hi) * 1.05]
+        elif kind == "macd" and "macd" in win.columns:
+            cols = [c for c in ("macd", "macd_signal", "macd_hist") if c in win.columns]
+            rng = _padded(win[cols].min().min(), win[cols].max().max(), pad=0.05)
+        if rng is not None:
+            fig.update_yaxes(range=rng, autorange=False, row=row_index, col=1)
 
 
 def _apply_recent_window(fig, df):
@@ -794,13 +848,15 @@ def _create_synced_chart_figure(
         show_ma_dispersion,
     )
 
+    heights = _row_heights(rows)
+    # 서브플롯 제목 annotation 없음 — 좌측 y축 라벨(Price/Volume/Stoch/MACD/RSI)이 이미 있어 중복이고
+    # 패널 사이에서 겹치던 원인. 심볼·TF 는 페이지 상단 알람 헤더가 이미 보여준다.
     fig = make_subplots(
         rows=len(rows),
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.018,
-        row_heights=_row_heights(rows),
-        subplot_titles=[f"{symbol} {display_interval}" if row["kind"] == "price" else row["title"] for row in rows],
+        vertical_spacing=VERTICAL_SPACING,
+        row_heights=heights,
     )
 
     for row_index, row in enumerate(rows, start=1):
@@ -812,10 +868,11 @@ def _create_synced_chart_figure(
             fig.update_yaxes(title_text="Price", row=row_index, col=1)
         elif kind == "volume":
             add_volume_panel(fig, chart_df, row_index)
-            fig.update_yaxes(title_text="Volume", row=row_index, col=1)
+            # 눈금 3개 이하, SI(~k) 포맷, 0 에서 시작(거래량은 음수 없음).
+            fig.update_yaxes(title_text="Volume", nticks=3, tickformat="~s", rangemode="tozero", row=row_index, col=1)
         elif kind == "stoch_stacked":
             add_stacked_stochastic_panel(fig, chart_df, row_index, show_fill=show_stoch_fill)
-            fig.update_yaxes(title_text="Stoch", range=[0, STOCH_MAX_Y], row=row_index, col=1)
+            fig.update_yaxes(title_text="Stoch", range=[0, STOCH_MAX_Y], showgrid=False, row=row_index, col=1)
         elif kind == "stoch_layer":
             add_single_stochastic_layer_panel(
                 fig,
@@ -825,7 +882,7 @@ def _create_synced_chart_figure(
                 row["title"],
                 show_fill=show_stoch_fill,
             )
-            fig.update_yaxes(title_text="Stoch", range=[0, 100], row=row_index, col=1)
+            fig.update_yaxes(title_text="Stoch", range=[0, 100], showgrid=False, row=row_index, col=1)
         elif kind == "macd":
             add_macd_panel(fig, chart_df, row_index)
             fig.update_yaxes(title_text="MACD", row=row_index, col=1)
@@ -836,7 +893,7 @@ def _create_synced_chart_figure(
             add_ma_dispersion_panel(fig, chart_df, row_index)
             fig.update_yaxes(title_text="Dispersion", row=row_index, col=1)
     fig.update_layout(
-        height=int(chart_height),
+        height=_effective_chart_height(rows, heights, int(chart_height)),
         template="plotly_white",
         paper_bgcolor=TV_BACKGROUND,
         plot_bgcolor=TV_BACKGROUND,
@@ -844,7 +901,9 @@ def _create_synced_chart_figure(
         hovermode="x unified",
         dragmode="pan",   # 휠이 줌을 담당(scrollZoom) → 드래그는 이동
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
-        margin=dict(l=50, r=20, t=45, b=30),
+        margin=CHART_MARGIN,
+        # 재실행 사이 줌·이동 상태 유지, 심볼·TF 가 바뀌면 리셋.
+        uirevision=f"{symbol}|{display_interval}",
     )
     fig.update_xaxes(
         type="date",
@@ -860,8 +919,9 @@ def _create_synced_chart_figure(
         spikethickness=1,
     )
     # 모든 서브플롯 y축을 명시적으로 조작 가능하게(fixedrange=False): 휠·드래그·축 위 휠이 세로로도 듣는다.
-    fig.update_yaxes(showgrid=True, gridcolor=TV_GRID, zeroline=False, showline=False, fixedrange=False)
+    fig.update_yaxes(gridcolor=TV_GRID, zeroline=False, showline=False, fixedrange=False)
     _apply_recent_window(fig, chart_df)
+    _fit_yaxes_to_window(fig, chart_df, rows)
     return fig
 
 
