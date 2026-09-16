@@ -4,6 +4,13 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import streamlit as st
 
+from analysis.alarm_signals import (
+    KIND_MACD_DEAD,
+    KIND_MACD_GOLDEN,
+    KIND_MACD_ZERO_DOWN,
+    KIND_MACD_ZERO_UP,
+    macd_event_positions,
+)
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -352,6 +359,45 @@ def add_macd_panel(fig, df, row_index):
         col=1,
     )
     add_horizontal_line_trace(fig, df.index, 0.0, row_index)
+    add_macd_event_markers(fig, df, row_index)
+
+
+# MACD 알람 이벤트 마커 — 스토캐 DB/DT(원, 초록/빨강)·TB/TT(마름모) 관례를 그대로 잇는다.
+# (라벨, 마커 모양, 색, 텍스트 위치). 위치 y 는 이벤트 봉의 macd 값(두 선의 교차점 / 0선 근처).
+_MACD_EVENT_STYLE = {
+    KIND_MACD_GOLDEN: ("GC", "circle", "#0B8F45", "top center"),
+    KIND_MACD_DEAD: ("DC", "circle", "#C62828", "bottom center"),
+    KIND_MACD_ZERO_UP: ("0↑", "diamond", "#1565C0", "top center"),
+    KIND_MACD_ZERO_DOWN: ("0↓", "diamond", "#AD1457", "bottom center"),
+}
+
+
+def add_macd_event_markers(fig, df, row_index):
+    """Adds MACD cross / zero-line event labels on the MACD panel.
+
+    이벤트 위치는 analysis.alarm_signals.macd_event_positions 가 정한다(알람 목록과 동일 봉).
+    """
+    if "macd" not in df.columns:
+        return
+
+    for kind, positions in macd_event_positions(df).items():
+        if len(positions) == 0:
+            continue
+        text, symbol, color, text_position = _MACD_EVENT_STYLE[kind]
+        fig.add_trace(
+            go.Scatter(
+                x=positions,
+                y=df.loc[positions, "macd"],
+                mode="markers+text",
+                name=text,
+                text=[text] * len(positions),
+                textposition=text_position,
+                textfont=dict(color=color, size=11),
+                marker=dict(symbol=symbol, size=8, color=color, line=dict(color="#FFFFFF", width=1)),
+            ),
+            row=row_index,
+            col=1,
+        )
 
 
 def add_rsi_panel(fig, df, row_index, show_fill=True):

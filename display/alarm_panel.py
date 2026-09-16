@@ -3,7 +3,8 @@
 build_* 는 순수 텍스트/표(테스트 가능), render_* 는 streamlit 래퍼. 신호 추출은
 analysis.alarm_signals 가 담당하고 여기서는 표시만 한다.
 
-세 단: 현재 상태 배지 → 마지막 봉 알람 → 최근 N봉 신호 이력.
+세 단: 현재 상태 배지 → 마지막 봉 알람 → 최근 N봉 신호 이력. 신호 종류(스토캐 쌍바닥·
+쌍봉, RSI 과매도·과매수, MACD 크로스·0선)는 모두 같은 줄 형식·방향 색으로 섞여 나온다.
 "마지막 봉"은 아직 닫히지 않은 진행 중 봉일 수 있다 — 확정 신호도 봉이 닫히기 전에는
 되돌아갈 수 있으므로 그 사실을 캡션으로 같이 적는다(관측 라벨 유지, 매매 추천 아님).
 """
@@ -36,11 +37,16 @@ def signal_icon(signal: AlarmSignal) -> str:
 
 
 def format_signal_line(signal: AlarmSignal) -> str:
-    """신호 한 줄 — "🔵 스토캐 쌍바닥 · 대(20,10,10) · %K 18.4 · HL" 형태."""
+    """신호 한 줄 — "🔵 스토캐 쌍바닥 · 대(20,10,10) · %K 18.4 · HL" 형태.
+
+    MACD 는 가격 스케일이라 소수 한 자리로 뭉개지므로 유효숫자 4자리로 적는다
+    ("🔵 MACD 골든크로스 · MACD · hist 12.34 · MACD -56.7").
+    """
     parts = [f"{signal_icon(signal)} {signal.label}", signal.layer_name]
     if signal.value is not None:
-        metric = "RSI" if signal.layer is None else "%K"
-        parts.append(f"{metric} {signal.value:.1f}")
+        metric = signal.metric_name
+        value = f"{signal.value:.4g}" if signal.layer_name == "MACD" else f"{signal.value:.1f}"
+        parts.append(f"{metric} {value}")
     if signal.detail:
         parts.append(signal.detail)
     if signal.severity != SEV_CONFIRMED:
@@ -87,7 +93,7 @@ def render_alarm_panel(
     include_candidates: bool = True,
     layers: Optional[List[str]] = None,
 ) -> None:
-    """알람 패널 렌더. df는 add_stochastic_slow_layers / add_rsi 를 거친 프레임."""
+    """알람 패널 렌더. df는 add_stochastic_slow_layers / add_rsi / add_macd 를 거친 프레임."""
     import streamlit as st
 
     with st.container(border=True):

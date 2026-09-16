@@ -1,9 +1,10 @@
 # main.py — WaveEnergyHelper 진입점 (signal-alarm: 차트 + 알람 전용 슬림 구성).
 #
-# 네 가지만 본다:
-#   · 차트 (캔들 + 이평 + 스토캐 3층 스택 + RSI)
+# 다섯 가지만 본다:
+#   · 차트 (캔들 + 이평 + 스토캐 3층 스택 + MACD + RSI)
 #   · 스토캐 쌍바닥 / 쌍봉 검출
 #   · RSI 과매도 / 과매수 진입
+#   · MACD 골든 / 데드크로스, 0선 상향 / 하향
 # 검출기는 기존 것을 그대로 쓴다(indicators/). 알람 패널만 신규(display/alarm_panel.py).
 #
 # 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
@@ -15,7 +16,7 @@ from data.binance import fetch_klines, get_auto_limit
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from indicators.moving_averages import add_moving_averages
-from indicators.oscillators import add_rsi
+from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
 
 # 레이어 선택 표시용 — "대(20,10,10)" 형태. 값은 STOCH_LAYERS의 label.
@@ -43,6 +44,7 @@ def load_frame(symbol: str, interval: str):
 
     df = add_moving_averages(df)
     df = add_stochastic_slow_layers(df)
+    df = add_macd(df)
     df = add_rsi(df)
     return df
 
@@ -80,6 +82,7 @@ def render_sidebar() -> dict:
         disabled=not show_stoch,
         help="Stacked=3층 한 패널, Separated=레이어별 패널 분리",
     )
+    show_macd = st.sidebar.checkbox("MACD 패널", value=True)
     show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
 
     return {
@@ -90,6 +93,7 @@ def render_sidebar() -> dict:
         "layers": [_LAYER_CHOICES[name] for name in layer_names],
         "show_stoch": show_stoch,
         "stoch_view": stoch_view,
+        "show_macd": show_macd,
         "show_rsi": show_rsi,
     }
 
@@ -118,7 +122,7 @@ def main():
         show_stochastic=cfg["show_stoch"],
         stochastic_view_mode=cfg["stoch_view"],
         show_stoch_fill=cfg["show_stoch"],
-        show_macd=False,
+        show_macd=cfg["show_macd"],
         show_rsi=cfg["show_rsi"],
         show_rsi_fill=cfg["show_rsi"],
     )
