@@ -1,5 +1,6 @@
 requests
-pandas
+numpy==2.4.4   # 2026-09-17 검증 환경 고정 — 열람(2027-03) 스크립트의 버전 회귀 예방
+pandas==3.0.2  # 동상
 streamlit
 plotly
 mplfinance
