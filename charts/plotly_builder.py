@@ -31,12 +31,27 @@ RECENT_WINDOW = 150
 
 # --- 세로 조작성 설정 (설정 계층만, 데이터·지표 무관) ---
 # 차트 전체 높이(px): Streamlit 은 뷰포트 높이를 읽지 못하므로 사이드바 선택식.
-CHART_HEIGHT_OPTIONS = (600, 800, 1000)
-DEFAULT_CHART_HEIGHT = 800
-# 패널 비중(5개 전부 켠 기준): 가격 0.50 / 거래량 0.06 / 스토캐 0.18 / MACD 0.14 / RSI 0.12.
-# 꺼진 패널의 비중은 가격이 흡수한다. Separated 스토캐는 0.18 을 3층이 나눈다.
-PANEL_SHARES = {"volume": 0.06, "stoch_stacked": 0.18, "stoch_layer": 0.18 / 3, "macd": 0.14, "rsi": 0.12,
-                "ma_dispersion": 0.10}
+CHART_HEIGHT_OPTIONS = (600, 800, 1000, 1200)
+DEFAULT_CHART_HEIGHT = 1000
+# 표시 모드 2종 — 패널 비중 세트만 다르다. 꺼진 패널 흡수·최소 px·간격 규칙은 두 모드 공통.
+#   기본형   : 가격 0.50 / 거래량 0.06 / 스토캐 0.18 / MACD 0.14 / RSI 0.12  (하위 3패널 합 0.44)
+#   지표 중심: 가격 0.34 / 거래량 0.05 / 스토캐 0.26 / MACD 0.19 / RSI 0.16  (하위 3패널 합 0.61)
+# 꺼진 패널의 비중은 가격이 흡수한다. Separated 스토캐는 스토캐 비중을 3층이 나눈다.
+LAYOUT_MODE_BASIC = "basic"
+LAYOUT_MODE_INDICATOR = "indicator"
+LAYOUT_MODES = (LAYOUT_MODE_INDICATOR, LAYOUT_MODE_BASIC)          # 사이드바 순서 (기본 = 지표 중심)
+LAYOUT_MODE_LABELS = {LAYOUT_MODE_INDICATOR: "지표 중심", LAYOUT_MODE_BASIC: "기본형"}
+DEFAULT_LAYOUT_MODE = LAYOUT_MODE_INDICATOR
+PANEL_SHARES_BY_MODE = {
+    LAYOUT_MODE_BASIC: {"volume": 0.06, "stoch_stacked": 0.18, "stoch_layer": 0.18 / 3, "macd": 0.14,
+                        "rsi": 0.12, "ma_dispersion": 0.10},
+    LAYOUT_MODE_INDICATOR: {"volume": 0.05, "stoch_stacked": 0.26, "stoch_layer": 0.26 / 3, "macd": 0.19,
+                            "rsi": 0.16, "ma_dispersion": 0.10},
+}
+PANEL_SHARES = PANEL_SHARES_BY_MODE[LAYOUT_MODE_BASIC]   # 하위 호환 별칭(기본형 세트)
+# 하위 패널 마커 텍스트 라벨(스토캐 DB/DT/TB/TT · RSI DB/DT · MACD GC/DC/0↑/0↓):
+# 기본형은 판독 불가로 숨김 유지, 지표 중심은 패널이 커져 다시 표시한다.
+SUBPANEL_MARKER_TEXT_BY_MODE = {LAYOUT_MODE_BASIC: False, LAYOUT_MODE_INDICATOR: True}
 VERTICAL_SPACING = 0.04
 # 하위 패널(가격·거래량 제외) 최소 픽셀 높이. 미달이면 차트 전체 높이를 올려 잡는다.
 # 거래량은 0.06 비중의 얇은 막대 스트립이라 예외 — 포함하면 어떤 선택값이든 1333px 이상이 된다.
@@ -274,8 +289,8 @@ def add_stochastic_tt_markers(fig, df, row_index, tt_col, y_offset=0.0, show_tex
     )
 
 
-def add_stacked_stochastic_panel(fig, df, row_index, show_fill=True):
-    """Adds the existing stacked 3-layer stochastic slow traces."""
+def add_stacked_stochastic_panel(fig, df, row_index, show_fill=True, show_marker_text=False):
+    """Adds the existing stacked 3-layer stochastic slow traces. show_marker_text 는 표시 모드가 정한다."""
     for layer in STOCH_LAYERS:
         label = layer["label"]
         offset = layer["offset"]
@@ -307,17 +322,18 @@ def add_stacked_stochastic_panel(fig, df, row_index, show_fill=True):
         for guide_value in STOCH_GUIDES:
             add_horizontal_line_trace(fig, df.index, guide_value + offset, row_index)
 
-        # 하위 패널 마커는 텍스트 없이 마커+호버만(7일 뷰에 라벨 수십 개는 판독 불가).
-        add_stochastic_db_markers(fig, df, row_index, f"stoch_db_{label}", y_offset=offset, show_text=False)
-        add_stochastic_dt_markers(fig, df, row_index, f"stoch_dt_{label}", y_offset=offset, show_text=False)
-        add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{label}", y_offset=offset, show_text=False)
-        add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{label}", y_offset=offset, show_text=False)
+        # 하위 패널 마커 텍스트는 표시 모드가 정한다(기본형 숨김 · 지표 중심 표시).
+        add_stochastic_db_markers(fig, df, row_index, f"stoch_db_{label}", y_offset=offset, show_text=show_marker_text)
+        add_stochastic_dt_markers(fig, df, row_index, f"stoch_dt_{label}", y_offset=offset, show_text=show_marker_text)
+        add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{label}", y_offset=offset, show_text=show_marker_text)
+        add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{label}", y_offset=offset, show_text=show_marker_text)
 
     for separator in [STOCH_BAND + STOCH_GAP / 2, STOCH_BAND * 2 + STOCH_GAP * 1.5]:
         add_horizontal_line_trace(fig, df.index, separator, row_index, color="rgba(80,80,80,0.7)", dash="solid", width=1.0)
 
 
-def add_single_stochastic_layer_panel(fig, df, row_index, layer_suffix, panel_title, show_fill=True):
+def add_single_stochastic_layer_panel(fig, df, row_index, layer_suffix, panel_title, show_fill=True,
+                                      show_marker_text=False):
     """Adds one stochastic layer panel using the original 0-100 scale."""
     k_col = f"stoch_k_{layer_suffix}"
     d_col = f"stoch_d_{layer_suffix}"
@@ -349,13 +365,13 @@ def add_single_stochastic_layer_panel(fig, df, row_index, layer_suffix, panel_ti
         col=1,
     )
 
-    add_stochastic_db_markers(fig, df, row_index, db_col, show_text=False)
-    add_stochastic_dt_markers(fig, df, row_index, dt_col, show_text=False)
-    add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{layer_suffix}", show_text=False)
-    add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{layer_suffix}", show_text=False)
+    add_stochastic_db_markers(fig, df, row_index, db_col, show_text=show_marker_text)
+    add_stochastic_dt_markers(fig, df, row_index, dt_col, show_text=show_marker_text)
+    add_stochastic_tb_markers(fig, df, row_index, f"stoch_tb_{layer_suffix}", show_text=show_marker_text)
+    add_stochastic_tt_markers(fig, df, row_index, f"stoch_tt_{layer_suffix}", show_text=show_marker_text)
 
 
-def add_macd_panel(fig, df, row_index):
+def add_macd_panel(fig, df, row_index, show_marker_text=False):
     """Adds traditional MACD panel."""
     if "macd" not in df.columns:
         return
@@ -375,7 +391,7 @@ def add_macd_panel(fig, df, row_index):
         col=1,
     )
     add_horizontal_line_trace(fig, df.index, 0.0, row_index)
-    add_macd_event_markers(fig, df, row_index)
+    add_macd_event_markers(fig, df, row_index, show_text=show_marker_text)
 
 
 # MACD 알람 이벤트 마커 — 스토캐 DB/DT(원, 초록/빨강)·TB/TT(마름모) 관례를 그대로 잇는다.
@@ -389,7 +405,7 @@ _MACD_EVENT_STYLE = {
 }
 
 
-def add_macd_event_markers(fig, df, row_index):
+def add_macd_event_markers(fig, df, row_index, show_text=False):
     """Adds MACD cross / zero-line event labels on the MACD panel.
 
     이벤트 위치는 analysis.alarm_signals.macd_event_positions 가 정한다(알람 목록과 동일한
@@ -406,7 +422,7 @@ def add_macd_event_markers(fig, df, row_index):
             go.Scatter(
                 x=positions,
                 y=df.loc[positions, "macd"],
-                mode="markers",   # 하위 패널: 텍스트 숨김, 마커+호버만
+                mode="markers+text" if show_text else "markers",   # 텍스트는 지표 중심 모드에서만
                 name=text,
                 text=[text] * len(positions),
                 textposition=text_position,
@@ -419,7 +435,7 @@ def add_macd_event_markers(fig, df, row_index):
         )
 
 
-def add_rsi_panel(fig, df, row_index, show_fill=True):
+def add_rsi_panel(fig, df, row_index, show_fill=True, show_marker_text=False):
     """Adds RSI panel."""
     if "rsi" not in df.columns:
         return
@@ -434,8 +450,8 @@ def add_rsi_panel(fig, df, row_index, show_fill=True):
     add_horizontal_line_trace(fig, df.index, os_, row_index, color="rgba(0,255,255,0.5)")
     add_horizontal_line_trace(fig, df.index, mid, row_index, color="rgba(0,128,0,0.8)", dash="dot")
     fig.add_trace(go.Scatter(x=df.index, y=df["rsi"], mode="lines", name="RSI", line=dict(color="#000000", width=1.4)), row=row_index, col=1)
-    add_stochastic_db_markers(fig, df, row_index, "rsi_db", show_text=False)
-    add_stochastic_dt_markers(fig, df, row_index, "rsi_dt", show_text=False)
+    add_stochastic_db_markers(fig, df, row_index, "rsi_db", show_text=show_marker_text)
+    add_stochastic_dt_markers(fig, df, row_index, "rsi_dt", show_text=show_marker_text)
 
 
 def _prepare_chart_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -759,9 +775,13 @@ def _get_synced_chart_rows(
     return rows
 
 
-def _row_heights(rows: list[dict]) -> list[float]:
-    """make_subplots row_heights — 표시 중인 패널 집합 기준 절대 비중. 꺼진 패널 비중은 가격이 흡수."""
-    shares = [PANEL_SHARES.get(row["kind"], 0.0) for row in rows]
+def _row_heights(rows: list[dict], layout_mode: str = DEFAULT_LAYOUT_MODE) -> list[float]:
+    """make_subplots row_heights — 표시 중인 패널 집합 기준 절대 비중. 꺼진 패널 비중은 가격이 흡수.
+
+    layout_mode 는 비중 세트(PANEL_SHARES_BY_MODE)만 고른다.
+    """
+    table = PANEL_SHARES_BY_MODE[layout_mode]
+    shares = [table.get(row["kind"], 0.0) for row in rows]
     price_share = 1.0 - sum(s for row, s in zip(rows, shares) if row["kind"] != "price")
     return [price_share if row["kind"] == "price" else s for row, s in zip(rows, shares)]
 
@@ -838,8 +858,10 @@ def _create_synced_chart_figure(
     show_ma_patterns=False,
     show_ma_dispersion=False,
     chart_height=DEFAULT_CHART_HEIGHT,
+    layout_mode=DEFAULT_LAYOUT_MODE,
 ):
     chart_df = _prepare_chart_df(df)
+    show_marker_text = SUBPANEL_MARKER_TEXT_BY_MODE[layout_mode]
     rows = _get_synced_chart_rows(
         show_stochastic,
         stochastic_view_mode,
@@ -848,7 +870,7 @@ def _create_synced_chart_figure(
         show_ma_dispersion,
     )
 
-    heights = _row_heights(rows)
+    heights = _row_heights(rows, layout_mode)
     # 서브플롯 제목 annotation 없음 — 좌측 y축 라벨(Price/Volume/Stoch/MACD/RSI)이 이미 있어 중복이고
     # 패널 사이에서 겹치던 원인. 심볼·TF 는 페이지 상단 알람 헤더가 이미 보여준다.
     fig = make_subplots(
@@ -871,7 +893,8 @@ def _create_synced_chart_figure(
             # 눈금 3개 이하, SI(~k) 포맷, 0 에서 시작(거래량은 음수 없음).
             fig.update_yaxes(title_text="Volume", nticks=3, tickformat="~s", rangemode="tozero", row=row_index, col=1)
         elif kind == "stoch_stacked":
-            add_stacked_stochastic_panel(fig, chart_df, row_index, show_fill=show_stoch_fill)
+            add_stacked_stochastic_panel(fig, chart_df, row_index, show_fill=show_stoch_fill,
+                                         show_marker_text=show_marker_text)
             fig.update_yaxes(title_text="Stoch", range=[0, STOCH_MAX_Y], showgrid=False, row=row_index, col=1)
         elif kind == "stoch_layer":
             add_single_stochastic_layer_panel(
@@ -881,13 +904,14 @@ def _create_synced_chart_figure(
                 row["suffix"],
                 row["title"],
                 show_fill=show_stoch_fill,
+                show_marker_text=show_marker_text,
             )
             fig.update_yaxes(title_text="Stoch", range=[0, 100], showgrid=False, row=row_index, col=1)
         elif kind == "macd":
-            add_macd_panel(fig, chart_df, row_index)
+            add_macd_panel(fig, chart_df, row_index, show_marker_text=show_marker_text)
             fig.update_yaxes(title_text="MACD", row=row_index, col=1)
         elif kind == "rsi":
-            add_rsi_panel(fig, chart_df, row_index, show_fill=show_rsi_fill)
+            add_rsi_panel(fig, chart_df, row_index, show_fill=show_rsi_fill, show_marker_text=show_marker_text)
             fig.update_yaxes(title_text="RSI", range=[0, 100], row=row_index, col=1)
         elif kind == "ma_dispersion":
             add_ma_dispersion_panel(fig, chart_df, row_index)
@@ -938,10 +962,12 @@ def render_chart(
     show_ma_patterns=False,
     show_ma_dispersion=False,
     chart_height=DEFAULT_CHART_HEIGHT,
+    layout_mode=DEFAULT_LAYOUT_MODE,
 ):
     """Renders price, volume, and indicators in one synchronized Plotly chart.
 
     chart_height: 전체 px 높이(사이드바 선택). 조작법 캡션을 차트 아래에 같이 낸다.
+    layout_mode: 표시 모드(LAYOUT_MODES) — 패널 비중 세트와 하위 패널 마커 텍스트 표시 여부.
     """
     if df is None or df.empty:
         return
@@ -959,6 +985,7 @@ def render_chart(
         show_ma_patterns=show_ma_patterns,
         show_ma_dispersion=show_ma_dispersion,
         chart_height=chart_height,
+        layout_mode=layout_mode,
     )
     # width="stretch" 는 use_container_width=True 의 현행 표기(1.58 에서 후자는 deprecated).
     st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
