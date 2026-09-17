@@ -175,3 +175,141 @@ def test_steps_are_in_the_specified_order():
     assert [name for name, _ in DT.STEPS] == [
         "watchlist_scan", "f2b_annotate", "mm_shadow_record",
     ]
+
+
+# ------------------------------------------------------------ 생존 신호 (git_publish)
+class _FakeGit:
+    """git 호출을 기록하고, 지정한 하위 명령에서 실패를 흉내낸다."""
+
+    def __init__(self, fail_on=None, cached_diff_empty=False):
+        self.calls = []
+        self.fail_on = fail_on
+        self.cached_diff_empty = cached_diff_empty
+
+    def __call__(self, args, root, timeout=None):
+        self.calls.append(list(args))
+        sub = args[0]
+        if sub == "diff":
+            return (0, "") if self.cached_diff_empty else (1, "")
+        if sub == self.fail_on:
+            return 128, f"fatal: {sub} failed"
+        return 0, ""
+
+
+def test_publish_is_noop_outside_the_tracking_clone(tmp_path):
+    """경로 가드 — 추적 클론 밖에서는 git 을 한 번도 부르지 않는다."""
+    git = _FakeGit()
+    written = []
+    status = DT.publish_survival_signal(root=str(tmp_path), log_fn=written.append, git_fn=git)
+    assert status == "skipped"
+    assert git.calls == []
+    assert written and "step=git_publish" in written[0] and "status=skipped" in written[0]
+
+
+def test_signal_alarm_worktree_is_not_the_tracking_clone():
+    assert not DT.is_tracking_clone("C:/Users/user/Desktop/WaveEnergyHelper")
+    assert DT.is_tracking_clone(DT.TRACKING_CLONE_ROOT)
+    # 슬래시·역슬래시·대소문자 차이는 같은 경로로 본다
+    assert DT.is_tracking_clone(DT.TRACKING_CLONE_ROOT.upper())
+
+
+def test_publish_commits_and_pushes_when_csv_changed(tmp_path):
+    git = _FakeGit()
+    written = []
+    status = DT.publish_survival_signal(
+        root=DT.TRACKING_CLONE_ROOT, summary="steps_ok=3/3 | elapsed=1.0s",
+        log_fn=written.append, git_fn=git, now=datetime(2026, 9, 17, 9, 30),
+    )
+    assert status == "ok"
+    subs = [c[0] for c in git.calls]
+    assert subs == ["add", "diff", "commit", "push"]
+    assert git.calls[0][1] == "--" and tuple(git.calls[0][2:]) == DT.PUBLISH_PATHS
+    push = git.calls[3]
+    assert push[-2:] == [DT.GIT_REMOTE, f"HEAD:{DT.GIT_BRANCH}"]
+    assert "committed=yes" in written[-1] and "status=ok" in written[-1]
+
+
+def test_publish_skips_commit_when_nothing_changed():
+    git = _FakeGit(cached_diff_empty=True)
+    written = []
+    status = DT.publish_survival_signal(
+        root=DT.TRACKING_CLONE_ROOT, log_fn=written.append, git_fn=git,
+    )
+    assert status == "ok"
+    assert [c[0] for c in git.calls] == ["add", "diff"]
+    assert "committed=no" in written[-1]
+
+
+def test_push_failure_is_a_warning_not_a_failure():
+    git = _FakeGit(fail_on="push")
+    written = []
+    status = DT.publish_survival_signal(
+        root=DT.TRACKING_CLONE_ROOT, log_fn=written.append, git_fn=git,
+        now=datetime(2026, 9, 17),
+    )
+    assert status == "warning"
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push"]
+    assert "status=warning" in written[-1] and "push rc=128" in written[-1]
+
+
+def test_main_returns_success_even_when_push_fails(monkeypatch):
+    """추적 실행은 성공 처리 — 종료코드 0, run=end 기록, git_publish=warning."""
+    written = []
+    monkeypatch.setattr(DT, "log", written.append)
+    monkeypatch.setattr(DT, "rotate_log", lambda: 0)
+    monkeypatch.setattr(DT, "run_steps", lambda: {"a": "ok", "b": "ok", "c": "ok"})
+    monkeypatch.setattr(DT, "ROOT", "C:/not/a/real/checkout")   # 실제 저장소 무접촉
+    monkeypatch.setattr(DT, "is_tracking_clone", lambda root=None, expected=None: True)
+    git = _FakeGit(fail_on="push")
+    monkeypatch.setattr(DT, "run_git", git)
+    assert DT.main() == 0
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push"]
+    end = [w for w in written if w.startswith("run=end")]
+    assert len(end) == 1
+    assert "steps_ok=3/3" in end[0] and "git_publish=warning" in end[0]
+    assert any("step=git_publish" in w and "status=warning" in w for w in written)
+
+
+def test_main_publish_is_noop_outside_clone(monkeypatch):
+    written = []
+    monkeypatch.setattr(DT, "log", written.append)
+    monkeypatch.setattr(DT, "rotate_log", lambda: 0)
+    monkeypatch.setattr(DT, "run_steps", lambda: {"a": "ok"})
+    git = _FakeGit()
+    monkeypatch.setattr(DT, "run_git", git)
+    monkeypatch.setattr(DT, "ROOT", "C:/somewhere/else")     # 경로 가드가 실제로 막는다
+    assert DT.main() == 0
+    assert git.calls == []
+    assert any("git_publish=skipped" in w for w in written)
+
+
+def test_commit_message_carries_only_date_and_row_counts():
+    msg = DT.commit_message(datetime(2026, 9, 17, 9, 31), 4100, 15,
+                            summary="steps_ok=3/3 | elapsed=12.0s")
+    subject, _, body = msg.partition("\n\n")
+    assert subject == "tracking: 주기 실행 (2026-09-17) — F2-b 4100행, 섀도 15행"
+    assert body == "steps_ok=3/3 | elapsed=12.0s"
+    for token in PERF_TOKENS:
+        assert token not in msg
+    # 행 수를 모르면 대시
+    assert "F2-b —행" in DT.commit_message(datetime(2026, 9, 17), None, 3)
+
+
+def test_publish_paths_are_pipeline_csv_outputs_only():
+    assert all(p.startswith("validation/") and p.endswith(".csv") for p in DT.PUBLISH_PATHS)
+    assert os.path.relpath(DT.GATE_SIDECAR, ROOT).replace(os.sep, "/") == DT.PUBLISH_PATHS[2]
+    assert os.path.relpath(DT.SHADOW_SIDECAR, ROOT).replace(os.sep, "/") == DT.PUBLISH_PATHS[3]
+    assert os.path.relpath(DT.JOURNAL_CSV, ROOT).replace(os.sep, "/") in DT.PUBLISH_PATHS
+
+
+def test_publish_is_not_a_tracking_step():
+    """생존 신호는 STEPS(판정 무관 기록 단계) 바깥의 별도 계층이다."""
+    assert "git_publish" not in [name for name, _ in DT.STEPS]
+
+
+def test_git_subprocess_stdout_is_not_written_to_the_log():
+    import inspect
+
+    src = inspect.getsource(DT.run_git)
+    assert "proc.stdout" not in src
+    assert "returncode" in src and "stderr" in src

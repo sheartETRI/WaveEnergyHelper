@@ -6,6 +6,7 @@
   1. watchlist_scan   — 전방 이벤트 생성 경로 (워치리스트 스캔 + forward journal)
   2. f2b_annotate     — F2-b 게이트 사이드카 기록
   3. mm_shadow_record — MM 섀도 3변형 기록
+  4. git_publish      — 생존 신호: CSV 산출물 commit & push (추적 클론에서만)
 
 규율:
 - **판정·임계값·알림·이메일·자동 매매 일체 없다.** 출력은 로그뿐이다.
@@ -14,6 +15,10 @@
 - 한 단계가 실패해도 다음 단계는 진행한다. 실패는 로그에만 남긴다.
 - 하위 명령의 표준출력은 로그에 옮기지 않는다 — 그쪽 출력에 무엇이 섞이든
   이 로그에는 새지 않게 한다.
+- 생존 신호(git_publish)는 기록·스케줄 계층이다. 원격 커밋 시각이 "추적이 살아
+  있다"는 증거가 된다. 정본 호스트 경로(TRACKING_CLONE_ROOT)에서만 동작하고,
+  다른 워킹트리에서는 no-op 이다. push 실패는 경고 로그만 남기고 추적 실행 자체는
+  성공으로 처리한다. 커밋 메시지에도 행 수·날짜만 쓴다.
 """
 from __future__ import annotations
 
@@ -35,6 +40,20 @@ TS_FMT = "%Y-%m-%d %H:%M:%S"
 JOURNAL_CSV = os.path.join(ROOT, "validation", "wave_live_forward_journal.csv")
 GATE_SIDECAR = os.path.join(ROOT, "validation", "wave_align_gate_forward.csv")
 SHADOW_SIDECAR = os.path.join(ROOT, "validation", "wave_mm_shadow.csv")
+
+# 생존 신호 — 정본 추적 호스트의 클론 경로. 이 경로에서 실행될 때만 commit & push 한다.
+# (normpath 비교이므로 슬래시 표기여도 같은 경로로 본다.)
+TRACKING_CLONE_ROOT = "C:/Users/user/Desktop/WaveEnergyHelper-tracking"
+GIT_REMOTE = "origin"
+GIT_BRANCH = "main"
+GIT_TIMEOUT_SEC = 300
+# 커밋 대상 — 추적 파이프라인이 갱신하는 CSV 산출물만 (보고서·그림은 제외)
+PUBLISH_PATHS = (
+    "validation/wave_live_watchlist.csv",
+    "validation/wave_live_forward_journal.csv",
+    "validation/wave_align_gate_forward.csv",
+    "validation/wave_mm_shadow.csv",
+)
 
 
 # ------------------------------------------------------------------ 로그
@@ -165,13 +184,94 @@ def run_steps(steps=STEPS, log_fn: Callable[[str], None] = log) -> dict:
     return results
 
 
+# ------------------------------------------------------------ 생존 신호
+def _same_path(a: str, b: str) -> bool:
+    def norm(p: str) -> str:
+        return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+    return norm(a) == norm(b)
+
+
+def is_tracking_clone(root: str = ROOT, expected: str = TRACKING_CLONE_ROOT) -> bool:
+    """정본 추적 클론에서 실행 중인가 — 경로 가드."""
+    return _same_path(root, expected)
+
+
+def run_git(args: list[str], root: str = ROOT,
+            timeout: int = GIT_TIMEOUT_SEC) -> tuple[int, str]:
+    """git 하위 명령. 표준출력은 버리고 종료코드와 오류 꼬리만 돌려준다."""
+    proc = subprocess.run(
+        ["git", *args], cwd=root, capture_output=True, text=True, timeout=timeout,
+    )
+    tail = ""
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip().splitlines()
+        tail = err[-1][:200] if err else ""
+    return proc.returncode, tail
+
+
+def commit_message(when: datetime, gate_rows: Optional[int],
+                   shadow_rows: Optional[int], summary: str = "") -> str:
+    """제목: 날짜·행 수만. 본문: 로그 요약 1줄(단계 성공 수·소요 시간)."""
+    g = "—" if gate_rows is None else str(gate_rows)
+    s = "—" if shadow_rows is None else str(shadow_rows)
+    subject = f"tracking: 주기 실행 ({when:%Y-%m-%d}) — F2-b {g}행, 섀도 {s}행"
+    return f"{subject}\n\n{summary}" if summary else subject
+
+
+def publish_survival_signal(root: Optional[str] = None, summary: str = "",
+                            log_fn: Optional[Callable[[str], None]] = None,
+                            git_fn: Optional[Callable[..., tuple[int, str]]] = None,
+                            now: Optional[datetime] = None) -> str:
+    """CSV 산출물을 commit & push 한다. 반환값은 상태 문자열.
+
+    - "skipped" : 추적 클론 밖 (no-op)
+    - "ok"      : 커밋·푸시 완료, 또는 변경 없음
+    - "warning" : commit/push 실패 — 경고 로그만 남기고 추적은 성공 처리
+
+    기본값은 호출 시점에 모듈 전역에서 읽는다 (테스트에서 monkeypatch 가 먹도록).
+    """
+    root = ROOT if root is None else root
+    log_fn = log if log_fn is None else log_fn
+    git_fn = run_git if git_fn is None else git_fn
+    if not is_tracking_clone(root):
+        log_fn("step=git_publish | status=skipped | reason=not the tracking clone")
+        return "skipped"
+    started = time.monotonic()
+    try:
+        code, tail = git_fn(["add", "--", *PUBLISH_PATHS], root)
+        if code != 0:
+            raise RuntimeError(f"add rc={code} {tail}")
+        code, _ = git_fn(["diff", "--cached", "--quiet", "--", *PUBLISH_PATHS], root)
+        if code == 0:
+            log_fn(f"step=git_publish | status=ok | elapsed={time.monotonic() - started:.1f}s "
+                   f"| committed=no | reason=no changes")
+            return "ok"
+        msg = commit_message(now or _now(), count_rows(os.path.join(root, PUBLISH_PATHS[2])),
+                             count_rows(os.path.join(root, PUBLISH_PATHS[3])), summary)
+        code, tail = git_fn(["commit", "-q", "-m", msg, "--", *PUBLISH_PATHS], root)
+        if code != 0:
+            raise RuntimeError(f"commit rc={code} {tail}")
+        code, tail = git_fn(["push", "-q", GIT_REMOTE, f"HEAD:{GIT_BRANCH}"], root)
+        if code != 0:
+            raise RuntimeError(f"push rc={code} {tail}")
+        log_fn(f"step=git_publish | status=ok | elapsed={time.monotonic() - started:.1f}s "
+               f"| committed=yes | pushed={GIT_REMOTE}/{GIT_BRANCH}")
+        return "ok"
+    except Exception as exc:  # noqa: BLE001 — 생존 신호 실패가 추적 실행을 실패시키지 않는다
+        log_fn(f"step=git_publish | status=warning | elapsed={time.monotonic() - started:.1f}s "
+               f"| reason={str(exc)[:200]}")
+        return "warning"
+
+
 def main() -> int:
     dropped = rotate_log()
     log(f"run=start | retention_days={LOG_RETENTION_DAYS} | rotated_lines={dropped}")
     started = time.monotonic()
     results = run_steps()
     ok = sum(1 for v in results.values() if v == "ok")
-    log(f"run=end | steps_ok={ok}/{len(results)} | elapsed={time.monotonic() - started:.1f}s")
+    summary = f"steps_ok={ok}/{len(results)} | elapsed={time.monotonic() - started:.1f}s"
+    publish = publish_survival_signal(summary=summary)
+    log(f"run=end | {summary} | git_publish={publish}")
     return 0
 
 
