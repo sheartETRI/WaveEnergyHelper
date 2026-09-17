@@ -1,0 +1,215 @@
+"""LW 엔진 1단계 — charts/lw_builder 단위·스모크.
+
+- JSON 직렬화: 시간 정렬·중복 제거·NaN 처리·거래량 색
+- gate_context 필수 인자, 기준선 없음 폴백, 기준선 2개 라벨
+- 벤더 파일 존재·버전 헤더, 동작 요건 옵션(autoScale·휠·팬·autoSize), 색 토큰 승계
+- 렌더 스모크: components.html 문자열 생성·높이 전달, 2단계 캡션
+- main 배선: 차트 엔진 라디오, 기본 Plotly, plotly_builder 는 lw_builder 를 모른다
+"""
+import hashlib
+import json
+import os
+import re
+import sys
+
+import numpy as np
+import pandas as pd
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from charts import lw_builder as LW  # noqa: E402
+from charts.plotly_builder import COLOR_BEAR, COLOR_BULL, RECENT_WINDOW  # noqa: E402
+from config.settings import MA_COLORS, MA_LINE_WIDTHS  # noqa: E402
+
+
+def _frame(n=40):
+    rng = np.random.default_rng(7)
+    idx = pd.date_range("2026-01-01", periods=n, freq="h")
+    close = 100 + np.cumsum(rng.normal(0, 1, n))
+    df = pd.DataFrame({
+        "open": close - 0.3, "high": close + 0.8, "low": close - 0.8, "close": close,
+        "volume": rng.uniform(1, 5, n),
+    }, index=idx)
+    df["MA5"] = df["close"].rolling(5).mean()
+    df["MA20"] = df["close"].rolling(20).mean()
+    return df
+
+
+# ------------------------------------------------------------ 직렬화
+def test_payload_sorted_unique_and_nan_free():
+    df = _frame(30)
+    shuffled = df.sample(frac=1.0, random_state=1)                 # 순서 뒤섞기
+    dup = pd.concat([shuffled, df.iloc[[10]]])                     # 중복 시각 1개
+    dup.loc[dup.index[3], "close"] = np.nan                        # OHLC NaN 1개 → 캔들 제외
+    payload = LW.frame_to_lw_payload(dup)
+
+    times = [c["time"] for c in payload["candles"]]
+    assert times == sorted(times) and len(times) == len(set(times))
+    assert len(payload["candles"]) == 29                            # 30 - NaN 1 (중복은 1건으로)
+    assert all(isinstance(c["time"], int) for c in payload["candles"])
+    assert set(payload["candles"][0]) == {"time", "open", "high", "low", "close"}
+    # MA 는 워밍업 NaN 을 뺀다: MA5 → 26점 이하, MA20 → 11점 이하 (NaN 종가 행 영향 포함)
+    assert set(payload["mas"]) == {"5", "20"}
+    assert 0 < len(payload["mas"]["20"]) < len(payload["mas"]["5"]) <= 26
+    assert all(np.isfinite(p["value"]) for p in payload["mas"]["5"])
+    json.dumps(payload)                                             # 직렬화 가능
+
+
+def test_payload_time_is_utc_seconds_of_naive_index():
+    df = _frame(3)
+    payload = LW.frame_to_lw_payload(df)
+    assert payload["candles"][0]["time"] == int(pd.Timestamp("2026-01-01").timestamp())
+    assert payload["candles"][1]["time"] - payload["candles"][0]["time"] == 3600
+
+
+def test_volume_colors_follow_bull_bear_tokens():
+    df = _frame(6)
+    df.loc[df.index[0], ["open", "close"]] = [10.0, 11.0]   # 상승
+    df.loc[df.index[1], ["open", "close"]] = [11.0, 10.0]   # 하락
+    df.loc[df.index[2], ["open", "close"]] = [10.0, 10.0]   # 보합 → 상승 색 (>=)
+    vol = LW.frame_to_lw_payload(df)["volume"]
+    assert [v["color"] for v in vol[:3]] == [COLOR_BULL, COLOR_BEAR, COLOR_BULL]
+    assert COLOR_BULL == "#ff0000" and COLOR_BEAR == "#0000ff"
+
+
+def test_payload_without_ohlc_or_empty_is_empty():
+    assert LW.frame_to_lw_payload(pd.DataFrame()) == {"candles": [], "volume": [], "mas": {}}
+    assert LW.frame_to_lw_payload(pd.DataFrame({"close": [1.0]})) == {"candles": [], "volume": [], "mas": {}}
+
+
+# ------------------------------------------------------------ 계약: gate_context · 기준선
+def test_gate_context_is_required():
+    df = _frame()
+    with pytest.raises(TypeError):
+        LW.build_lw_html(df, "BTCUSDT", "1h", chart_height=600, vendor_js="")   # 위치 인자 누락
+    with pytest.raises(ValueError):
+        LW.build_lw_html(df, "BTCUSDT", "1h", "", chart_height=600, vendor_js="")
+    with pytest.raises(ValueError):
+        LW.build_lw_html(df, "BTCUSDT", "1h", "   ", chart_height=600, vendor_js="")
+
+
+def test_struct_reference_fallback_and_lines():
+    assert LW.struct_reference_lines(None) == []
+    assert LW.struct_reference_lines({}) == []
+    assert LW.struct_reference_lines({"reference_low": 1.0}) == []
+    assert LW.struct_reference_lines({"reference_low": float("nan"), "line_price": 1.0}) == []
+    lines = LW.struct_reference_lines({"reference_low": 100.0, "line_price": 99.5})
+    assert [l["price"] for l in lines] == [100.0, 99.5]
+    assert [l["title"] for l in lines] == [LW.STRUCT_LOW_LABEL, LW.STRUCT_LINE_LABEL]
+    assert LW.STRUCT_LINE_LABEL == "패턴 저점 기준선 (검증 중)"   # main 8cdd4e5 문구
+    for l in lines:
+        assert "손절" not in l["title"] and "권고" not in l["title"]
+
+    df = _frame()
+    html_none = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 X]", chart_height=600, vendor_js="")
+    assert LW.STRUCT_LINE_MISSING in html_none and "var STRUCT_LINES = [];" in html_none
+    html_ref = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 X]", chart_height=600, vendor_js="",
+                                struct_reference={"reference_low": 100.0, "line_price": 99.5})
+    assert LW.STRUCT_LINE_MISSING not in html_ref
+    assert LW.STRUCT_LOW_LABEL in html_ref and LW.STRUCT_LINE_LABEL in html_ref
+    assert "createPriceLine" in html_ref
+
+
+def test_caption_carries_gate_context_and_escapes_html():
+    df = _frame()
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[1d 게이트 폐쇄 <120봉>]", chart_height=600, vendor_js="")
+    assert 'id="lw-caption"' in html
+    assert "BTCUSDT 1h · [1d 게이트 폐쇄 &lt;120봉&gt;]" in html
+
+
+# ------------------------------------------------------------ 벤더 · 동작 요건 · 토큰
+def test_vendor_file_is_present_with_version_header():
+    assert os.path.isfile(LW.VENDOR_PATH)
+    src = LW.load_vendor_js()
+    head = src[:1200]
+    assert f"lightweight-charts {LW.VENDOR_VERSION}" in head        # 벤더링 헤더(우리)
+    assert LW.VENDOR_HEADER_MARK in head                            # 원본 라이선스 헤더(TradingView)
+    assert "Apache License 2.0" in head
+    assert LW.VENDOR_VERSION == "5.2.1"
+    assert len(src) > 150_000
+    # 헤더에 적힌 upstream sha256 과 실제 본문(원본 라이선스 주석부터)의 해시가 일치한다.
+    m = re.search(r"sha256\(upstream file\) = ([0-9a-f]{64})", head)
+    body = src[src.index("/*!\n * @license"):]
+    assert m and hashlib.sha256(body.encode("utf-8")).hexdigest() == m.group(1)
+
+
+def test_chart_options_meet_behaviour_requirements():
+    opts = LW.chart_options()
+    assert opts["rightPriceScale"]["autoScale"] is True             # x 줌·팬 시 y 자동 밀착
+    assert opts["handleScale"]["mouseWheel"] is True                 # 휠 줌
+    assert opts["handleScroll"]["pressedMouseMove"] is True          # 드래그 팬
+    assert opts["crosshair"]["mode"] == 0                            # 크로스헤어 Normal
+    assert opts["autoSize"] is True                                  # 컨테이너 폭 추종
+    assert opts["timeScale"]["timeVisible"] is True
+    cand = LW.candle_options()
+    assert cand["upColor"] == COLOR_BULL and cand["downColor"] == COLOR_BEAR
+    assert cand["wickUpColor"] == COLOR_BULL and cand["wickDownColor"] == COLOR_BEAR
+
+
+def test_ma_tokens_are_inherited():
+    styles = LW.ma_styles()
+    assert set(styles) == {str(p) for p in MA_COLORS}
+    for period, color in MA_COLORS.items():
+        st = styles[str(period)]
+        assert st["color"] == color
+        assert st["width"] == LW.lw_line_width(MA_LINE_WIDTHS.get(period, 1.0))
+        assert st["style"] == (LW.LW_LINE_STYLE_DASHED if period in (40, 80) else LW.LW_LINE_STYLE_SOLID)
+    assert [LW.lw_line_width(w) for w in (1.0, 1.2, 1.4, 1.6, 1.8, 9.0)] == [1, 1, 1, 2, 2, 4]
+
+
+def test_html_embeds_vendor_payload_and_window():
+    df = _frame(200)
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=777, vendor_js="/*VENDOR*/")
+    assert "<script>/*VENDOR*/</script>" in html
+    assert f"var WINDOW = {RECENT_WINDOW};" in html
+    assert "height:777px" in html
+    assert '"autoScale": true' in html and '"autoSize": true' in html
+    assert "LightweightCharts.CandlestickSeries" in html and "LightweightCharts.HistogramSeries" in html
+    assert "LightweightCharts.LineSeries" in html
+    assert "window.__lw" in html
+    # 벤더 JS 를 기본 경로에서 실제로 인라인한다.
+    full = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600)
+    assert LW.VENDOR_HEADER_MARK in full
+
+
+# ------------------------------------------------------------ 렌더 스모크
+def test_render_smoke_calls_components_html_with_height(monkeypatch):
+    calls, captions = [], []
+    monkeypatch.setattr(LW.components, "html", lambda html, **kw: calls.append((html, kw)))
+    monkeypatch.setattr(LW.st, "caption", lambda text: captions.append(text))
+    LW.render_lw_chart(_frame(), "BTCUSDT", "1h", "[g]", chart_height=1000)
+    assert len(calls) == 1
+    html, kw = calls[0]
+    assert kw["height"] == 1000 and kw.get("scrolling") is False
+    assert html.startswith("<!-- lw_builder stage1 -->") and LW.VENDOR_HEADER_MARK in html
+    assert captions == [LW.STAGE2_CAPTION] and "2단계" in LW.STAGE2_CAPTION
+
+
+def test_render_skips_empty_frame(monkeypatch):
+    calls = []
+    monkeypatch.setattr(LW.components, "html", lambda html, **kw: calls.append(html))
+    LW.render_lw_chart(pd.DataFrame(), "BTCUSDT", "1h", "[g]", chart_height=600)
+    LW.render_lw_chart(None, "BTCUSDT", "1h", "[g]", chart_height=600)
+    assert calls == []
+
+
+# ------------------------------------------------------------ 배선 · Plotly 무영향
+def test_main_wires_engine_radio_default_plotly():
+    with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as fh:
+        body = fh.read()
+    assert 'CHART_ENGINES = ("Plotly", "LW")' in body
+    assert 'DEFAULT_CHART_ENGINE = "Plotly"' in body
+    assert '"차트 엔진", options=list(CHART_ENGINES)' in body
+    assert "render_lw_chart(" in body and "gate_context=" in body or "gate_context_for(" in body
+    import main as M
+    assert M.DEFAULT_CHART_ENGINE == "Plotly" and M.CHART_ENGINES[0] == "Plotly"
+    assert isinstance(M.gate_context_for("BTCUSDT", "1h"), str) and M.gate_context_for("BTCUSDT", "1h")
+
+
+def test_plotly_builder_is_untouched_by_lw_layer():
+    with open(os.path.join(ROOT, "charts", "plotly_builder.py"), encoding="utf-8") as fh:
+        src = fh.read()
+    assert "lw_builder" not in src and "lightweight-charts.standalone" not in src
+    assert "streamlit_lightweight_charts" not in open(LW.__file__, encoding="utf-8").read()

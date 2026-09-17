@@ -10,6 +10,7 @@
 # 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
 import streamlit as st
 
+from charts.lw_builder import render_lw_chart
 from charts.plotly_builder import (
     CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, DEFAULT_LAYOUT_MODE, LAYOUT_MODE_LABELS, LAYOUT_MODES,
     render_chart,
@@ -32,6 +33,21 @@ DEFAULT_INTERVAL = "1h"
 # "MACD 패널" 토글이 기본 꺼지는 TF. 15m 은 크로스 채터링이 가장 잦아 기본 꺼짐 — 켜면 다른 TF와
 # 정의·동작이 같다(정의 차등 없음). 토글은 MACD 계산·알람·차트 패널을 함께 켜고 끈다.
 MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
+
+# 차트 엔진(1단계): Plotly 기본 유지 — LW 검수 통과 전까지 기본값을 바꾸지 않는다.
+CHART_ENGINES = ("Plotly", "LW")
+DEFAULT_CHART_ENGINE = "Plotly"
+
+# 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 브랜치 8cdd4e5 원칙 승계).
+# signal-alarm 은 main 과 2026-06-12(9436ed1) 에 갈라져 게이트 모듈(display/wave_gate_context ·
+# analysis/wave_align_gate_forward)이 없다. 상태를 지어내지 않고 "모듈 없음" 을 그대로 표기한다.
+# 공급원을 이식할지는 별도 결정 사항 — 이식되면 이 함수만 gate_label 로 바꾼다.
+GATE_CONTEXT_UNAVAILABLE = "[게이트 미적용 — 이 브랜치에 게이트 모듈 없음]"
+
+
+def gate_context_for(symbol: str, interval: str) -> str:
+    """LW 차트에 병기할 게이트 상태 라벨. 이 브랜치에는 공급원이 없어 고정 문구를 돌려준다."""
+    return GATE_CONTEXT_UNAVAILABLE
 
 
 def macd_panel_default(interval: str) -> bool:
@@ -91,6 +107,12 @@ def render_sidebar() -> dict:
 
     st.sidebar.divider()
     st.sidebar.header("차트")
+    chart_engine = st.sidebar.radio(
+        "차트 엔진", options=list(CHART_ENGINES), index=list(CHART_ENGINES).index(DEFAULT_CHART_ENGINE),
+        horizontal=True,
+        help="Plotly=현행. LW=lightweight-charts 1단계(가격 패널만: 캔들·이평·거래량·기준선·게이트 라벨). "
+             "하위 지표·알람 마커는 2단계 예정.",
+    )
     show_stoch = st.sidebar.checkbox("스토캐 패널", value=True)
     # 값은 plotly_builder가 분기하는 문자열 그대로여야 한다("Separated" 철자 주의).
     stoch_view = st.sidebar.radio(
@@ -121,6 +143,7 @@ def render_sidebar() -> dict:
     return {
         "symbol": symbol,
         "interval": interval,
+        "chart_engine": chart_engine,
         "history_bars": history_bars,
         "include_candidates": include_candidates,
         "layers": [_LAYER_CHOICES[name] for name in layer_names],
@@ -151,6 +174,15 @@ def main():
         include_candidates=cfg["include_candidates"],
         layers=cfg["layers"] or None,
     )
+
+    if cfg["chart_engine"] == "LW":
+        # 1단계: 가격 패널만. struct_reference 공급원(analysis/wave_mm_struct_stop)도 이 브랜치에 없어
+        # None → "기준선 없음" 폴백. gate_context 는 필수 인자.
+        render_lw_chart(
+            df, symbol, interval, gate_context_for(symbol, interval),
+            chart_height=cfg["chart_height"], struct_reference=None,
+        )
+        return
 
     render_chart(
         df, symbol, interval,
