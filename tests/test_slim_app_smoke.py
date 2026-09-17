@@ -208,13 +208,16 @@ def test_macd_panel_default_off_only_for_15m():
 
 def test_chart_vertical_controls_settings():
     """세로 조작성 설정 계층 — 모든 y축 fixedrange=False, rangeslider 꺼짐, dragmode pan,
-    높이는 선택값 그대로, 가격 행 비중 ≥ 0.75, 캡션·config 상수 존재."""
+    높이는 선택값 그대로(600/800/1000/1200, 기본 1000), 가격 행 도메인은 기본 모드 비중 이상,
+    캡션·config 상수 존재."""
     from charts.plotly_builder import (
-        CHART_CONTROLS_CAPTION, CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, PLOTLY_CONFIG,
-        _row_heights, _get_synced_chart_rows,
+        CHART_CONTROLS_CAPTION, CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, DEFAULT_LAYOUT_MODE,
+        PLOTLY_CONFIG, _row_heights, _get_synced_chart_rows,
     )
 
     df = _pipeline_frame()
+    five = _get_synced_chart_rows(True, "Stacked", True, True)
+    price_share = _row_heights(five, DEFAULT_LAYOUT_MODE)[0]
     for height in CHART_HEIGHT_OPTIONS:
         fig = _figure(df, chart_height=height)
         layout = fig.layout
@@ -224,11 +227,12 @@ def test_chart_vertical_controls_settings():
         assert yaxes and all(ax.get("fixedrange") is False for ax in yaxes), "모든 y축 fixedrange=False 명시"
         xaxes = [v for k, v in layout.to_plotly_json().items() if k.startswith("xaxis")]
         assert all(not ax.get("rangeslider", {}).get("visible", False) for ax in xaxes), "rangeslider 꺼짐"
-        # 가격(첫 행) y축 도메인 폭이 5패널 기준 0.5×(1-간격) 이상.
+        # 가격(첫 행) y축 도메인 폭이 5패널 기준 (기본 모드 가격 비중)×(1-간격) 이상.
         y0, y1 = layout.yaxis.domain
-        assert (y1 - y0) >= 0.5 * (1 - 0.04 * 4) - 1e-9, f"가격 행 도메인 {y1 - y0:.2f}"
+        assert (y1 - y0) >= price_share * (1 - 0.04 * 4) - 1e-9, f"가격 행 도메인 {y1 - y0:.2f}"
 
-    assert DEFAULT_CHART_HEIGHT in CHART_HEIGHT_OPTIONS and DEFAULT_CHART_HEIGHT == 800
+    assert CHART_HEIGHT_OPTIONS == (600, 800, 1000, 1200)
+    assert DEFAULT_CHART_HEIGHT in CHART_HEIGHT_OPTIONS and DEFAULT_CHART_HEIGHT == 1000
     assert PLOTLY_CONFIG["scrollZoom"] is True and PLOTLY_CONFIG["doubleClick"] == "reset"
     assert all(word in CHART_CONTROLS_CAPTION for word in ("휠", "축", "더블클릭"))
     rows = _get_synced_chart_rows(True, "Separated", True, True)
@@ -238,42 +242,45 @@ def test_chart_vertical_controls_settings():
 
 
 def test_chart_panel_shares_and_min_height():
-    """패널 비중: 5개 기준 0.50/0.06/0.18/0.14/0.12, 꺼진 패널은 가격 흡수, 간격 0.04,
-    하위 패널(가격·거래량 제외) 실제 px ≥ 80 (미달이면 전체 높이 상향)."""
+    """패널 비중(기본형): 5개 기준 0.50/0.06/0.18/0.14/0.12, 꺼진 패널은 가격 흡수, 간격 0.04,
+    하위 패널(가격·거래량 제외) 실제 px ≥ 80 (미달이면 전체 높이 상향) — 두 모드 공통."""
     from charts.plotly_builder import (
-        MIN_SUBPANEL_PX, VERTICAL_SPACING, _effective_chart_height, _get_synced_chart_rows,
-        _row_heights, _row_pixels,
+        CHART_HEIGHT_OPTIONS, LAYOUT_MODE_BASIC, LAYOUT_MODES, MIN_SUBPANEL_PX, VERTICAL_SPACING,
+        _effective_chart_height, _get_synced_chart_rows, _row_heights, _row_pixels,
     )
 
     five = _get_synced_chart_rows(True, "Stacked", True, True)
     assert [r["kind"] for r in five] == ["price", "volume", "stoch_stacked", "macd", "rsi"]
-    assert [round(h, 4) for h in _row_heights(five)] == [0.5, 0.06, 0.18, 0.14, 0.12]
+    assert [round(h, 4) for h in _row_heights(five, LAYOUT_MODE_BASIC)] == [0.5, 0.06, 0.18, 0.14, 0.12]
     three = _get_synced_chart_rows(True, "Stacked", False, False)   # MACD·RSI 꺼짐 → 가격 흡수
-    assert [round(h, 4) for h in _row_heights(three)] == [0.76, 0.06, 0.18]
+    assert [round(h, 4) for h in _row_heights(three, LAYOUT_MODE_BASIC)] == [0.76, 0.06, 0.18]
     assert VERTICAL_SPACING >= 0.04
 
     df = _pipeline_frame()
-    for height in (600, 800, 1000):
-        fig = _figure(df, chart_height=height)
-        heights = _row_heights(five)
-        eff = _effective_chart_height(five, heights, height)
-        assert fig.layout.height == eff >= height
-        px = _row_pixels(heights, eff)
-        for row, p in zip(five, px):
-            if row["kind"] not in ("price", "volume"):
-                assert p >= MIN_SUBPANEL_PX - 1e-6, f"{row['kind']} {p:.1f}px @ {height}"
-    # 이미 충분하면 올리지 않는다.
-    assert _effective_chart_height(five, _row_heights(five), 1000) == 1000
+    for mode in LAYOUT_MODES:
+        heights = _row_heights(five, mode)
+        for height in CHART_HEIGHT_OPTIONS:
+            fig = _figure(df, chart_height=height, layout_mode=mode)
+            eff = _effective_chart_height(five, heights, height)
+            assert fig.layout.height == eff >= height
+            px = _row_pixels(heights, eff)
+            for row, p in zip(five, px):
+                if row["kind"] not in ("price", "volume"):
+                    assert p >= MIN_SUBPANEL_PX - 1e-6, f"{mode} {row['kind']} {p:.1f}px @ {height}"
+        # 이미 충분하면 올리지 않는다.
+        assert _effective_chart_height(five, heights, 1000) == 1000
 
 
 def test_chart_titles_removed_and_y_fitted():
     """서브플롯 제목 annotation 없음, 가격·거래량·MACD y 는 표시 창(최근 150봉) 데이터에 밀착,
     uirevision 은 심볼|TF, 거래량 눈금 3개 이하·SI 포맷·0 시작, 스토캐 참조선 20/80 만,
     하위 패널 마커는 텍스트 없이 마커만."""
-    from charts.plotly_builder import RECENT_WINDOW, STOCH_GUIDES, _create_synced_chart_figure
+    from charts.plotly_builder import (
+        LAYOUT_MODE_BASIC, RECENT_WINDOW, STOCH_GUIDES, _create_synced_chart_figure,
+    )
 
     df = _pipeline_frame()
-    fig = _figure(df)
+    fig = _figure(df, layout_mode=LAYOUT_MODE_BASIC)
     layout = fig.layout
     assert not layout.annotations, "서브플롯 제목이 남아 있다"
     assert layout.uirevision == "BTCUSDT|1h"
@@ -308,7 +315,7 @@ def test_chart_titles_removed_and_y_fitted():
     assert len(guides) == 3 * len(STOCH_GUIDES) + 2
     assert layout.yaxis3.showgrid is False
 
-    # 하위 패널 마커(스토캐·RSI·MACD)는 mode "markers" (텍스트 없음), 호버 템플릿 있음.
+    # 기본형: 하위 패널 마커(스토캐·RSI·MACD)는 mode "markers" (텍스트 없음), 호버 템플릿 있음.
     sub_markers = [t for t in fig.data
                    if getattr(t, "yaxis", "y") != "y" and "markers" in (getattr(t, "mode", None) or "")]
     assert sub_markers
@@ -323,6 +330,9 @@ def test_main_wires_chart_height_and_controls():
         body = fh.read()
     assert 'layout="wide"' in body
     assert "CHART_HEIGHT_OPTIONS" in body and "chart_height=cfg[\"chart_height\"]" in body
+    # 표시 모드 라디오: LAYOUT_MODES 순서(기본 = 지표 중심), 라벨은 LAYOUT_MODE_LABELS, render_chart 에 전달.
+    assert '"표시 모드", options=list(LAYOUT_MODES)' in body
+    assert "LAYOUT_MODE_LABELS[mode]" in body and "layout_mode=cfg[\"layout_mode\"]" in body
     with open(os.path.join(source, "charts", "plotly_builder.py"), encoding="utf-8") as fh:
         chart_src = fh.read()
     assert 'st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)' in chart_src
@@ -347,3 +357,119 @@ if __name__ == "__main__":
             fn()
             print(f"ok  {name}")
     print("ALL SLIM APP SMOKE TESTS PASSED")
+
+
+# ------------------------------------------------------------ 표시 모드 2종 (비중 재배분 + 높이 옵션 확장)
+def test_layout_modes_and_shares():
+    """지표 중심(기본) 0.34/0.05/0.26/0.19/0.16 · 기본형 0.50/0.06/0.18/0.14/0.12,
+    Separated 는 스토캐 비중을 3층이 나눔, 꺼진 패널은 두 모드 모두 가격이 흡수."""
+    from charts.plotly_builder import (
+        DEFAULT_LAYOUT_MODE, LAYOUT_MODE_BASIC, LAYOUT_MODE_INDICATOR, LAYOUT_MODE_LABELS, LAYOUT_MODES,
+        PANEL_SHARES, PANEL_SHARES_BY_MODE, _get_synced_chart_rows, _row_heights,
+    )
+
+    assert LAYOUT_MODES == (LAYOUT_MODE_INDICATOR, LAYOUT_MODE_BASIC)
+    assert DEFAULT_LAYOUT_MODE == LAYOUT_MODE_INDICATOR
+    assert LAYOUT_MODE_LABELS == {LAYOUT_MODE_INDICATOR: "지표 중심", LAYOUT_MODE_BASIC: "기본형"}
+    assert PANEL_SHARES is PANEL_SHARES_BY_MODE[LAYOUT_MODE_BASIC]
+
+    five = _get_synced_chart_rows(True, "Stacked", True, True)
+    assert [round(h, 4) for h in _row_heights(five, LAYOUT_MODE_INDICATOR)] == [0.34, 0.05, 0.26, 0.19, 0.16]
+    assert [round(h, 4) for h in _row_heights(five)] == [0.34, 0.05, 0.26, 0.19, 0.16]   # 기본값 = 지표 중심
+    # 하위 3패널 합계 0.44 → 0.61
+    assert round(sum(_row_heights(five, LAYOUT_MODE_BASIC)[2:]), 4) == 0.44
+    assert round(sum(_row_heights(five, LAYOUT_MODE_INDICATOR)[2:]), 4) == 0.61
+
+    for mode in LAYOUT_MODES:
+        table = PANEL_SHARES_BY_MODE[mode]
+        assert abs(table["stoch_layer"] * 3 - table["stoch_stacked"]) < 1e-9
+        sep = _get_synced_chart_rows(True, "Separated", True, True)
+        assert abs(sum(_row_heights(sep, mode)) - 1.0) < 1e-9
+        three = _get_synced_chart_rows(True, "Stacked", False, False)
+        heights = _row_heights(three, mode)
+        assert abs(heights[0] - (1.0 - table["volume"] - table["stoch_stacked"])) < 1e-9
+
+
+def test_indicator_mode_subpanel_pixels():
+    """지표 중심 + 1000: 하위 패널 실측 px — 스토캐 ≥ 200 · MACD ≥ 145 · RSI ≥ 120
+    (공식: (전체−마진 60) × 비중 × (1 − 0.04×4) → 약 205 / 150 / 126). 모든 높이에서 지표 중심 > 기본형."""
+    from charts.plotly_builder import (
+        CHART_HEIGHT_OPTIONS, LAYOUT_MODE_BASIC, LAYOUT_MODE_INDICATOR, _effective_chart_height,
+        _get_synced_chart_rows, _row_heights, _row_pixels,
+    )
+
+    five = _get_synced_chart_rows(True, "Stacked", True, True)
+    kinds = [r["kind"] for r in five]
+
+    def px(mode, height):
+        h = _row_heights(five, mode)
+        return dict(zip(kinds, _row_pixels(h, _effective_chart_height(five, h, height))))
+
+    ind = px(LAYOUT_MODE_INDICATOR, 1000)
+    assert ind["stoch_stacked"] >= 200 and ind["macd"] >= 145 and ind["rsi"] >= 120, ind
+    assert _effective_chart_height(five, _row_heights(five, LAYOUT_MODE_INDICATOR), 1000) == 1000
+
+    for height in CHART_HEIGHT_OPTIONS:
+        a, b = px(LAYOUT_MODE_INDICATOR, height), px(LAYOUT_MODE_BASIC, height)
+        for kind in ("stoch_stacked", "macd", "rsi"):
+            assert a[kind] > b[kind] or height <= 800, f"{kind} @ {height}: {a[kind]:.1f} vs {b[kind]:.1f}"
+    # 600 선택은 두 모드 모두 80px 규칙으로 올라간다(지표 중심 656, 기본형 854).
+    assert _effective_chart_height(five, _row_heights(five, LAYOUT_MODE_INDICATOR), 600) < \
+        _effective_chart_height(five, _row_heights(five, LAYOUT_MODE_BASIC), 600)
+
+
+def _subpanel_marker_traces(fig):
+    return [t for t in fig.data
+            if getattr(t, "yaxis", "y") != "y" and "markers" in (getattr(t, "mode", None) or "")]
+
+
+def test_subpanel_marker_text_follows_layout_mode():
+    """하위 패널 마커 텍스트: 지표 중심 = markers+text (스토캐·RSI·MACD 모두), 기본형 = markers 만.
+    가격 패널은 모드와 무관."""
+    from charts.plotly_builder import LAYOUT_MODE_BASIC, LAYOUT_MODE_INDICATOR, SUBPANEL_MARKER_TEXT_BY_MODE
+
+    assert SUBPANEL_MARKER_TEXT_BY_MODE == {LAYOUT_MODE_BASIC: False, LAYOUT_MODE_INDICATOR: True}
+    df = _pipeline_frame()
+
+    fig_i = _figure(df, layout_mode=LAYOUT_MODE_INDICATOR)
+    mk_i = _subpanel_marker_traces(fig_i)
+    assert mk_i and all(t.mode == "markers+text" and t.hovertemplate for t in mk_i)
+    # MACD 이벤트 마커(GC/DC/0↑/0↓)도 텍스트 포함, y축은 MACD 행(y4).
+    macd_i = [t for t in mk_i if t.name in ("GC", "DC", "0↑", "0↓")]
+    assert macd_i and all(t.yaxis == "y4" and t.mode == "markers+text" for t in macd_i)
+    # 스토캐 3층(y3)·RSI(y5) 마커도 텍스트.
+    assert any(t.yaxis == "y3" for t in mk_i) and any(t.yaxis == "y5" for t in mk_i)
+
+    fig_b = _figure(df, layout_mode=LAYOUT_MODE_BASIC)
+    mk_b = _subpanel_marker_traces(fig_b)
+    assert mk_b and all(t.mode == "markers" for t in mk_b)
+    # 같은 데이터이므로 마커 트레이스 수는 모드와 무관(텍스트만 켜고 끔).
+    assert len(mk_i) == len(mk_b)
+
+    # Separated 도 동일 규칙.
+    fig_s = _figure(df, layout_mode=LAYOUT_MODE_INDICATOR, stochastic_view_mode="Separated")
+    assert all(t.mode == "markers+text" for t in _subpanel_marker_traces(fig_s))
+
+
+def test_stoch_stack_guides_keep_clearance_in_indicator_mode():
+    """스토캐 3층 스택(y 0~320): 층 분리선~참조선 25단위, 참조선 20~80 60단위, 층 간격 10단위.
+    지표 중심 + 1000 에서 분리선~참조선 ≥ 12px 이므로 참조선끼리 겹치지 않는다(투명도 조정 불필요)."""
+    from config.settings import STOCH_BAND, STOCH_GAP, STOCH_LAYERS, STOCH_MAX_Y
+    from charts.plotly_builder import (
+        LAYOUT_MODE_INDICATOR, STOCH_GUIDES, _get_synced_chart_rows, _row_heights, _row_pixels,
+    )
+
+    five = _get_synced_chart_rows(True, "Stacked", True, True)
+    px = _row_pixels(_row_heights(five, LAYOUT_MODE_INDICATOR), 1000)[2]
+    per_unit = px / STOCH_MAX_Y
+    # 모든 수평선(참조선 6 + 분리선 2)의 y 값 — 인접 간격의 최소.
+    ys = sorted([g + l["offset"] for l in STOCH_LAYERS for g in STOCH_GUIDES]
+                + [STOCH_BAND + STOCH_GAP / 2, STOCH_BAND * 2 + STOCH_GAP * 1.5])
+    min_gap_units = min(b - a for a, b in zip(ys, ys[1:]))
+    assert min_gap_units == 25
+    assert min_gap_units * per_unit >= 12, f"최소 간격 {min_gap_units * per_unit:.1f}px"
+
+    fig = _figure(_pipeline_frame(), layout_mode=LAYOUT_MODE_INDICATOR)
+    guides = [t for t in fig.data if t.yaxis == "y3" and t.mode == "lines" and t.hoverinfo == "skip"
+              and (t.line.width or 0) > 0]
+    assert len(guides) == 3 * len(STOCH_GUIDES) + 2   # 구조 그대로(참조선 수·분리선 수 불변)
