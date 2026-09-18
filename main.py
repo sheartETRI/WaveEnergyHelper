@@ -43,6 +43,9 @@ MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 CHART_ENGINES = ("LW", "Plotly")
 DEFAULT_CHART_ENGINE = "LW"
 
+# 본문 탭 — 첫 탭이 기본(차트). 알람 패널은 두 번째 탭으로 이동(표시 계층 재배치만, 정의 무접촉).
+MAIN_TABS = ("차트", "알람")
+
 # 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 8cdd4e5 원칙 승계). 공급원은 main 에서 체리픽한
 # 정의 파일(analysis/wave_align_gate_forward 등)을 display/lw_gate_context 가 import 만 해서 라이브 계산한다.
 
@@ -200,35 +203,39 @@ def main():
         data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
     )
 
-    render_alarm_panel(
-        df, symbol, interval,
-        history_bars=cfg["history_bars"],
-        include_candidates=cfg["include_candidates"],
-        layers=cfg["layers"] or None,
-    )
+    # 본문 2탭: [차트](기본) / [알람]. 사이드바 위젯은 공통. st.tabs 는 비활성 탭도 렌더한다(프론트에서 숨김).
+    tab_chart, tab_alarm = st.tabs(MAIN_TABS)
 
-    if cfg["chart_engine"] == "LW":
-        # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
-        # (미검출·퇴화 시 None → "기준선 없음" 폴백).
-        render_lw_chart(
-            df, symbol, interval, gate_context_for(symbol, interval),
-            chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
-            show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
+    with tab_alarm:
+        render_alarm_panel(
+            df, symbol, interval,
+            history_bars=cfg["history_bars"],
+            include_candidates=cfg["include_candidates"],
+            layers=cfg["layers"] or None,
         )
-        return
 
-    render_chart(
-        df, symbol, interval,
-        show_stochastic=cfg["show_stoch"],
-        stochastic_view_mode=cfg["stoch_view"],
-        show_stoch_fill=cfg["show_stoch"],
-        show_macd=cfg["show_macd"],
-        show_rsi=cfg["show_rsi"],
-        show_rsi_fill=cfg["show_rsi"],
-        chart_height=cfg["chart_height"],
-        layout_mode=cfg["layout_mode"],
-    )
+    with tab_chart:
+        if cfg["chart_engine"] == "LW":
+            # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
+            # (미검출·퇴화 시 None → "기준선 없음" 폴백).
+            render_lw_chart(
+                df, symbol, interval, gate_context_for(symbol, interval),
+                chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
+                show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
+            )
+            return
 
+        render_chart(
+            df, symbol, interval,
+            show_stochastic=cfg["show_stoch"],
+            stochastic_view_mode=cfg["stoch_view"],
+            show_stoch_fill=cfg["show_stoch"],
+            show_macd=cfg["show_macd"],
+            show_rsi=cfg["show_rsi"],
+            show_rsi_fill=cfg["show_rsi"],
+            chart_height=cfg["chart_height"],
+            layout_mode=cfg["layout_mode"],
+        )
 
 if __name__ == "__main__":
     main()
