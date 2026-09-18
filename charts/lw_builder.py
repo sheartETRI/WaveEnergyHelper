@@ -39,6 +39,7 @@ from charts.plotly_builder import (
     TV_GRID,
     TV_TEXT,
 )
+from charts.theme import MACD_HIST_COLORS
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -85,7 +86,7 @@ STOCH_GUIDE_COLOR = "rgba(120,120,120,0.9)"
 STOCH_SEPARATOR_COLOR = "rgba(80,80,80,0.7)"
 MACD_LINE_COLOR = "#FF3344"
 MACD_SIGNAL_COLOR = "#2F6BFF"
-MACD_HIST_COLORS = {"up_strong": "#FF4D4D", "up_weak": "#F7B6B6", "down_strong": "#2F6BFF", "down_weak": "#AFC6FF"}
+# MACD 히스토그램 4색은 charts/theme.py 토큰 — 여기서는 참조만 (하드코딩 금지)
 RSI_LINE_COLOR = "#000000"
 RSI_GUIDE_STYLE = (   # (값 키, 색, 선 스타일) — plotly add_rsi_panel 의 ob/os/mid 구성
     ("overbought", "rgba(255,165,0,0.5)", LW_LINE_STYLE_DASHED),
@@ -126,15 +127,20 @@ def ma_styles() -> dict:
 
 
 def macd_hist_color(cur, prev) -> str:
-    """plotly add_macd_panel 의 4색 규칙: 0 위/아래 × 직전 대비 증감."""
-    base = 0.0 if pd.isna(prev) else float(prev)
-    if cur >= base:
-        return MACD_HIST_COLORS["up_strong"]
+    """MACD 히스토그램 4색 (charts/theme.MACD_HIST_COLORS): 부호가 1차, 직전 봉 대비 증감이 2차.
+
+    hist ≥ 0 & hist > prev → 진한 적 / hist ≥ 0 & hist ≤ prev → 옅은 적 /
+    hist < 0 & hist < prev → 진한 청 / hist < 0 & hist ≥ prev → 옅은 청. 첫 봉(prev 결측)은 부호의 진한 색.
+    표시 계층 내부 계산 — df 에 컬럼을 쓰지 않는다. (Plotly 경로의 규칙과는 다르다: 그쪽은 이번 범위 밖.)
+    """
+    cur = float(cur)
     if cur >= 0:
-        return MACD_HIST_COLORS["up_weak"]
-    if cur <= base:
-        return MACD_HIST_COLORS["down_strong"]
-    return MACD_HIST_COLORS["down_weak"]
+        if pd.isna(prev) or cur > float(prev):
+            return MACD_HIST_COLORS["pos_rising"]
+        return MACD_HIST_COLORS["pos_falling"]
+    if pd.isna(prev) or cur < float(prev):
+        return MACD_HIST_COLORS["neg_falling"]
+    return MACD_HIST_COLORS["neg_rising"]
 
 
 # ------------------------------------------------------------------ 직렬화

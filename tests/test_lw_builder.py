@@ -281,11 +281,7 @@ def test_macd_and_rsi_pane_payloads_follow_plotly_tokens():
     macd = payload["macd"]
     assert macd and len(macd["hist"]) == len(macd["macd"]) == len(macd["signal"]) > 0
     colors = {h["color"] for h in macd["hist"]}
-    assert colors <= set(LW.MACD_HIST_COLORS.values()) and len(colors) >= 2
-    # plotly add_macd_panel 규칙 그대로: 직전 대비 증가=진한 적(부호 무관), 감소&0 이상=연한 적, 감소&0 미만=진한 청
-    assert LW.macd_hist_color(2.0, 1.0) == "#FF4D4D" and LW.macd_hist_color(1.0, 2.0) == "#F7B6B6"
-    assert LW.macd_hist_color(-2.0, -1.0) == "#2F6BFF" and LW.macd_hist_color(-1.0, -2.0) == "#FF4D4D"
-    assert LW.macd_hist_color(1.0, float("nan")) == "#FF4D4D"
+    assert colors <= set(LW.MACD_HIST_COLORS.values()) and len(colors) == 4     # 랜덤워크 700봉이면 4색 모두 등장
 
     rsi = payload["rsi"]
     assert rsi and all(0 <= p["value"] <= 100 for p in rsi["line"])
@@ -421,3 +417,43 @@ def test_solo_mode_is_js_only_stretch_redistribution():
     assert "panes[i].setStretchFactor(p.stretch)" in html
     # Streamlit 과 무관: 버튼 클릭 → JS 핸들러만
     assert "addEventListener('click'" in html and "Streamlit.setComponentValue" not in html
+
+
+# ============================================================ MACD 히스토그램 4색 규칙
+def test_macd_hist_four_color_rule_and_boundaries():
+    from charts.theme import MACD_HIST_COLORS as T
+
+    assert LW.MACD_HIST_COLORS is T                                     # 빌더는 theme 토큰 참조만
+    assert set(T) == {"pos_rising", "pos_falling", "neg_falling", "neg_rising"} and len(set(T.values())) == 4
+    nan = float("nan")
+    # 네 조합
+    assert LW.macd_hist_color(2.0, 1.0) == T["pos_rising"]              # ≥0 & 증가 → 진한 적
+    assert LW.macd_hist_color(1.0, 2.0) == T["pos_falling"]             # ≥0 & 감소 → 옅은 적
+    assert LW.macd_hist_color(-2.0, -1.0) == T["neg_falling"]           # <0 & 감소 → 진한 청
+    assert LW.macd_hist_color(-1.0, -2.0) == T["neg_rising"]            # <0 & 증가 → 옅은 청(하늘색)
+    # 경계: hist == prev → "증가 아님"(≤) / "감소 아님"(≥)
+    assert LW.macd_hist_color(1.0, 1.0) == T["pos_falling"]
+    assert LW.macd_hist_color(-1.0, -1.0) == T["neg_rising"]
+    # 경계: hist == 0 은 ≥0 쪽
+    assert LW.macd_hist_color(0.0, -0.5) == T["pos_rising"] and LW.macd_hist_color(0.0, 0.5) == T["pos_falling"]
+    assert LW.macd_hist_color(0.0, 0.0) == T["pos_falling"]
+    # 첫 봉(prev 결측) → 부호의 진한 색
+    assert LW.macd_hist_color(0.7, nan) == T["pos_rising"] and LW.macd_hist_color(-0.7, nan) == T["neg_falling"]
+    assert LW.macd_hist_color(0.0, nan) == T["pos_rising"]
+    # 부호 교차: 음→양 (증가) 진한 적, 양→음 (감소) 진한 청
+    assert LW.macd_hist_color(0.3, -0.2) == T["pos_rising"] and LW.macd_hist_color(-0.3, 0.2) == T["neg_falling"]
+
+
+def test_macd_hist_prev_column_is_used_without_writing_df():
+    df = _pipeline_frame()
+    cols_before = list(df.columns)
+    payload = LW.frame_to_lw_payload(df)
+    assert list(df.columns) == cols_before                               # df 에 새 컬럼 없음
+    # 컬럼이 없으면 shift(1) 로 같은 결과
+    df2 = df.drop(columns=["macd_hist_prev"])
+    payload2 = LW.frame_to_lw_payload(df2)
+    assert [h["color"] for h in payload["macd"]["hist"]] == [h["color"] for h in payload2["macd"]["hist"]]
+    # 하드코딩 금지: 빌더에 히스토그램 색 dict 정의가 없고 옅은 2색 리터럴도 없다 (진한 2색은 MACD 선 토큰과 공유)
+    src = open(LW.__file__, encoding="utf-8").read()
+    assert "MACD_HIST_COLORS = {" not in src
+    assert LW.MACD_HIST_COLORS["pos_falling"] not in src and LW.MACD_HIST_COLORS["neg_rising"] not in src
