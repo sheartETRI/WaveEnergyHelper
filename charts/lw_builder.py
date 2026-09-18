@@ -72,6 +72,11 @@ LW_LINE_STYLE_DASHED = 2
 # --- pane 구성: Plotly '지표 중심' 비중(가격 0.34 + 거래량 0.05 / 스토캐 0.26 / MACD 0.19 / RSI 0.16) 근사 ---
 PANE_KINDS = ("price", "stoch", "macd", "rsi")
 PANE_STRETCH = {"price": 39, "stoch": 26, "macd": 19, "rsi": 16}
+PANE_LABELS = {"price": "가격", "stoch": "스토캐", "macd": "MACD", "rsi": "RSI"}
+# pane 단독 확대 모드: iframe 내부 버튼 [전체 | 가격 | 스토캐 | MACD | RSI]. JS 만으로 stretch factor 를 재배분한다
+# (Streamlit rerun 없음 → 줌·팬·세로 줌 상태 유지). 나머지 pane 은 0 으로 숨기지 않고 SOLO_COLLAPSED_PX 띠로 접는다.
+SOLO_ALL = "all"
+SOLO_COLLAPSED_PX = 30
 PANE_SEPARATOR_COLOR = "#E0E3EB"
 PANE_SEPARATOR_HOVER_COLOR = "rgba(178, 181, 189, 0.35)"
 
@@ -510,13 +515,37 @@ _JS_TEMPLATE = """
   }, { capture: true, passive: false });
   wrap.addEventListener('dblclick', function (e) { if (overPriceAxis(e)) resetVertical(); }, true);
 
+  // ---- pane 단독 확대 모드: stretch factor 만 재배분 (rerun 없음 → 줌·팬·세로 줌 상태 유지).
+  //      나머지 pane 은 SOLO_COLLAPSED_PX 띠로 접는다(0 높이는 쓰지 않음). '전체' 로 초기 비중 복원.
+  var solo = { kind: SOLO_ALL };
+  function applySolo(kind) {
+    var panes = chart.panes();
+    var total = panes.reduce(function (a, p) { return a + p.getHeight(); }, 0);
+    var others = Math.max(0, PANES.length - 1);
+    PANES.forEach(function (p, i) {
+      if (!panes[i]) return;
+      if (kind === SOLO_ALL) { panes[i].setStretchFactor(p.stretch); return; }
+      // stretch 는 상대값 — 목표 px 를 그대로 factor 로 주면 비례 배분이 정확히 px 가 된다
+      panes[i].setStretchFactor(p.kind === kind ? Math.max(1, total - SOLO_COLLAPSED_PX * others) : SOLO_COLLAPSED_PX);
+    });
+    solo.kind = kind;
+    var btns = document.querySelectorAll('#lw-solo button');
+    for (var b = 0; b < btns.length; b++) btns[b].classList.toggle('on', btns[b].getAttribute('data-kind') === kind);
+    applyFixedScales();
+  }
+  var soloBtns = document.querySelectorAll('#lw-solo button');
+  for (var bi = 0; bi < soloBtns.length; bi++) {
+    soloBtns[bi].addEventListener('click', function (ev) { applySolo(ev.currentTarget.getAttribute('data-kind')); });
+  }
+
   var n = PAYLOAD.candles.length;
   if (n > WINDOW) { chart.timeScale().setVisibleLogicalRange({ from: n - WINDOW, to: n + 2 }); }
   else { chart.timeScale().fitContent(); }
   applyFixedScales();
   window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
-                  rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis };  // 검증·측정용 핸들
+                  rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis,
+                  solo: solo, applySolo: applySolo };  // 검증·측정용 핸들
 })();
 """
 
@@ -563,6 +592,7 @@ def build_lw_html(
         f"var MACD_COLORS = {json.dumps({'macd': MACD_LINE_COLOR, 'signal': MACD_SIGNAL_COLOR})};",
         f"var RSI_COLOR = {json.dumps(RSI_LINE_COLOR)};",
         f"var VZOOM_IN = {VZOOM_IN_FACTOR}; var VZOOM_OUT = {VZOOM_OUT_FACTOR};",
+        f"var SOLO_ALL = {json.dumps(SOLO_ALL)}; var SOLO_COLLAPSED_PX = {SOLO_COLLAPSED_PX};",
     ])
     return (
         "<!-- lw_builder stage2 -->\n"
@@ -573,6 +603,7 @@ def build_lw_html(
         f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:5;'
         f'font-size:12px;color:{TV_TEXT};background:rgba(255,255,255,0.85);padding:2px 6px;'
         f'border-radius:3px;pointer-events:none;">{caption_html}</div>\n'
+        f"{solo_buttons_html(panes)}"
         '  <div id="lw-chart" style="position:absolute;inset:0;"></div>\n'
         "</div>\n"
         f"<script>{vendor}</script>\n"
@@ -582,6 +613,20 @@ def build_lw_html(
 
 def _escape(text: str) -> str:
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def solo_buttons_html(panes: list[dict]) -> str:
+    """우상단 반투명 버튼 줄 [전체 | 가격 | 스토캐 | ...] — 현재 있는 pane 만. 가격축(≈70px)을 피해 오른쪽 여백을 둔다."""
+    buttons = [f'<button type="button" data-kind="{SOLO_ALL}" class="on">전체</button>']
+    buttons += [f'<button type="button" data-kind="{p["kind"]}">{PANE_LABELS[p["kind"]]}</button>' for p in panes]
+    style = ("#lw-solo button{background:rgba(255,255,255,0.82);border:1px solid #cfd3dc;border-radius:3px;"
+             f"padding:1px 7px;cursor:pointer;color:{TV_TEXT};font-size:11px;line-height:16px}}"
+             f"#lw-solo button.on{{background:{TV_TEXT};color:#fff;border-color:{TV_TEXT}}}")
+    return (
+        f"  <style>{style}</style>\n"
+        '  <div id="lw-solo" style="position:absolute;top:6px;right:80px;z-index:6;display:flex;gap:3px;">'
+        + "".join(buttons) + "</div>\n"
+    )
 
 
 LW_CONTROLS_CAPTION = (

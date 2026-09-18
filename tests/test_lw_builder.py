@@ -392,3 +392,32 @@ def test_vertical_zoom_is_scoped_to_price_axis_and_resettable():
     assert 0 < LW.VZOOM_IN_FACTOR < 1 < LW.VZOOM_OUT_FACTOR
     # 조작법 캡션에 세로 줌 안내
     assert "가격축 위 휠" in LW.LW_CONTROLS_CAPTION and "더블클릭" in LW.LW_CONTROLS_CAPTION
+
+
+# ============================================================ pane 단독 확대 모드
+def test_solo_buttons_follow_present_panes():
+    df = _pipeline_frame()
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    assert 'id="lw-solo"' in html
+    for kind, label in (("all", "전체"), ("price", "가격"), ("stoch", "스토캐"), ("macd", "MACD"), ("rsi", "RSI")):
+        assert f'data-kind="{kind}"' in html and f">{label}</button>" in html
+    assert 'data-kind="all" class="on"' in html                     # 초기 = 전체
+    # pane 이 없는 지표의 버튼은 없다
+    html2 = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="",
+                             show_stochastic=False, show_rsi=False)
+    assert 'data-kind="macd"' in html2 and 'data-kind="stoch"' not in html2 and 'data-kind="rsi"' not in html2
+    html3 = LW.build_lw_html(_frame(), "BTCUSDT", "1h", "[g]", chart_height=600, vendor_js="")
+    assert [k for k in ("price", "stoch", "macd", "rsi") if f'data-kind="{k}"' in html3] == ["price"]
+
+
+def test_solo_mode_is_js_only_stretch_redistribution():
+    html = LW.build_lw_html(_pipeline_frame(), "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    assert "function applySolo(kind)" in html and "setStretchFactor" in html
+    assert f"var SOLO_ALL = \"all\"; var SOLO_COLLAPSED_PX = {LW.SOLO_COLLAPSED_PX};" in html
+    assert LW.SOLO_COLLAPSED_PX == 30 and LW.SOLO_ALL == "all"
+    # 접힘은 최소 높이 띠 — 0 높이·pane 제거 API 를 쓰지 않는다
+    assert "removePane" not in html and "setHeight(0)" not in html
+    # 복원은 초기 비중(PANES[i].stretch)
+    assert "panes[i].setStretchFactor(p.stretch)" in html
+    # Streamlit 과 무관: 버튼 클릭 → JS 핸들러만
+    assert "addEventListener('click'" in html and "Streamlit.setComponentValue" not in html
