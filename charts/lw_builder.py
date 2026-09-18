@@ -361,8 +361,19 @@ _JS_TEMPLATE = """
   function guide(series, price, color, style) {
     series.createPriceLine({ price: price, color: color, lineWidth: 1, lineStyle: style, axisLabelVisible: false, title: '' });
   }
-  function fixedRange(series, lo, hi) {
-    series.applyOptions({ autoscaleInfoProvider: function () { return { priceRange: { minValue: lo, maxValue: hi } }; } });
+  // 고정 스케일 pane(스토캐 0~320 · RSI 0~100): autoScale 을 끄고 setVisibleRange 로 못 박는다.
+  // (autoscale 은 마커 여백을 더해 범위를 넓히므로 Plotly 의 고정 range 와 달라진다.) 축 더블클릭으로
+  // autoScale 이 켜져도 모든 시리즈에 같은 범위의 provider 를 걸어 크게 벗어나지 않게 한다.
+  var fixedScales = [];
+  function fixedRange(seriesList, lo, hi, margin) {
+    var provider = function () { return { priceRange: { minValue: lo, maxValue: hi }, margins: { above: 0, below: 0 } }; };
+    seriesList.forEach(function (s) { s.applyOptions({ autoscaleInfoProvider: provider }); });
+    var scale = seriesList[0].priceScale();
+    scale.applyOptions({ autoScale: false, scaleMargins: { top: margin, bottom: margin } });
+    fixedScales.push({ scale: scale, lo: lo, hi: hi });
+  }
+  function applyFixedScales() {
+    fixedScales.forEach(function (f) { try { f.scale.setVisibleRange({ from: f.lo, to: f.hi }); } catch (e) {} });
   }
   var paneOf = {};
   PANES.forEach(function (p, i) { paneOf[p.kind] = i; });
@@ -399,7 +410,8 @@ _JS_TEMPLATE = """
       if (!anchor) anchor = k;
     });
     PAYLOAD.stoch.separators.forEach(function (s) { guide(anchor, s, STOCH_SEP_COLOR, 0); });
-    fixedRange(anchor, 0, PAYLOAD.stoch.max_y);
+    fixedRange(Object.keys(stochK).map(function (k) { return stochK[k]; })
+               .concat(Object.keys(stochD).map(function (k) { return stochD[k]; })), 0, PAYLOAD.stoch.max_y, 0.02);
   }
 
   // ---- pane MACD: hist + macd/signal + 0선
@@ -411,6 +423,8 @@ _JS_TEMPLATE = """
     macdLine = line({ color: MACD_COLORS.macd, lineWidth: 1 }, mp); macdLine.setData(PAYLOAD.macd.macd);
     macdSignal = line({ color: MACD_COLORS.signal, lineWidth: 1 }, mp); macdSignal.setData(PAYLOAD.macd.signal);
     guide(macdLine, 0, STOCH_GUIDE_COLOR, 2);
+    // 가격 pane 의 8%/22% 마진(거래량 띠용)을 물려받지 않게 하위 pane 은 대칭 마진
+    macdLine.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
   }
 
   // ---- pane RSI: 라인 + 30/50/70
@@ -419,7 +433,7 @@ _JS_TEMPLATE = """
     var rp = paneOf.rsi;
     rsiLine = line({ color: RSI_COLOR, lineWidth: 1 }, rp); rsiLine.setData(PAYLOAD.rsi.line);
     PAYLOAD.rsi.guides.forEach(function (g) { guide(rsiLine, g.value, g.color, g.style); });
-    fixedRange(rsiLine, 0, 100);
+    fixedRange([rsiLine], 0, 100, 0.05);
   }
 
   // ---- 알람 마커 (createSeriesMarkers) — 텍스트 라벨 유지, 확정 봉 위치
@@ -475,6 +489,7 @@ _JS_TEMPLATE = """
   var n = PAYLOAD.candles.length;
   if (n > WINDOW) { chart.timeScale().setVisibleLogicalRange({ from: n - WINDOW, to: n + 2 }); }
   else { chart.timeScale().fitContent(); }
+  applyFixedScales();
   window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
                   rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis };  // 검증·측정용 핸들
@@ -526,6 +541,8 @@ def build_lw_html(
     ])
     return (
         "<!-- lw_builder stage2 -->\n"
+        # iframe 문서의 기본 body 마진(8px)을 없앤다 — 없으면 차트가 8px 밀려 시간축이 잘리고 pane 경계 좌표가 어긋난다.
+        "<style>html,body{margin:0;padding:0;overflow:hidden;}</style>\n"
         f'<div id="lw-wrap" style="position:relative;width:100%;height:{height}px;'
         f'background:{TV_BACKGROUND};font-family:-apple-system,Segoe UI,Roboto,sans-serif;">\n'
         f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:5;'
