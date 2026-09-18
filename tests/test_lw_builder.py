@@ -4,7 +4,7 @@
 - gate_context 필수 인자, 기준선 없음 폴백, 기준선 2개 라벨
 - 벤더 파일 존재·버전 헤더, 동작 요건 옵션(autoScale·휠·팬·autoSize), 색 토큰 승계
 - 렌더 스모크: components.html 문자열 생성·높이 전달, 2단계 캡션
-- main 배선: 차트 엔진 라디오, 기본 Plotly, plotly_builder 는 lw_builder 를 모른다
+- main 배선: 차트 엔진 라디오(기본 LW, Plotly 회귀 경로), plotly_builder 는 lw_builder 를 모른다
 """
 import hashlib
 import json
@@ -199,15 +199,15 @@ def test_render_skips_empty_frame(monkeypatch):
 
 
 # ------------------------------------------------------------ 배선 · Plotly 무영향
-def test_main_wires_engine_radio_default_plotly():
+def test_main_wires_engine_radio_default_lw():
     with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as fh:
         body = fh.read()
-    assert 'CHART_ENGINES = ("Plotly", "LW")' in body
-    assert 'DEFAULT_CHART_ENGINE = "Plotly"' in body
+    assert 'CHART_ENGINES = ("LW", "Plotly")' in body            # Plotly 는 회귀 경로로 유지
+    assert 'DEFAULT_CHART_ENGINE = "LW"' in body                     # 2단계 완료 시점 전환
     assert '"차트 엔진", options=list(CHART_ENGINES)' in body
     assert "render_lw_chart(" in body and "gate_context=" in body or "gate_context_for(" in body
     import main as M
-    assert M.DEFAULT_CHART_ENGINE == "Plotly" and M.CHART_ENGINES[0] == "Plotly"
+    assert M.DEFAULT_CHART_ENGINE == "LW" and set(M.CHART_ENGINES) == {"LW", "Plotly"}
     # gate_context_for 는 display.lw_gate_context.gate_label 에 위임한다 (네트워크 없이 확인)
     M.gate_label = lambda symbol, interval: f"[{symbol}/{interval}]"
     assert M.gate_context_for("BTCUSDT", "1h") == "[BTCUSDT/1h]"

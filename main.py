@@ -35,9 +35,9 @@ DEFAULT_INTERVAL = "1h"
 # 정의·동작이 같다(정의 차등 없음). 토글은 MACD 계산·알람·차트 패널을 함께 켜고 끈다.
 MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 
-# 차트 엔진(1단계): Plotly 기본 유지 — LW 검수 통과 전까지 기본값을 바꾸지 않는다.
-CHART_ENGINES = ("Plotly", "LW")
-DEFAULT_CHART_ENGINE = "Plotly"
+# 차트 엔진: 2단계 완료 시점에 기본을 LW 로 전환(위임 §6, 손맛 검수 통과). Plotly 는 회귀 경로로 유지.
+CHART_ENGINES = ("LW", "Plotly")
+DEFAULT_CHART_ENGINE = "LW"
 
 # 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 8cdd4e5 원칙 승계). 공급원은 main 에서 체리픽한
 # 정의 파일(analysis/wave_align_gate_forward 등)을 display/lw_gate_context 가 import 만 해서 라이브 계산한다.
@@ -108,8 +108,8 @@ def render_sidebar() -> dict:
     chart_engine = st.sidebar.radio(
         "차트 엔진", options=list(CHART_ENGINES), index=list(CHART_ENGINES).index(DEFAULT_CHART_ENGINE),
         horizontal=True,
-        help="Plotly=현행. LW=lightweight-charts 1단계(가격 패널만: 캔들·이평·거래량·기준선·게이트 라벨). "
-             "하위 지표·알람 마커는 2단계 예정.",
+        help="LW=lightweight-charts(기본): 가격·스토캐 3중·MACD·RSI pane, 알람 마커, 게이트 라벨·구조 기준선, "
+             "패널 경계 드래그·세로 줌. Plotly=이전 엔진(회귀 확인용). 표시 모드는 Plotly 에만 적용.",
     )
     show_stoch = st.sidebar.checkbox("스토캐 패널", value=True)
     # 값은 plotly_builder가 분기하는 문자열 그대로여야 한다("Separated" 철자 주의).
