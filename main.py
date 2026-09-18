@@ -181,6 +181,7 @@ def main():
         render_lw_chart(
             df, symbol, interval, gate_context_for(symbol, interval),
             chart_height=cfg["chart_height"], struct_reference=None,
+            show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
         )
         return
 

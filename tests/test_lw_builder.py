@@ -75,8 +75,9 @@ def test_volume_colors_follow_bull_bear_tokens():
 
 
 def test_payload_without_ohlc_or_empty_is_empty():
-    assert LW.frame_to_lw_payload(pd.DataFrame()) == {"candles": [], "volume": [], "mas": {}}
-    assert LW.frame_to_lw_payload(pd.DataFrame({"close": [1.0]})) == {"candles": [], "volume": [], "mas": {}}
+    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None}
+    assert LW.frame_to_lw_payload(pd.DataFrame()) == empty
+    assert LW.frame_to_lw_payload(pd.DataFrame({"close": [1.0]})) == empty
 
 
 # ------------------------------------------------------------ 계약: gate_context · 기준선
@@ -166,8 +167,8 @@ def test_html_embeds_vendor_payload_and_window():
     assert f"var WINDOW = {RECENT_WINDOW};" in html
     assert "height:777px" in html
     assert '"autoScale": true' in html and '"autoSize": true' in html
-    assert "LightweightCharts.CandlestickSeries" in html and "LightweightCharts.HistogramSeries" in html
-    assert "LightweightCharts.LineSeries" in html
+    assert "var LWC = LightweightCharts;" in html
+    assert "LWC.CandlestickSeries" in html and "LWC.HistogramSeries" in html and "LWC.LineSeries" in html
     assert "window.__lw" in html
     # 벤더 JS 를 기본 경로에서 실제로 인라인한다.
     full = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600)
@@ -183,8 +184,9 @@ def test_render_smoke_calls_components_html_with_height(monkeypatch):
     assert len(calls) == 1
     html, kw = calls[0]
     assert kw["height"] == 1000 and kw.get("scrolling") is False
-    assert html.startswith("<!-- lw_builder stage1 -->") and LW.VENDOR_HEADER_MARK in html
-    assert captions == [LW.STAGE2_CAPTION] and "2단계" in LW.STAGE2_CAPTION
+    assert html.startswith("<!-- lw_builder stage2 -->") and LW.VENDOR_HEADER_MARK in html
+    assert captions == [LW.LW_CONTROLS_CAPTION]
+    assert all(w in LW.LW_CONTROLS_CAPTION for w in ("휠", "가격축", "더블클릭", "패널 경계"))
 
 
 def test_render_skips_empty_frame(monkeypatch):
@@ -213,3 +215,86 @@ def test_plotly_builder_is_untouched_by_lw_layer():
         src = fh.read()
     assert "lw_builder" not in src and "lightweight-charts.standalone" not in src
     assert "streamlit_lightweight_charts" not in open(LW.__file__, encoding="utf-8").read()
+
+
+# ============================================================ 2단계: pane 구성 직렬화
+def _pipeline_frame(n=700):
+    """main.load_frame 과 같은 지표 순서 — 스토캐 3층·MACD·RSI 컬럼 포함."""
+    from indicators.moving_averages import add_moving_averages
+    from indicators.oscillators import add_macd, add_rsi
+    from indicators.stochastic import add_stochastic_slow_layers
+
+    rng = np.random.default_rng(20260918)
+    idx = pd.date_range("2026-01-01", periods=n, freq="h")
+    close = 100 + np.cumsum(rng.normal(0, 1.1, n))
+    df = pd.DataFrame({
+        "open": close + rng.normal(0, 0.2, n), "high": close + np.abs(rng.normal(0, 0.7, n)),
+        "low": close - np.abs(rng.normal(0, 0.7, n)), "close": close, "volume": rng.uniform(1, 10, n),
+    }, index=idx)
+    return add_rsi(add_macd(add_stochastic_slow_layers(add_moving_averages(df))))
+
+
+def test_stoch_pane_payload_keeps_three_offset_layers_and_guides():
+    from config.settings import STOCH_BAND, STOCH_GAP, STOCH_LAYERS, STOCH_MAX_Y
+
+    payload = LW.frame_to_lw_payload(_pipeline_frame())
+    st_ = payload["stoch"]
+    assert st_ and [L["label"] for L in st_["layers"]] == [l["label"] for l in STOCH_LAYERS]
+    for L, cfg in zip(st_["layers"], STOCH_LAYERS):
+        assert L["offset"] == cfg["offset"] and L["k_color"] == cfg["k_color"] and L["d_color"] == cfg["d_color"]
+        assert L["guides"] == [20 + cfg["offset"], 80 + cfg["offset"]]          # 층당 20/80
+        vals = [p["value"] for p in L["k"]]
+        assert min(vals) >= cfg["offset"] - 1e-9 and max(vals) <= cfg["offset"] + 100 + 1e-9   # 오프셋 배치
+        assert all(np.isfinite(p["value"]) for p in L["k"] + L["d"])
+    assert st_["separators"] == [STOCH_BAND + STOCH_GAP / 2, STOCH_BAND * 2 + STOCH_GAP * 1.5]
+    assert st_["max_y"] == STOCH_MAX_Y == 320
+    json.dumps(payload)
+
+
+def test_macd_and_rsi_pane_payloads_follow_plotly_tokens():
+    from config.settings import RSI_PARAMS
+
+    payload = LW.frame_to_lw_payload(_pipeline_frame())
+    macd = payload["macd"]
+    assert macd and len(macd["hist"]) == len(macd["macd"]) == len(macd["signal"]) > 0
+    colors = {h["color"] for h in macd["hist"]}
+    assert colors <= set(LW.MACD_HIST_COLORS.values()) and len(colors) >= 2
+    # plotly add_macd_panel 규칙 그대로: 직전 대비 증가=진한 적(부호 무관), 감소&0 이상=연한 적, 감소&0 미만=진한 청
+    assert LW.macd_hist_color(2.0, 1.0) == "#FF4D4D" and LW.macd_hist_color(1.0, 2.0) == "#F7B6B6"
+    assert LW.macd_hist_color(-2.0, -1.0) == "#2F6BFF" and LW.macd_hist_color(-1.0, -2.0) == "#FF4D4D"
+    assert LW.macd_hist_color(1.0, float("nan")) == "#FF4D4D"
+
+    rsi = payload["rsi"]
+    assert rsi and all(0 <= p["value"] <= 100 for p in rsi["line"])
+    assert [g["value"] for g in rsi["guides"]] == [RSI_PARAMS["overbought"], RSI_PARAMS["oversold"], RSI_PARAMS["midline"]]
+    assert [g["value"] for g in rsi["guides"]] == [70, 30, 50]
+
+
+def test_pane_layout_respects_toggles_and_missing_columns():
+    payload = LW.frame_to_lw_payload(_pipeline_frame())
+    full = LW.pane_layout(payload)
+    assert [p["kind"] for p in full] == ["price", "stoch", "macd", "rsi"]
+    assert [p["stretch"] for p in full] == [39, 26, 19, 16]           # 지표 중심 0.39/0.26/0.19/0.16 근사
+    assert LW.PANE_STRETCH["stoch"] + LW.PANE_STRETCH["macd"] + LW.PANE_STRETCH["rsi"] == 61
+    off = LW.pane_layout(payload, show_stochastic=False, show_rsi=False)
+    assert [p["kind"] for p in off] == ["price", "macd"]
+    # 컬럼 없음(축소 폴백): MACD 컬럼이 없는 프레임 → macd pane 없음, 토글이 켜져 있어도
+    df = _pipeline_frame().drop(columns=[c for c in _pipeline_frame().columns if c.startswith("macd")])
+    p2 = LW.frame_to_lw_payload(df)
+    assert p2["macd"] is None
+    assert [p["kind"] for p in LW.pane_layout(p2)] == ["price", "stoch", "rsi"]
+    # OHLC 만 있는 프레임 → 가격 pane 하나
+    assert [p["kind"] for p in LW.pane_layout(LW.frame_to_lw_payload(_frame()))] == ["price"]
+
+
+def test_html_declares_panes_and_resize_option():
+    df = _pipeline_frame()
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    assert '"enableResize": true' in html                              # pane 경계 드래그
+    assert 'var PANES = [{"kind": "price", "stretch": 39}, {"kind": "stoch", "stretch": 26}' in html
+    assert "setStretchFactor" in html and "chart.panes()" in html
+    assert '"axisDoubleClickReset": {"time": true, "price": true}' in html
+    assert '"axisPressedMouseMove": true' in html
+    html2 = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="",
+                             show_stochastic=False, show_macd=False, show_rsi=False)
+    assert 'var PANES = [{"kind": "price", "stretch": 39}];' in html2

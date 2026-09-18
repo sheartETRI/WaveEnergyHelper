@@ -1,27 +1,22 @@
-"""lightweight-charts 렌더 계층 — 1단계: 가격 패널만, Plotly 와 병존.
+"""lightweight-charts 렌더 계층 — Plotly 와 병존 (2단계: 하위 pane · 마커 · 게이트 공급 · 세로 줌).
 
-구조 결정(위임장 §0 고정):
+구조 결정(1단계 위임장 §0 고정, 2단계에도 유지):
 - 서드파티 Streamlit 래퍼를 쓰지 않는다. ``st.components.v1.html`` 에 lightweight-charts
   standalone JS 를 직접 임베드한다.
 - JS 는 CDN 이 아니라 저장소에 벤더링한다: ``charts/vendor/lightweight-charts.standalone.js``
   (버전은 VENDOR_VERSION 과 파일 헤더 주석에 명기). iframe 은 저장소 파일을 못 읽으므로
   HTML 문자열에 인라인한다.
-- ``charts/plotly_builder.py`` 는 수정하지 않는다 — 색·굵기·표시 창 토큰만 import 해 승계한다.
+- ``charts/plotly_builder.py`` 는 수정하지 않는다 — 색·굵기·표시 창·마커 스타일 토큰만 import 해 승계한다.
 
-1단계 범위: 캔들 + 이평선 전부 + 거래량 히스토그램(하단 오버레이) + 구조 기준선(가격선 2개)
-+ 게이트 상태 라벨(차트 위 HTML 오버레이 캡션). 스토캐·MACD·RSI·알람 마커는 2단계 —
-여기서는 "2단계 예정" 캡션만 낸다.
+2단계 범위(LW v5 panes — 스택 차트가 아니라 단일 차트의 pane):
+- pane 0 가격(캔들 + 이평 + 거래량 하단 오버레이 + 구조 기준선 + 게이트 캡션)
+- pane 스토캐 3중: 한 pane 에 3층 오프셋 배치(현행 승계), 층당 20/80 참조선, 층 분리선 2
+- pane MACD: hist 히스토그램 + macd/signal 라인 + 0선
+- pane RSI: 라인 + 30/50/70 참조선(현행 구성 그대로)
+- pane 초기 비중은 Plotly '지표 중심' 세트 근사(PANE_STRETCH), 경계 드래그 리사이즈 활성.
+- 꺼진 패널·컬럼 없는 패널은 pane 을 만들지 않는다(축소 폴백).
 
-계약 승계(main 브랜치 8cdd4e5 의 원칙):
-- ``gate_context`` 는 **필수 인자**다. 가격 화면이 상위 게이트 상태 없이 단독으로 표시되지
-  않게 한다. 값의 산출은 호출부(display) 몫이며 여기서는 표기만 한다.
-- ``struct_reference`` 는 ``{"reference_low": float, "line_price": float}`` (직전 확정 swing 저점과
-  ×0.995 기준선). None 이면 선을 그리지 않고 캡션에 "기준선 없음" 을 병기한다. 라벨은 상태
-  기술형으로 고정 — 손절 권고 류 표현을 쓰지 않는다.
-
-동작 요건(위임장 §2): x 줌·팬 시 y 자동 밀착(rightPriceScale.autoScale), 휠 줌·드래그 팬·
-크로스헤어, 컨테이너 폭 추종(autoSize=ResizeObserver), 높이는 사이드바 셀렉트 승계,
-상승 적/하락 청 토큰 승계.
+계약 승계(main 8cdd4e5 원칙): ``gate_context`` 필수 인자, ``struct_reference`` None → "기준선 없음".
 """
 from __future__ import annotations
 
@@ -37,11 +32,20 @@ from charts.plotly_builder import (
     COLOR_BEAR,
     COLOR_BULL,
     RECENT_WINDOW,
+    STOCH_GUIDES,
     TV_BACKGROUND,
     TV_GRID,
     TV_TEXT,
 )
-from config.settings import MA_COLORS, MA_LINE_WIDTHS
+from config.settings import (
+    MA_COLORS,
+    MA_LINE_WIDTHS,
+    RSI_PARAMS,
+    STOCH_BAND,
+    STOCH_GAP,
+    STOCH_LAYERS,
+    STOCH_MAX_Y,
+)
 
 VENDOR_VERSION = "5.2.1"
 VENDOR_PATH = os.path.join(
@@ -55,14 +59,32 @@ STRUCT_LINE_LABEL = "패턴 저점 기준선 (검증 중)"
 STRUCT_LINE_MISSING = "기준선 없음"
 STRUCT_LOW_COLOR = "#8D6E63"
 STRUCT_LINE_COLOR = "#EF5350"
-STAGE2_CAPTION = "LW 엔진 1단계: 가격 패널만. 스토캐·MACD·RSI·알람 마커는 2단계 예정."
 
 DASHED_MA_PERIODS = {40, 80}          # plotly_builder 와 동일: 40·80 은 점선 보조선
-VOLUME_SCALE_TOP_MARGIN = 0.80        # 거래량은 하단 20% 오버레이
+VOLUME_SCALE_TOP_MARGIN = 0.80        # 거래량은 가격 pane 하단 20% 오버레이
 PRICE_SCALE_BOTTOM_MARGIN = 0.22      # 캔들이 거래량 띠와 겹치지 않게
 LW_LINE_STYLE_SOLID = 0
 LW_LINE_STYLE_DOTTED = 1
 LW_LINE_STYLE_DASHED = 2
+
+# --- pane 구성: Plotly '지표 중심' 비중(가격 0.34 + 거래량 0.05 / 스토캐 0.26 / MACD 0.19 / RSI 0.16) 근사 ---
+PANE_KINDS = ("price", "stoch", "macd", "rsi")
+PANE_STRETCH = {"price": 39, "stoch": 26, "macd": 19, "rsi": 16}
+PANE_SEPARATOR_COLOR = "#E0E3EB"
+PANE_SEPARATOR_HOVER_COLOR = "rgba(178, 181, 189, 0.35)"
+
+# --- 하위 패널 토큰 (plotly_builder 의 값 그대로) ---
+STOCH_GUIDE_COLOR = "rgba(120,120,120,0.9)"
+STOCH_SEPARATOR_COLOR = "rgba(80,80,80,0.7)"
+MACD_LINE_COLOR = "#FF3344"
+MACD_SIGNAL_COLOR = "#2F6BFF"
+MACD_HIST_COLORS = {"up_strong": "#FF4D4D", "up_weak": "#F7B6B6", "down_strong": "#2F6BFF", "down_weak": "#AFC6FF"}
+RSI_LINE_COLOR = "#000000"
+RSI_GUIDE_STYLE = (   # (값 키, 색, 선 스타일) — plotly add_rsi_panel 의 ob/os/mid 구성
+    ("overbought", "rgba(255,165,0,0.5)", LW_LINE_STYLE_DASHED),
+    ("oversold", "rgba(0,255,255,0.5)", LW_LINE_STYLE_DASHED),
+    ("midline", "rgba(0,128,0,0.8)", LW_LINE_STYLE_DOTTED),
+)
 
 
 # ------------------------------------------------------------------ 토큰
@@ -83,6 +105,18 @@ def ma_styles() -> dict:
     }
 
 
+def macd_hist_color(cur, prev) -> str:
+    """plotly add_macd_panel 의 4색 규칙: 0 위/아래 × 직전 대비 증감."""
+    base = 0.0 if pd.isna(prev) else float(prev)
+    if cur >= base:
+        return MACD_HIST_COLORS["up_strong"]
+    if cur >= 0:
+        return MACD_HIST_COLORS["up_weak"]
+    if cur <= base:
+        return MACD_HIST_COLORS["down_strong"]
+    return MACD_HIST_COLORS["down_weak"]
+
+
 # ------------------------------------------------------------------ 직렬화
 def _unix_seconds(ts: pd.Timestamp) -> int:
     """naive 인덱스는 UTC 로 간주한다 — LW 도 UTC 로 표시하므로 Plotly 가 보여주던 벽시계와 같다."""
@@ -92,22 +126,81 @@ def _unix_seconds(ts: pd.Timestamp) -> int:
     return int(ts.timestamp())
 
 
+def _line_points(times: list[int], series: pd.Series) -> list[dict]:
+    return [{"time": t, "value": float(v)} for t, v in zip(times, series) if pd.notna(v)]
+
+
+def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[int]]:
+    frame = df.copy()
+    frame.index = pd.to_datetime(frame.index)
+    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
+    return frame, [_unix_seconds(ts) for ts in frame.index]
+
+
+def stoch_payload(frame: pd.DataFrame, times: list[int]) -> Optional[dict]:
+    """스토캐 3중 — 한 pane 에 오프셋 배치(shifted 컬럼 그대로), 층당 20/80 참조선, 분리선 2."""
+    layers = []
+    for layer in STOCH_LAYERS:
+        label, offset = layer["label"], float(layer["offset"])
+        k_col, d_col = f"stoch_k_shifted_{label}", f"stoch_d_shifted_{label}"
+        if k_col not in frame.columns or d_col not in frame.columns:
+            continue
+        k, d = _line_points(times, frame[k_col]), _line_points(times, frame[d_col])
+        if not k:
+            continue
+        layers.append({
+            "label": label, "offset": offset, "k": k, "d": d,
+            "k_color": layer["k_color"], "d_color": layer["d_color"],
+            "guides": [float(g + offset) for g in STOCH_GUIDES],
+        })
+    if not layers:
+        return None
+    return {
+        "layers": layers,
+        "separators": [STOCH_BAND + STOCH_GAP / 2, STOCH_BAND * 2 + STOCH_GAP * 1.5],
+        "max_y": float(STOCH_MAX_Y),
+    }
+
+
+def macd_payload(frame: pd.DataFrame, times: list[int]) -> Optional[dict]:
+    if not {"macd", "macd_signal", "macd_hist"}.issubset(frame.columns):
+        return None
+    prev = frame["macd_hist_prev"] if "macd_hist_prev" in frame.columns else frame["macd_hist"].shift(1)
+    hist = [
+        {"time": t, "value": float(c), "color": macd_hist_color(float(c), p)}
+        for t, c, p in zip(times, frame["macd_hist"], prev) if pd.notna(c)
+    ]
+    macd, signal = _line_points(times, frame["macd"]), _line_points(times, frame["macd_signal"])
+    if not macd:
+        return None
+    return {"hist": hist, "macd": macd, "signal": signal}
+
+
+def rsi_payload(frame: pd.DataFrame, times: list[int]) -> Optional[dict]:
+    if "rsi" not in frame.columns:
+        return None
+    line = _line_points(times, frame["rsi"])
+    if not line:
+        return None
+    guides = [{"value": float(RSI_PARAMS[key]), "color": color, "style": style}
+              for key, color, style in RSI_GUIDE_STYLE]
+    return {"line": line, "guides": guides}
+
+
 def frame_to_lw_payload(df: pd.DataFrame) -> dict:
     """데이터프레임 → LW setData 용 JSON 직렬화 가능 dict.
 
     - 시간 오름차순 정렬, 중복 시각은 마지막 행만(LW 는 단조 증가 시각을 요구).
     - NaN 은 시리즈별로 그 점만 뺀다(캔들은 OHLC 중 하나라도 NaN 이면 제외).
     - 거래량 색은 종가≥시가 적 / 그 외 청 (plotly_builder.add_volume_panel 과 동일 규칙).
+    - 하위 패널(stoch/macd/rsi)은 컬럼이 없으면 None — pane 을 만들지 않는다.
     """
+    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None}
     required = {"open", "high", "low", "close"}
     if df is None or df.empty or not required.issubset(df.columns):
-        return {"candles": [], "volume": [], "mas": {}}
+        return empty
 
-    frame = df.copy()
-    frame.index = pd.to_datetime(frame.index)
-    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
-    times = [_unix_seconds(ts) for ts in frame.index]
-
+    frame, times = _normalize(df)
     candles, volume = [], []
     ohlc_ok = frame[["open", "high", "low", "close"]].notna().all(axis=1).to_numpy()
     has_volume = "volume" in frame.columns
@@ -123,13 +216,26 @@ def frame_to_lw_payload(df: pd.DataFrame) -> dict:
     mas: dict = {}
     for period in MA_COLORS:
         col = f"MA{period}"
-        if col not in frame.columns:
-            continue
-        series = frame[col]
-        pts = [{"time": t, "value": float(v)} for t, v in zip(times, series) if pd.notna(v)]
-        if pts:
-            mas[str(period)] = pts
-    return {"candles": candles, "volume": volume, "mas": mas}
+        if col in frame.columns:
+            pts = _line_points(times, frame[col])
+            if pts:
+                mas[str(period)] = pts
+    return {
+        "candles": candles, "volume": volume, "mas": mas,
+        "stoch": stoch_payload(frame, times),
+        "macd": macd_payload(frame, times),
+        "rsi": rsi_payload(frame, times),
+    }
+
+
+def pane_layout(payload: dict, *, show_stochastic: bool = True, show_macd: bool = True,
+                show_rsi: bool = True) -> list[dict]:
+    """pane 목록(순서 = 인덱스). 가격은 항상 0. 토글 꺼짐·데이터 없음이면 pane 을 만들지 않는다."""
+    panes = [{"kind": "price", "stretch": PANE_STRETCH["price"]}]
+    for kind, on in (("stoch", show_stochastic), ("macd", show_macd), ("rsi", show_rsi)):
+        if on and payload.get(kind):
+            panes.append({"kind": kind, "stretch": PANE_STRETCH[kind]})
+    return panes
 
 
 def struct_reference_lines(struct_reference: Optional[dict]) -> list[dict]:
@@ -150,11 +256,16 @@ def struct_reference_lines(struct_reference: Optional[dict]) -> list[dict]:
 
 # ------------------------------------------------------------------ HTML
 def chart_options() -> dict:
-    """createChart 옵션 — 동작 요건(§2)을 여기 한곳에 둔다."""
+    """createChart 옵션 — 동작 요건을 여기 한곳에 둔다."""
     return {
         "autoSize": True,   # ResizeObserver 로 컨테이너 폭·높이 추종
-        "layout": {"background": {"type": "solid", "color": TV_BACKGROUND}, "textColor": TV_TEXT,
-                   "attributionLogo": False},
+        "layout": {
+            "background": {"type": "solid", "color": TV_BACKGROUND}, "textColor": TV_TEXT,
+            "attributionLogo": False,
+            # pane 경계 드래그 리사이즈 (v5)
+            "panes": {"enableResize": True, "separatorColor": PANE_SEPARATOR_COLOR,
+                      "separatorHoverColor": PANE_SEPARATOR_HOVER_COLOR},
+        },
         "grid": {"vertLines": {"color": TV_GRID}, "horzLines": {"color": TV_GRID}},
         "rightPriceScale": {"autoScale": True, "borderVisible": False,
                             "scaleMargins": {"top": 0.08, "bottom": PRICE_SCALE_BOTTOM_MARGIN}},
@@ -163,7 +274,8 @@ def chart_options() -> dict:
         "crosshair": {"mode": 0},   # Normal — 자유 크로스헤어
         "handleScroll": {"mouseWheel": True, "pressedMouseMove": True,
                          "horzTouchDrag": True, "vertTouchDrag": False},
-        "handleScale": {"mouseWheel": True, "pinch": True, "axisPressedMouseMove": True},
+        "handleScale": {"mouseWheel": True, "pinch": True, "axisPressedMouseMove": True,
+                        "axisDoubleClickReset": {"time": True, "price": True}},
     }
 
 
@@ -183,34 +295,85 @@ def load_vendor_js(path: str = VENDOR_PATH) -> str:
 
 _JS_TEMPLATE = """
 (function () {
+  var LWC = LightweightCharts;
   var el = document.getElementById('lw-chart');
-  var chart = LightweightCharts.createChart(el, OPTS);
-  var candles = chart.addSeries(LightweightCharts.CandlestickSeries, CANDLE_OPTS);
+  var chart = LWC.createChart(el, OPTS);
+  var LINE_BASE = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+  function line(opts, pane) { return chart.addSeries(LWC.LineSeries, Object.assign({}, LINE_BASE, opts), pane); }
+  function guide(series, price, color, style) {
+    series.createPriceLine({ price: price, color: color, lineWidth: 1, lineStyle: style, axisLabelVisible: false, title: '' });
+  }
+  function fixedRange(series, lo, hi) {
+    series.applyOptions({ autoscaleInfoProvider: function () { return { priceRange: { minValue: lo, maxValue: hi } }; } });
+  }
+  var paneOf = {};
+  PANES.forEach(function (p, i) { paneOf[p.kind] = i; });
+
+  // ---- pane 0: 가격 + 이평 + 거래량 오버레이 + 구조 기준선
+  var candles = chart.addSeries(LWC.CandlestickSeries, CANDLE_OPTS, 0);
   candles.setData(PAYLOAD.candles);
-  var volume = chart.addSeries(LightweightCharts.HistogramSeries, {
-    priceFormat: { type: 'volume' }, priceScaleId: 'volume',
-    lastValueVisible: false, priceLineVisible: false,
-  });
-  chart.priceScale('volume').applyOptions({ scaleMargins: { top: VOLUME_TOP, bottom: 0 } });
+  var volume = chart.addSeries(LWC.HistogramSeries, {
+    priceFormat: { type: 'volume' }, priceScaleId: 'volume', lastValueVisible: false, priceLineVisible: false,
+  }, 0);
+  volume.priceScale().applyOptions({ scaleMargins: { top: VOLUME_TOP, bottom: 0 } });
   volume.setData(PAYLOAD.volume);
   var maSeries = {};
   Object.keys(PAYLOAD.mas).forEach(function (period) {
-    var st = MA_STYLES[period] || { color: '#888888', width: 1, style: 0 };
-    var s = chart.addSeries(LightweightCharts.LineSeries, {
-      color: st.color, lineWidth: st.width, lineStyle: st.style,
-      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-    });
-    s.setData(PAYLOAD.mas[period]);
-    maSeries[period] = s;
+    var s = MA_STYLES[period] || { color: '#888888', width: 1, style: 0 };
+    var ser = line({ color: s.color, lineWidth: s.width, lineStyle: s.style }, 0);
+    ser.setData(PAYLOAD.mas[period]);
+    maSeries[period] = ser;
   });
   STRUCT_LINES.forEach(function (l) {
     candles.createPriceLine({ price: l.price, color: l.color, lineWidth: 1, lineStyle: l.style,
                               axisLabelVisible: true, title: l.title });
   });
+
+  // ---- pane 스토캐 3중 (한 pane 에 오프셋 배치, 층당 20/80, 분리선 2)
+  var stochK = {}, stochD = {};
+  if (PAYLOAD.stoch && paneOf.stoch !== undefined) {
+    var sp = paneOf.stoch, anchor = null;
+    PAYLOAD.stoch.layers.forEach(function (L) {
+      var k = line({ color: L.k_color, lineWidth: 1 }, sp); k.setData(L.k);
+      var d = line({ color: L.d_color, lineWidth: 1 }, sp); d.setData(L.d);
+      L.guides.forEach(function (g) { guide(k, g, STOCH_GUIDE_COLOR, 2); });
+      stochK[L.label] = k; stochD[L.label] = d;
+      if (!anchor) anchor = k;
+    });
+    PAYLOAD.stoch.separators.forEach(function (s) { guide(anchor, s, STOCH_SEP_COLOR, 0); });
+    fixedRange(anchor, 0, PAYLOAD.stoch.max_y);
+  }
+
+  // ---- pane MACD: hist + macd/signal + 0선
+  var macdLine = null, macdHist = null, macdSignal = null;
+  if (PAYLOAD.macd && paneOf.macd !== undefined) {
+    var mp = paneOf.macd;
+    macdHist = chart.addSeries(LWC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, base: 0 }, mp);
+    macdHist.setData(PAYLOAD.macd.hist);
+    macdLine = line({ color: MACD_COLORS.macd, lineWidth: 1 }, mp); macdLine.setData(PAYLOAD.macd.macd);
+    macdSignal = line({ color: MACD_COLORS.signal, lineWidth: 1 }, mp); macdSignal.setData(PAYLOAD.macd.signal);
+    guide(macdLine, 0, STOCH_GUIDE_COLOR, 2);
+  }
+
+  // ---- pane RSI: 라인 + 30/50/70
+  var rsiLine = null;
+  if (PAYLOAD.rsi && paneOf.rsi !== undefined) {
+    var rp = paneOf.rsi;
+    rsiLine = line({ color: RSI_COLOR, lineWidth: 1 }, rp); rsiLine.setData(PAYLOAD.rsi.line);
+    PAYLOAD.rsi.guides.forEach(function (g) { guide(rsiLine, g.value, g.color, g.style); });
+    fixedRange(rsiLine, 0, 100);
+  }
+
+  // ---- pane 비중 (지표 중심 근사) — 경계 드래그로 사용자가 바꿀 수 있다
+  var panes = chart.panes();
+  PANES.forEach(function (p, i) { if (panes[i]) panes[i].setStretchFactor(p.stretch); });
+
   var n = PAYLOAD.candles.length;
   if (n > WINDOW) { chart.timeScale().setVisibleLogicalRange({ from: n - WINDOW, to: n + 2 }); }
   else { chart.timeScale().fitContent(); }
-  window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries };  // 검증·측정용 핸들
+  window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
+                  stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
+                  rsi: rsiLine };  // 검증·측정용 핸들
 })();
 """
 
@@ -223,6 +386,9 @@ def build_lw_html(
     *,
     chart_height: int,
     struct_reference: Optional[dict] = None,
+    show_stochastic: bool = True,
+    show_macd: bool = True,
+    show_rsi: bool = True,
     vendor_js: Optional[str] = None,
 ) -> str:
     """components.html 에 넘길 HTML 문자열.
@@ -232,6 +398,7 @@ def build_lw_html(
     if not isinstance(gate_context, str) or not gate_context.strip():
         raise ValueError("gate_context 는 필수다 — 게이트 상태 라벨 없이 가격 화면을 그리지 않는다")
     payload = frame_to_lw_payload(df)
+    panes = pane_layout(payload, show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi)
     lines = struct_reference_lines(struct_reference)
     struct_caption = "" if lines else f" · {STRUCT_LINE_MISSING}"
     caption = f"{symbol} {display_interval} · {gate_context}{struct_caption}"
@@ -240,15 +407,20 @@ def build_lw_html(
 
     consts = "\n".join([
         f"var PAYLOAD = {json.dumps(payload, ensure_ascii=False)};",
+        f"var PANES = {json.dumps(panes)};",
         f"var OPTS = {json.dumps(chart_options(), ensure_ascii=False)};",
         f"var CANDLE_OPTS = {json.dumps(candle_options())};",
         f"var MA_STYLES = {json.dumps(ma_styles())};",
         f"var STRUCT_LINES = {json.dumps(lines, ensure_ascii=False)};",
         f"var VOLUME_TOP = {VOLUME_SCALE_TOP_MARGIN};",
         f"var WINDOW = {RECENT_WINDOW};",
+        f"var STOCH_GUIDE_COLOR = {json.dumps(STOCH_GUIDE_COLOR)};",
+        f"var STOCH_SEP_COLOR = {json.dumps(STOCH_SEPARATOR_COLOR)};",
+        f"var MACD_COLORS = {json.dumps({'macd': MACD_LINE_COLOR, 'signal': MACD_SIGNAL_COLOR})};",
+        f"var RSI_COLOR = {json.dumps(RSI_LINE_COLOR)};",
     ])
     return (
-        "<!-- lw_builder stage1 -->\n"
+        "<!-- lw_builder stage2 -->\n"
         f'<div id="lw-wrap" style="position:relative;width:100%;height:{height}px;'
         f'background:{TV_BACKGROUND};font-family:-apple-system,Segoe UI,Roboto,sans-serif;">\n'
         f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:5;'
@@ -265,6 +437,12 @@ def _escape(text: str) -> str:
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+LW_CONTROLS_CAPTION = (
+    "조작(LW): 휠 = 시간축 확대·축소  ·  드래그 = 이동  ·  가격축 드래그 = 세로 스케일  ·  "
+    "가격축 더블클릭 = 자동 맞춤 복귀  ·  패널 경계 드래그 = 패널 높이 조절"
+)
+
+
 def render_lw_chart(
     df: pd.DataFrame,
     symbol: str,
@@ -273,13 +451,17 @@ def render_lw_chart(
     *,
     chart_height: int,
     struct_reference: Optional[dict] = None,
+    show_stochastic: bool = True,
+    show_macd: bool = True,
+    show_rsi: bool = True,
 ) -> None:
-    """LW 엔진 렌더(1단계). 높이는 사이드바 셀렉트 값을 그대로 iframe 높이로 쓴다."""
+    """LW 엔진 렌더. 높이는 사이드바 셀렉트 값을 그대로 iframe 높이로 쓴다."""
     if df is None or df.empty:
         return
     html = build_lw_html(
         df, symbol, display_interval, gate_context,
         chart_height=chart_height, struct_reference=struct_reference,
+        show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi,
     )
     components.html(html, height=int(chart_height), scrolling=False)
-    st.caption(STAGE2_CAPTION)
+    st.caption(LW_CONTROLS_CAPTION)
