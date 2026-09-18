@@ -76,8 +76,18 @@ PANE_STRETCH = {"price": 39, "stoch": 26, "macd": 19, "rsi": 16}
 PANE_LABELS = {"price": "가격", "stoch": "스토캐", "macd": "MACD", "rsi": "RSI"}
 # pane 단독 확대 모드: iframe 내부 버튼 [전체 | 가격 | 스토캐 | MACD | RSI]. JS 만으로 stretch factor 를 재배분한다
 # (Streamlit rerun 없음 → 줌·팬·세로 줌 상태 유지). 나머지 pane 은 0 으로 숨기지 않고 SOLO_COLLAPSED_PX 띠로 접는다.
+# - 접힌 띠 높이 실측(v5.2.1): 레이아웃이 pane 높이를 max(·, 2) 로 바닥 처리하므로 stretch 로는 2px 까지 내려가고
+#   0 은 불가(setHeight API 는 30 클램프, 분리선 드래그도 30 클램프). 시리즈·마커·고정 스케일·가격선은 모델 객체라
+#   높이와 무관하게 유지된다(2px 까지 확인). 14px 는 띠 위에 pane 이름(10px 글자)을 얹을 수 있는 최소값.
+# - 단독 모드에서는 iframe(window.frameElement — Streamlit 의 srcdoc iframe 은 allow-same-origin)과 #lw-wrap 높이를
+#   접힌 띠 합계만큼 늘려, 선택 pane 이 전체 모드의 pane 영역 전체(= 그 pane 이 가질 수 있는 최대)를 차지하게 한다.
 SOLO_ALL = "all"
-SOLO_COLLAPSED_PX = 30
+SOLO_COLLAPSED_PX = 14
+SOLO_STRIP_FONT_PX = 10
+SOLO_STRIP_BG = "#F0F3FA"   # 불투명 — 접힌 띠에는 pane 이름만 보인다
+# 오버레이(캡션·버튼·접힌 띠) z-index — LW v5 pane 분리선 히트 영역(z-index 50, 세로 9px)보다 위. 띠가 14px 이면
+# 분리선 히트 영역이 버튼 줄(top 6px)과 겹쳐 클릭을 가로채므로 반드시 50 초과.
+LW_OVERLAY_Z = 60
 PANE_SEPARATOR_COLOR = "#E0E3EB"
 PANE_SEPARATOR_HOVER_COLOR = "rgba(178, 181, 189, 0.35)"
 
@@ -554,26 +564,71 @@ _JS_TEMPLATE = """
 
   // ---- pane 단독 확대 모드: stretch factor 만 재배분 (rerun 없음 → 줌·팬·세로 줌 상태 유지).
   //      나머지 pane 은 SOLO_COLLAPSED_PX 띠로 접는다(0 높이는 쓰지 않음). '전체' 로 초기 비중 복원.
-  var solo = { kind: SOLO_ALL };
+  //      단독 진입 시 컨테이너(#lw-wrap)와 iframe 높이를 접힌 띠 합계만큼 늘려 선택 pane 이 전체 모드의
+  //      pane 영역 전체를 차지하게 하고, 전체 복귀 시 원래 높이로 되돌린다. 접힌 띠 위에는 pane 이름만 얹는다(클릭 → 그 pane 단독).
+  var solo = { kind: SOLO_ALL, baseHeight: wrap.clientHeight };
+  var frameEl = null;
+  try { frameEl = window.frameElement; } catch (e) { frameEl = null; }   // 교차 출처면 null → iframe 확장 생략
+  function setContainerHeight(h) {
+    wrap.style.height = h + 'px';
+    if (!frameEl) return;
+    frameEl.style.height = h + 'px'; frameEl.setAttribute('height', String(h));
+    // Streamlit 요소 컨테이너(stElementContainer)는 flex: 0 0 <height>px 로 고정돼 있어 iframe 만 키우면 아래
+    // 캡션과 겹친다 → 인라인으로 같은 값을 준다(전체 복귀 시 base 로 되돌림).
+    var holder = frameEl.parentElement;
+    if (holder) { holder.style.height = h + 'px'; holder.style.flexBasis = h + 'px'; }
+  }
+  var strips = {};
+  var stripBox = document.getElementById('lw-strips');
+  PANES.forEach(function (p) {
+    var d = document.createElement('div');
+    d.className = 'lw-strip'; d.setAttribute('data-kind', p.kind); d.textContent = PANE_LABELS[p.kind] || p.kind;
+    d.style.display = 'none';
+    d.addEventListener('click', function () { applySolo(p.kind); });
+    stripBox.appendChild(d); strips[p.kind] = d;
+  });
+  function layoutStrips() {
+    var panes = chart.panes(), wr = wrap.getBoundingClientRect();
+    PANES.forEach(function (p, i) {
+      var d = strips[p.kind];
+      if (!panes[i] || solo.kind === SOLO_ALL || p.kind === solo.kind) { d.style.display = 'none'; return; }
+      var r = panes[i].getHTMLElement().getBoundingClientRect();
+      d.style.display = 'block';
+      d.style.top = (r.top - wr.top) + 'px'; d.style.left = (r.left - wr.left) + 'px';
+      d.style.width = r.width + 'px'; d.style.height = r.height + 'px'; d.style.lineHeight = r.height + 'px';
+    });
+  }
   function applySolo(kind) {
     var panes = chart.panes();
     var total = panes.reduce(function (a, p) { return a + p.getHeight(); }, 0);
     var others = Math.max(0, PANES.length - 1);
+    var extra = kind === SOLO_ALL ? 0 : SOLO_COLLAPSED_PX * others;
+    // 전체 모드의 pane 영역 = 선택 pane 이 가질 수 있는 최대 → 컨테이너를 띠 합계만큼 늘려 그 크기를 보장
+    var fullArea = solo.kind === SOLO_ALL ? total : total - SOLO_COLLAPSED_PX * others;
+    setContainerHeight(solo.baseHeight + extra);
     PANES.forEach(function (p, i) {
       if (!panes[i]) return;
       if (kind === SOLO_ALL) { panes[i].setStretchFactor(p.stretch); return; }
       // stretch 는 상대값 — 목표 px 를 그대로 factor 로 주면 비례 배분이 정확히 px 가 된다
-      panes[i].setStretchFactor(p.kind === kind ? Math.max(1, total - SOLO_COLLAPSED_PX * others) : SOLO_COLLAPSED_PX);
+      panes[i].setStretchFactor(p.kind === kind ? Math.max(1, fullArea) : SOLO_COLLAPSED_PX);
     });
     solo.kind = kind;
     var btns = document.querySelectorAll('#lw-solo button');
     for (var b = 0; b < btns.length; b++) btns[b].classList.toggle('on', btns[b].getAttribute('data-kind') === kind);
+    // 가격 pane 이 접히면 캡션·버튼 줄을 띠 아래로 내려 '가격' 띠 이름과 겹치지 않게 한다
+    var overlayTop = (kind !== SOLO_ALL && kind !== 'price') ? (SOLO_COLLAPSED_PX + 6) : 6;
+    document.getElementById('lw-caption').style.top = overlayTop + 'px';
+    document.getElementById('lw-solo').style.top = overlayTop + 'px';
     applyFixedScales();
+    layoutStrips();
+    requestAnimationFrame(layoutStrips);   // autoSize(ResizeObserver) 반영 뒤 한 번 더
   }
   var soloBtns = document.querySelectorAll('#lw-solo button');
   for (var bi = 0; bi < soloBtns.length; bi++) {
     soloBtns[bi].addEventListener('click', function (ev) { applySolo(ev.currentTarget.getAttribute('data-kind')); });
   }
+  if (window.ResizeObserver) { new ResizeObserver(function () { requestAnimationFrame(layoutStrips); }).observe(el); }
+  wrap.addEventListener('mouseup', function () { requestAnimationFrame(layoutStrips); });   // 경계 드래그 뒤 재배치
 
   var n = PAYLOAD.candles.length;
   if (n > WINDOW) { chart.timeScale().setVisibleLogicalRange({ from: n - WINDOW, to: n + 2 }); }
@@ -582,7 +637,8 @@ _JS_TEMPLATE = """
   window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
                   rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis,
-                  solo: solo, applySolo: applySolo, stochZones: stochZones, rsiZones: rsiZones };  // 검증·측정용 핸들
+                  solo: solo, applySolo: applySolo, stochZones: stochZones, rsiZones: rsiZones,
+                  strips: strips, layoutStrips: layoutStrips, frameEl: frameEl };  // 검증·측정용 핸들
 })();
 """
 
@@ -630,6 +686,7 @@ def build_lw_html(
         f"var RSI_COLOR = {json.dumps(RSI_LINE_COLOR)};",
         f"var VZOOM_IN = {VZOOM_IN_FACTOR}; var VZOOM_OUT = {VZOOM_OUT_FACTOR};",
         f"var SOLO_ALL = {json.dumps(SOLO_ALL)}; var SOLO_COLLAPSED_PX = {SOLO_COLLAPSED_PX};",
+        f"var PANE_LABELS = {json.dumps(PANE_LABELS, ensure_ascii=False)};",
         f"var ZONE_FILL = {json.dumps(ZONE_FILL_COLORS)};",   # charts/theme.py 토큰 — 하드코딩 금지
     ])
     return (
@@ -638,11 +695,13 @@ def build_lw_html(
         "<style>html,body{margin:0;padding:0;overflow:hidden;}</style>\n"
         f'<div id="lw-wrap" style="position:relative;width:100%;height:{height}px;'
         f'background:{TV_BACKGROUND};font-family:-apple-system,Segoe UI,Roboto,sans-serif;">\n'
-        f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:5;'
+        f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:{LW_OVERLAY_Z};'
         f'font-size:12px;color:{TV_TEXT};background:rgba(255,255,255,0.85);padding:2px 6px;'
         f'border-radius:3px;pointer-events:none;">{caption_html}</div>\n'
         f"{solo_buttons_html(panes)}"
         '  <div id="lw-chart" style="position:absolute;inset:0;"></div>\n'
+        # 접힌 pane 위에 얹는 이름 띠(단독 모드에서만 표시, 클릭 → 그 pane 단독). 차트 위 z-index.
+        '  <div id="lw-strips"></div>\n'
         "</div>\n"
         f"<script>{vendor}</script>\n"
         f"<script>\n{consts}\n{_JS_TEMPLATE}</script>\n"
@@ -659,10 +718,14 @@ def solo_buttons_html(panes: list[dict]) -> str:
     buttons += [f'<button type="button" data-kind="{p["kind"]}">{PANE_LABELS[p["kind"]]}</button>' for p in panes]
     style = ("#lw-solo button{background:rgba(255,255,255,0.82);border:1px solid #cfd3dc;border-radius:3px;"
              f"padding:1px 7px;cursor:pointer;color:{TV_TEXT};font-size:11px;line-height:16px}}"
-             f"#lw-solo button.on{{background:{TV_TEXT};color:#fff;border-color:{TV_TEXT}}}")
+             f"#lw-solo button.on{{background:{TV_TEXT};color:#fff;border-color:{TV_TEXT}}}"
+             f".lw-strip{{position:absolute;z-index:{LW_OVERLAY_Z};box-sizing:border-box;padding:0 8px;overflow:hidden;"
+             f"background:{SOLO_STRIP_BG};color:{TV_TEXT};font-size:{SOLO_STRIP_FONT_PX}px;cursor:pointer;"
+             "user-select:none;white-space:nowrap}"
+             ".lw-strip:hover{background:rgba(226,231,242,0.98)}")
     return (
         f"  <style>{style}</style>\n"
-        '  <div id="lw-solo" style="position:absolute;top:6px;right:80px;z-index:6;display:flex;gap:3px;">'
+        f'  <div id="lw-solo" style="position:absolute;top:6px;right:80px;z-index:{LW_OVERLAY_Z + 1};display:flex;gap:3px;">'
         + "".join(buttons) + "</div>\n"
     )
 

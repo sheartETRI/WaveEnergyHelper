@@ -410,13 +410,39 @@ def test_solo_mode_is_js_only_stretch_redistribution():
     html = LW.build_lw_html(_pipeline_frame(), "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
     assert "function applySolo(kind)" in html and "setStretchFactor" in html
     assert f"var SOLO_ALL = \"all\"; var SOLO_COLLAPSED_PX = {LW.SOLO_COLLAPSED_PX};" in html
-    assert LW.SOLO_COLLAPSED_PX == 30 and LW.SOLO_ALL == "all"
+    # 접힌 띠 14px: LW v5.2.1 레이아웃 바닥(2px) 이상이면서 pane 이름(10px 글자)이 들어가는 최소값
+    assert LW.SOLO_COLLAPSED_PX == 14 and LW.SOLO_ALL == "all"
     # 접힘은 최소 높이 띠 — 0 높이·pane 제거 API 를 쓰지 않는다
     assert "removePane" not in html and "setHeight(0)" not in html
     # 복원은 초기 비중(PANES[i].stretch)
     assert "panes[i].setStretchFactor(p.stretch)" in html
     # Streamlit 과 무관: 버튼 클릭 → JS 핸들러만
     assert "addEventListener('click'" in html and "Streamlit.setComponentValue" not in html
+
+
+def test_solo_mode_strips_and_container_expansion_are_js_only():
+    html = LW.build_lw_html(_pipeline_frame(), "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    # 접힌 띠: pane 이름만 얹는 오버레이(#lw-strips), 클릭 → 그 pane 단독. 이름은 PANE_LABELS 토큰.
+    assert '<div id="lw-strips"></div>' in html and "function layoutStrips()" in html
+    assert f"var PANE_LABELS = {json.dumps(LW.PANE_LABELS, ensure_ascii=False)};" in html
+    assert "d.textContent = PANE_LABELS[p.kind] || p.kind;" in html
+    assert "d.addEventListener('click', function () { applySolo(p.kind); });" in html
+    assert f".lw-strip{{position:absolute;z-index:{LW.LW_OVERLAY_Z};" in html
+    assert f"font-size:{LW.SOLO_STRIP_FONT_PX}px" in html and LW.SOLO_STRIP_FONT_PX <= LW.SOLO_COLLAPSED_PX
+    # 오버레이는 LW 분리선 히트 영역(z-index 50)보다 위 — 아니면 띠가 14px 일 때 버튼 클릭을 가로챈다
+    assert LW.LW_OVERLAY_Z > 50
+    assert f'id="lw-solo" style="position:absolute;top:6px;right:80px;z-index:{LW.LW_OVERLAY_Z + 1};' in html
+    # 컨테이너 확장: 단독 진입 시 #lw-wrap · iframe(frameElement) · Streamlit 요소 컨테이너 높이를 띠 합계만큼,
+    # 전체 복귀 시 base 로. rerun 없음(JS 만).
+    assert "function setContainerHeight(h)" in html and "frameEl = window.frameElement" in html
+    assert "var extra = kind === SOLO_ALL ? 0 : SOLO_COLLAPSED_PX * others;" in html
+    assert "setContainerHeight(solo.baseHeight + extra);" in html
+    assert "holder.style.flexBasis = h + 'px'" in html
+    # 선택 pane 목표 px = 전체 모드의 pane 영역 전체(fullArea)
+    assert "var fullArea = solo.kind === SOLO_ALL ? total : total - SOLO_COLLAPSED_PX * others;" in html
+    assert "p.kind === kind ? Math.max(1, fullArea) : SOLO_COLLAPSED_PX" in html
+    # 0 높이·pane 제거 경로는 쓰지 않는다
+    assert "removePane" not in html and "setHeight(0)" not in html
 
 
 # ============================================================ MACD 히스토그램 4색 규칙
