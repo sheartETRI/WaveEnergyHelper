@@ -304,12 +304,36 @@ def struct_reference_lines(struct_reference: Optional[dict]) -> list[dict]:
     line = struct_reference.get("line_price")
     if low is None or line is None or pd.isna(low) or pd.isna(line):
         return []
+    # title 은 비운다 — 차트 안 라벨이 캔들을 가리던 문제. 의미(label)는 캡션 줄로 옮기고 축 뱃지는 색으로 구분.
     return [
         {"price": float(low), "color": STRUCT_LOW_COLOR, "style": LW_LINE_STYLE_DOTTED,
-         "title": STRUCT_LOW_LABEL},
+         "title": "", "label": STRUCT_LOW_LABEL},
         {"price": float(line), "color": STRUCT_LINE_COLOR, "style": LW_LINE_STYLE_DASHED,
-         "title": STRUCT_LINE_LABEL},
+         "title": "", "label": STRUCT_LINE_LABEL},
     ]
+
+
+def format_price(value: float) -> str:
+    """캡션용 가격: 1,000 이상은 정수 천 단위, 그 미만은 소수 2자리."""
+    v = float(value)
+    return f"{v:,.0f}" if abs(v) >= 1000 else f"{v:,.2f}"
+
+
+STRUCT_CAPTION_VERIFYING = "(검증 중)"   # 유지 — 없애지 말 것
+
+
+def struct_caption_html(lines: list[dict]) -> str:
+    """게이트 캡션 뒤에 붙는 기준선 1줄. 색 견본(선 스타일 문자)을 각 선 색으로 칠한다.
+
+    예) ` · ─ 저점 76,046 · ┄ 기준선 75,666 (검증 중)`. 선이 없으면 ` · 기준선 없음`.
+    """
+    if not lines:
+        return f" · {STRUCT_LINE_MISSING}"
+    low, ref = lines[0], lines[1]
+    return (
+        f' · <span style="color:{low["color"]}">─</span> 저점 {format_price(low["price"])}'
+        f' · <span style="color:{ref["color"]}">┄</span> 기준선 {format_price(ref["price"])} {STRUCT_CAPTION_VERIFYING}'
+    )
 
 
 # ------------------------------------------------------------------ HTML
@@ -519,8 +543,8 @@ def build_lw_html(
     payload = frame_to_lw_payload(df)
     panes = pane_layout(payload, show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi)
     lines = struct_reference_lines(struct_reference)
-    struct_caption = "" if lines else f" · {STRUCT_LINE_MISSING}"
-    caption = f"{symbol} {display_interval} · {gate_context}{struct_caption}"
+    caption_html = (f"{_escape(str(symbol))} {_escape(str(display_interval))} · {_escape(gate_context)}"
+                    f"{struct_caption_html(lines)}")
     vendor = vendor_js if vendor_js is not None else load_vendor_js()
     height = int(chart_height)
 
@@ -530,7 +554,8 @@ def build_lw_html(
         f"var OPTS = {json.dumps(chart_options(), ensure_ascii=False)};",
         f"var CANDLE_OPTS = {json.dumps(candle_options())};",
         f"var MA_STYLES = {json.dumps(ma_styles())};",
-        f"var STRUCT_LINES = {json.dumps(lines, ensure_ascii=False)};",
+        # label(의미)은 캡션 전용 — JS 로는 가격선 속성만 보낸다(title 은 빈 문자열).
+        f"var STRUCT_LINES = {json.dumps([{k: v for k, v in l.items() if k != 'label'} for l in lines], ensure_ascii=False)};",
         f"var VOLUME_TOP = {VOLUME_SCALE_TOP_MARGIN};",
         f"var WINDOW = {RECENT_WINDOW};",
         f"var STOCH_GUIDE_COLOR = {json.dumps(STOCH_GUIDE_COLOR)};",
@@ -547,7 +572,7 @@ def build_lw_html(
         f'background:{TV_BACKGROUND};font-family:-apple-system,Segoe UI,Roboto,sans-serif;">\n'
         f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:5;'
         f'font-size:12px;color:{TV_TEXT};background:rgba(255,255,255,0.85);padding:2px 6px;'
-        f'border-radius:3px;pointer-events:none;">{_escape(caption)}</div>\n'
+        f'border-radius:3px;pointer-events:none;">{caption_html}</div>\n'
         '  <div id="lw-chart" style="position:absolute;inset:0;"></div>\n'
         "</div>\n"
         f"<script>{vendor}</script>\n"

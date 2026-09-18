@@ -99,10 +99,12 @@ def test_struct_reference_fallback_and_lines():
     assert LW.struct_reference_lines({"reference_low": float("nan"), "line_price": 1.0}) == []
     lines = LW.struct_reference_lines({"reference_low": 100.0, "line_price": 99.5})
     assert [l["price"] for l in lines] == [100.0, 99.5]
-    assert [l["title"] for l in lines] == [LW.STRUCT_LOW_LABEL, LW.STRUCT_LINE_LABEL]
+    assert [l["title"] for l in lines] == ["", ""]                              # 차트 내 title 제거
+    assert [l["label"] for l in lines] == [LW.STRUCT_LOW_LABEL, LW.STRUCT_LINE_LABEL]
+    assert lines[0]["color"] != lines[1]["color"]                                # 축 뱃지는 색으로 구분
     assert LW.STRUCT_LINE_LABEL == "패턴 저점 기준선 (검증 중)"   # main 8cdd4e5 문구
     for l in lines:
-        assert "손절" not in l["title"] and "권고" not in l["title"]
+        assert "손절" not in l["label"] and "권고" not in l["label"]
 
     df = _frame()
     html_none = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 X]", chart_height=600, vendor_js="")
@@ -110,8 +112,25 @@ def test_struct_reference_fallback_and_lines():
     html_ref = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 X]", chart_height=600, vendor_js="",
                                 struct_reference={"reference_low": 100.0, "line_price": 99.5})
     assert LW.STRUCT_LINE_MISSING not in html_ref
-    assert LW.STRUCT_LOW_LABEL in html_ref and LW.STRUCT_LINE_LABEL in html_ref
-    assert "createPriceLine" in html_ref
+    assert "createPriceLine" in html_ref and "axisLabelVisible: true" in html_ref  # 축 가격 뱃지 유지
+    assert '"title": ""' in html_ref and LW.STRUCT_LINE_LABEL not in html_ref      # 차트 내 라벨 없음
+
+
+def test_struct_caption_line_format_with_swatches():
+    """캡션 줄: ' · ─ 저점 76,046 · ┄ 기준선 75,666 (검증 중)' — 색 견본은 각 선 색, '(검증 중)' 유지."""
+    lines = LW.struct_reference_lines({"reference_low": 76046.0, "line_price": 75665.77})
+    cap = LW.struct_caption_html(lines)
+    assert cap == (' · <span style="color:#8D6E63">─</span> 저점 76,046'
+                   ' · <span style="color:#EF5350">┄</span> 기준선 75,666 (검증 중)')
+    assert LW.struct_caption_html([]) == " · 기준선 없음"
+    assert LW.format_price(76046.0) == "76,046" and LW.format_price(612.3456) == "612.35"
+    html = LW.build_lw_html(_frame(), "BTCUSDT", "1h", "[4h 게이트 폐쇄]", chart_height=600, vendor_js="",
+                            struct_reference={"reference_low": 76046.0, "line_price": 75665.77})
+    cap_div = html.split('id="lw-caption"', 1)[1].split("</div>", 1)[0]
+    assert "BTCUSDT 1h · [4h 게이트 폐쇄] · " in cap_div and "저점 76,046" in cap_div
+    assert "기준선 75,666 (검증 중)" in cap_div and 'color:#8D6E63' in cap_div and 'color:#EF5350' in cap_div
+    # 알람 마커 텍스트는 이번 범위 아님 — 그대로 markers+text 경로 (createSeriesMarkers 유지)
+    assert "createSeriesMarkers" in html
 
 
 def test_caption_carries_gate_context_and_escapes_html():
