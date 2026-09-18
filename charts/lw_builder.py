@@ -434,12 +434,50 @@ _JS_TEMPLATE = """
   var panes = chart.panes();
   PANES.forEach(function (p, i) { if (panes[i]) panes[i].setStretchFactor(p.stretch); });
 
+  // ---- 세로 줌 (가격 pane): 가격축 위 휠 → 고정 범위(autoscaleInfoProvider 오버라이드),
+  //      가격축 더블클릭 → autoScale 복귀. 차트 본체 휠은 건드리지 않는다(LW 시간축 줌 그대로).
+  var wrap = document.getElementById('lw-wrap');
+  var priceSeries = [candles].concat(Object.keys(maSeries).map(function (k) { return maSeries[k]; }));
+  var vz = { active: false, lo: null, hi: null };
+  function priceAxisWidth() { try { return chart.priceScale('right').width(); } catch (e) { return 0; } }
+  function pricePaneHeight() { var p = chart.panes(); return p.length ? p[0].getHeight() : el.clientHeight; }
+  function overPriceAxis(e) {
+    var r = el.getBoundingClientRect();
+    var x = e.clientX - r.left, y = e.clientY - r.top;
+    return x >= r.width - priceAxisWidth() && y >= 0 && y <= pricePaneHeight();
+  }
+  function applyFixed(lo, hi) {
+    if (!(hi > lo)) return;
+    vz.active = true; vz.lo = lo; vz.hi = hi;
+    var provider = function () { return { priceRange: { minValue: lo, maxValue: hi }, margins: { above: 0, below: 0 } }; };
+    priceSeries.forEach(function (s) { s.applyOptions({ autoscaleInfoProvider: provider }); });
+    candles.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 }, autoScale: true });
+  }
+  function resetVertical() {
+    vz.active = false; vz.lo = null; vz.hi = null;
+    priceSeries.forEach(function (s) { s.applyOptions({ autoscaleInfoProvider: undefined }); });
+    candles.priceScale().applyOptions({ scaleMargins: OPTS.rightPriceScale.scaleMargins, autoScale: true });
+  }
+  wrap.addEventListener('wheel', function (e) {
+    if (!overPriceAxis(e)) return;                       // 본체 휠 = LW 시간축 줌
+    e.preventDefault(); e.stopPropagation();
+    var h = pricePaneHeight();
+    var top = candles.coordinateToPrice(0), bottom = candles.coordinateToPrice(h);
+    if (top === null || bottom === null) return;
+    var y = e.clientY - el.getBoundingClientRect().top;
+    var at = candles.coordinateToPrice(Math.max(0, Math.min(h, y)));
+    if (at === null) at = (top + bottom) / 2;
+    var f = e.deltaY < 0 ? VZOOM_IN : VZOOM_OUT;        // 위로 굴리면 확대
+    applyFixed(at - (at - bottom) * f, at + (top - at) * f);
+  }, { capture: true, passive: false });
+  wrap.addEventListener('dblclick', function (e) { if (overPriceAxis(e)) resetVertical(); }, true);
+
   var n = PAYLOAD.candles.length;
   if (n > WINDOW) { chart.timeScale().setVisibleLogicalRange({ from: n - WINDOW, to: n + 2 }); }
   else { chart.timeScale().fitContent(); }
   window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
-                  rsi: rsiLine };  // 검증·측정용 핸들
+                  rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis };  // 검증·측정용 핸들
 })();
 """
 
@@ -484,6 +522,7 @@ def build_lw_html(
         f"var STOCH_SEP_COLOR = {json.dumps(STOCH_SEPARATOR_COLOR)};",
         f"var MACD_COLORS = {json.dumps({'macd': MACD_LINE_COLOR, 'signal': MACD_SIGNAL_COLOR})};",
         f"var RSI_COLOR = {json.dumps(RSI_LINE_COLOR)};",
+        f"var VZOOM_IN = {VZOOM_IN_FACTOR}; var VZOOM_OUT = {VZOOM_OUT_FACTOR};",
     ])
     return (
         "<!-- lw_builder stage2 -->\n"
@@ -504,9 +543,14 @@ def _escape(text: str) -> str:
 
 
 LW_CONTROLS_CAPTION = (
-    "조작(LW): 휠 = 시간축 확대·축소  ·  드래그 = 이동  ·  가격축 드래그 = 세로 스케일  ·  "
-    "가격축 더블클릭 = 자동 맞춤 복귀  ·  패널 경계 드래그 = 패널 높이 조절"
+    "조작(LW): 휠 = 시간축 확대·축소  ·  드래그 = 이동  ·  가격축 위 휠 = 세로 확대·축소  ·  "
+    "가격축 드래그 = 세로 스케일  ·  가격축 더블클릭 = 자동 맞춤 복귀  ·  패널 경계 드래그 = 패널 높이 조절"
 )
+
+# 세로 줌(가격 pane 전용): 가격축 위 휠 1틱당 배율. 공개 API 는 autoscaleInfoProvider 오버라이드 —
+# 세로 줌 중에는 고정 범위, 가격축 더블클릭으로 autoScale 복귀.
+VZOOM_IN_FACTOR = 0.8
+VZOOM_OUT_FACTOR = 1.25
 
 
 def render_lw_chart(

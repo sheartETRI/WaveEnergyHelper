@@ -355,3 +355,21 @@ def test_markers_are_wired_to_pane_series_in_html():
 def test_markers_empty_without_indicator_columns():
     mk = LW.frame_to_lw_payload(_frame())["markers"]
     assert mk == {"stoch": {}, "rsi": [], "macd": []}
+
+
+# ============================================================ 2단계: 세로 줌
+def test_vertical_zoom_is_scoped_to_price_axis_and_resettable():
+    df = _pipeline_frame()
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    # 기본 제공: 가격축 누른-드래그 스케일 · 축 더블클릭 원복
+    assert '"axisPressedMouseMove": true' in html
+    assert '"axisDoubleClickReset": {"time": true, "price": true}' in html
+    # 커스텀: 가격축 영역 위 휠 → autoscaleInfoProvider 오버라이드, 본체 휠은 통과, 더블클릭으로 복귀
+    assert "if (!overPriceAxis(e)) return;" in html
+    assert "autoscaleInfoProvider: provider" in html and "autoscaleInfoProvider: undefined" in html
+    assert "wrap.addEventListener('wheel'" in html and "{ capture: true, passive: false }" in html
+    assert "if (overPriceAxis(e)) resetVertical();" in html
+    assert f"var VZOOM_IN = {LW.VZOOM_IN_FACTOR}; var VZOOM_OUT = {LW.VZOOM_OUT_FACTOR};" in html
+    assert 0 < LW.VZOOM_IN_FACTOR < 1 < LW.VZOOM_OUT_FACTOR
+    # 조작법 캡션에 세로 줌 안내
+    assert "가격축 위 휠" in LW.LW_CONTROLS_CAPTION and "더블클릭" in LW.LW_CONTROLS_CAPTION
