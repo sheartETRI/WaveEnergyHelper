@@ -76,7 +76,7 @@ def test_volume_colors_follow_bull_bear_tokens():
 
 def test_payload_without_ohlc_or_empty_is_empty():
     empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None,
-             "markers": {"stoch": {}, "rsi": [], "macd": []}}
+             "markers": {"stoch": {}, "rsi": [], "macd": []}, "zones": LW.zone_thresholds()}
     assert LW.frame_to_lw_payload(pd.DataFrame()) == empty
     assert LW.frame_to_lw_payload(pd.DataFrame({"close": [1.0]})) == empty
 
@@ -457,3 +457,44 @@ def test_macd_hist_prev_column_is_used_without_writing_df():
     src = open(LW.__file__, encoding="utf-8").read()
     assert "MACD_HIST_COLORS = {" not in src
     assert LW.MACD_HIST_COLORS["pos_falling"] not in src and LW.MACD_HIST_COLORS["neg_rising"] not in src
+
+
+# ============================================================ 과매수·과매도 영역 음영
+def test_zone_fill_tokens_match_plotly_and_thresholds():
+    from charts.theme import ZONE_FILL_COLORS as Z
+    from config.settings import RSI_PARAMS, STOCH_LAYERS
+
+    # plotly add_stacked_stochastic_panel / add_rsi_panel 의 fillcolor 그대로
+    assert Z == {"stoch_overbought": "rgba(255, 0, 0, 0.22)", "stoch_oversold": "rgba(0, 0, 255, 0.22)",
+                 "rsi_overbought": "rgba(255, 0, 0, 0.35)", "rsi_oversold": "rgba(0, 0, 255, 0.35)"}
+    zones = LW.zone_thresholds()
+    assert zones == {"stoch": {"low": 20.0, "high": 80.0},
+                     "rsi": {"low": float(RSI_PARAMS["oversold"]), "high": float(RSI_PARAMS["overbought"])}}
+    payload = LW.frame_to_lw_payload(_pipeline_frame())
+    assert payload["zones"] == zones
+    for L, cfg in zip(payload["stoch"]["layers"], STOCH_LAYERS):     # 층별 임계값 = 20/80 + 오프셋
+        assert L["guides"] == [20 + cfg["offset"], 80 + cfg["offset"]]
+    # 빌더에 rgba 리터럴 하드코딩 없음 — theme 참조만
+    src = open(LW.__file__, encoding="utf-8").read()
+    for v in Z.values():
+        assert v not in src
+
+
+def test_zone_fill_series_are_baseline_series_under_lines_and_pinned():
+    html = LW.build_lw_html(_pipeline_frame(), "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    assert "LWC.BaselineSeries" in html and "function zoneFill(data, base, side, color, pane)" in html
+    assert "lineVisible: false" in html                                             # 선 없이 채움만
+    # 스토캐: 층별 80 위(above)·20 아래(below), 토큰 참조
+    assert "zoneFill(L.k, L.guides[1], 'above', ZONE_FILL.stoch_overbought, sp)" in html
+    assert "zoneFill(L.k, L.guides[0], 'below', ZONE_FILL.stoch_oversold, sp)" in html
+    # RSI: 70 위·30 아래
+    assert "zoneFill(PAYLOAD.rsi.line, PAYLOAD.zones.rsi.high, 'above', ZONE_FILL.rsi_overbought, rp)" in html
+    assert "zoneFill(PAYLOAD.rsi.line, PAYLOAD.zones.rsi.low, 'below', ZONE_FILL.rsi_oversold, rp)" in html
+    # 음영이 선보다 먼저(아래 레이어) 추가된다
+    assert html.index("zoneFill(L.k, L.guides[1]") < html.index("var k = line({ color: L.k_color")
+    assert html.index("zoneFill(PAYLOAD.rsi.line, PAYLOAD.zones.rsi.high") < html.index("rsiLine = line({ color: RSI_COLOR")
+    # 고정 스케일 목록에 음영 시리즈 포함(0~320 · 0~100 유지), 참조선·마커 경로 불변
+    assert ".concat(Object.keys(stochD).map(function (k) { return stochD[k]; }), stochZones), 0, PAYLOAD.stoch.max_y, 0.02);" in html
+    assert "fixedRange([rsiLine].concat(rsiZones), 0, 100, 0.05);" in html
+    assert 'var ZONE_FILL = {"stoch_overbought": "rgba(255, 0, 0, 0.22)"' in html
+    assert "createSeriesMarkers" in html and "guide(k, g, STOCH_GUIDE_COLOR, 2)" in html

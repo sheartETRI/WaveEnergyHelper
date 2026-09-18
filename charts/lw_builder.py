@@ -39,7 +39,7 @@ from charts.plotly_builder import (
     TV_GRID,
     TV_TEXT,
 )
-from charts.theme import MACD_HIST_COLORS
+from charts.theme import MACD_HIST_COLORS, ZONE_FILL_COLORS
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -263,7 +263,7 @@ def frame_to_lw_payload(df: pd.DataFrame) -> dict:
     - 하위 패널(stoch/macd/rsi)은 컬럼이 없으면 None — pane 을 만들지 않는다.
     """
     empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None,
-             "markers": {"stoch": {}, "rsi": [], "macd": []}}
+             "markers": {"stoch": {}, "rsi": [], "macd": []}, "zones": zone_thresholds()}
     required = {"open", "high", "low", "close"}
     if df is None or df.empty or not required.issubset(df.columns):
         return empty
@@ -294,6 +294,16 @@ def frame_to_lw_payload(df: pd.DataFrame) -> dict:
         "macd": macd_payload(frame, times),
         "rsi": rsi_payload(frame, times),
         "markers": markers_payload(frame, times),
+        # 영역 음영 임계값 — plotly 와 동일: 스토캐 20/80(층별 오프셋은 layers[].guides), RSI oversold/overbought
+        "zones": zone_thresholds(),
+    }
+
+
+def zone_thresholds() -> dict:
+    """과매수·과매도 임계값(표시 계층). 스토캐는 STOCH_GUIDES(20/80), RSI 는 RSI_PARAMS 의 oversold/overbought."""
+    return {
+        "stoch": {"low": float(STOCH_GUIDES[0]), "high": float(STOCH_GUIDES[1])},
+        "rsi": {"low": float(RSI_PARAMS["oversold"]), "high": float(RSI_PARAMS["overbought"])},
     }
 
 
@@ -410,6 +420,20 @@ _JS_TEMPLATE = """
   function applyFixedScales() {
     fixedScales.forEach(function (f) { try { f.scale.setVisibleRange({ from: f.lo, to: f.hi }); } catch (e) {} });
   }
+  // 영역 음영: BaselineSeries(baseValue=임계값). 위 구간(side='above')은 top 채움만, 아래 구간은 bottom 채움만
+  // 켜고 선은 숨긴다 → 시리즈와 임계선 사이만 채워져 plotly 의 add_masked_fill_segments 와 같은 모양.
+  var TRANSPARENT = 'rgba(0,0,0,0)';
+  function zoneFill(data, base, side, color, pane) {
+    var above = side === 'above';
+    var s = chart.addSeries(LWC.BaselineSeries, Object.assign({}, LINE_BASE, {
+      baseValue: { type: 'price', price: base }, lineVisible: false, lineWidth: 1,
+      topLineColor: TRANSPARENT, bottomLineColor: TRANSPARENT,
+      topFillColor1: above ? color : TRANSPARENT, topFillColor2: above ? color : TRANSPARENT,
+      bottomFillColor1: above ? TRANSPARENT : color, bottomFillColor2: above ? TRANSPARENT : color,
+    }), pane);
+    s.setData(data);
+    return s;
+  }
   var paneOf = {};
   PANES.forEach(function (p, i) { paneOf[p.kind] = i; });
 
@@ -434,10 +458,13 @@ _JS_TEMPLATE = """
   });
 
   // ---- pane 스토캐 3중 (한 pane 에 오프셋 배치, 층당 20/80, 분리선 2)
-  var stochK = {}, stochD = {};
+  var stochK = {}, stochD = {}, stochZones = [], rsiZones = [];
   if (PAYLOAD.stoch && paneOf.stoch !== undefined) {
     var sp = paneOf.stoch, anchor = null;
     PAYLOAD.stoch.layers.forEach(function (L) {
+      // 음영은 선보다 먼저 추가(아래 레이어) — 층별 임계값 = 20/80 + 오프셋 (guides 와 동일)
+      stochZones.push(zoneFill(L.k, L.guides[1], 'above', ZONE_FILL.stoch_overbought, sp));
+      stochZones.push(zoneFill(L.k, L.guides[0], 'below', ZONE_FILL.stoch_oversold, sp));
       var k = line({ color: L.k_color, lineWidth: 1 }, sp); k.setData(L.k);
       var d = line({ color: L.d_color, lineWidth: 1 }, sp); d.setData(L.d);
       L.guides.forEach(function (g) { guide(k, g, STOCH_GUIDE_COLOR, 2); });
@@ -446,7 +473,7 @@ _JS_TEMPLATE = """
     });
     PAYLOAD.stoch.separators.forEach(function (s) { guide(anchor, s, STOCH_SEP_COLOR, 0); });
     fixedRange(Object.keys(stochK).map(function (k) { return stochK[k]; })
-               .concat(Object.keys(stochD).map(function (k) { return stochD[k]; })), 0, PAYLOAD.stoch.max_y, 0.02);
+               .concat(Object.keys(stochD).map(function (k) { return stochD[k]; }), stochZones), 0, PAYLOAD.stoch.max_y, 0.02);
   }
 
   // ---- pane MACD: hist + macd/signal + 0선
@@ -466,9 +493,13 @@ _JS_TEMPLATE = """
   var rsiLine = null;
   if (PAYLOAD.rsi && paneOf.rsi !== undefined) {
     var rp = paneOf.rsi;
+    rsiZones = [
+      zoneFill(PAYLOAD.rsi.line, PAYLOAD.zones.rsi.high, 'above', ZONE_FILL.rsi_overbought, rp),
+      zoneFill(PAYLOAD.rsi.line, PAYLOAD.zones.rsi.low, 'below', ZONE_FILL.rsi_oversold, rp),
+    ];
     rsiLine = line({ color: RSI_COLOR, lineWidth: 1 }, rp); rsiLine.setData(PAYLOAD.rsi.line);
     PAYLOAD.rsi.guides.forEach(function (g) { guide(rsiLine, g.value, g.color, g.style); });
-    fixedRange([rsiLine], 0, 100, 0.05);
+    fixedRange([rsiLine].concat(rsiZones), 0, 100, 0.05);
   }
 
   // ---- 알람 마커 (createSeriesMarkers) — 텍스트 라벨 유지, 확정 봉 위치
@@ -551,7 +582,7 @@ _JS_TEMPLATE = """
   window.__lw = { chart: chart, candles: candles, volume: volume, mas: maSeries, panes: PANES,
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
                   rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis,
-                  solo: solo, applySolo: applySolo };  // 검증·측정용 핸들
+                  solo: solo, applySolo: applySolo, stochZones: stochZones, rsiZones: rsiZones };  // 검증·측정용 핸들
 })();
 """
 
@@ -599,6 +630,7 @@ def build_lw_html(
         f"var RSI_COLOR = {json.dumps(RSI_LINE_COLOR)};",
         f"var VZOOM_IN = {VZOOM_IN_FACTOR}; var VZOOM_OUT = {VZOOM_OUT_FACTOR};",
         f"var SOLO_ALL = {json.dumps(SOLO_ALL)}; var SOLO_COLLAPSED_PX = {SOLO_COLLAPSED_PX};",
+        f"var ZONE_FILL = {json.dumps(ZONE_FILL_COLORS)};",   # charts/theme.py 토큰 — 하드코딩 금지
     ])
     return (
         "<!-- lw_builder stage2 -->\n"

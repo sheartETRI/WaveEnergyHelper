@@ -15,3 +15,12 @@ MACD_HIST_COLORS = {
     "neg_falling": "#2F6BFF",   # 진한 청색 — 기존 하락색 토큰
     "neg_rising": "#AFC6FF",    # 옅은 청색 (하늘색)
 }
+
+# 과매수·과매도 영역 음영 — plotly_builder 의 add_masked_fill_segments 호출값 그대로 (색·투명도).
+# 스토캐: 각 층 K 가 20 아래 / 80 위인 구간을 임계선과 K 사이로 채움. RSI: 30 아래 / 70 위.
+ZONE_FILL_COLORS = {
+    "stoch_overbought": "rgba(255, 0, 0, 0.22)",
+    "stoch_oversold": "rgba(0, 0, 255, 0.22)",
+    "rsi_overbought": "rgba(255, 0, 0, 0.35)",
+    "rsi_oversold": "rgba(0, 0, 255, 0.35)",
+}
