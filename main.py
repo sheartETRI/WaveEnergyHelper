@@ -20,6 +20,7 @@ from data.binance import fetch_klines, get_auto_limit
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
+from display.lw_gate_context import gate_label, struct_reference
 from indicators.moving_averages import add_moving_averages
 from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
@@ -38,16 +39,13 @@ MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 CHART_ENGINES = ("Plotly", "LW")
 DEFAULT_CHART_ENGINE = "Plotly"
 
-# 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 브랜치 8cdd4e5 원칙 승계).
-# signal-alarm 은 main 과 2026-06-12(9436ed1) 에 갈라져 게이트 모듈(display/wave_gate_context ·
-# analysis/wave_align_gate_forward)이 없다. 상태를 지어내지 않고 "모듈 없음" 을 그대로 표기한다.
-# 공급원을 이식할지는 별도 결정 사항 — 이식되면 이 함수만 gate_label 로 바꾼다.
-GATE_CONTEXT_UNAVAILABLE = "[게이트 미적용 — 이 브랜치에 게이트 모듈 없음]"
+# 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 8cdd4e5 원칙 승계). 공급원은 main 에서 체리픽한
+# 정의 파일(analysis/wave_align_gate_forward 등)을 display/lw_gate_context 가 import 만 해서 라이브 계산한다.
 
 
 def gate_context_for(symbol: str, interval: str) -> str:
-    """LW 차트에 병기할 게이트 상태 라벨. 이 브랜치에는 공급원이 없어 고정 문구를 돌려준다."""
-    return GATE_CONTEXT_UNAVAILABLE
+    """LW 차트에 병기할 상위 게이트 상태 라벨 (F2-b, 마지막 닫힌 봉 asof)."""
+    return gate_label(symbol, interval)
 
 
 def macd_panel_default(interval: str) -> bool:
@@ -176,11 +174,11 @@ def main():
     )
 
     if cfg["chart_engine"] == "LW":
-        # 1단계: 가격 패널만. struct_reference 공급원(analysis/wave_mm_struct_stop)도 이 브랜치에 없어
-        # None → "기준선 없음" 폴백. gate_context 는 필수 인자.
+        # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
+        # (미검출·퇴화 시 None → "기준선 없음" 폴백).
         render_lw_chart(
             df, symbol, interval, gate_context_for(symbol, interval),
-            chart_height=cfg["chart_height"], struct_reference=None,
+            chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
             show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
         )
         return

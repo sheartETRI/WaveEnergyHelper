@@ -208,7 +208,10 @@ def test_main_wires_engine_radio_default_plotly():
     assert "render_lw_chart(" in body and "gate_context=" in body or "gate_context_for(" in body
     import main as M
     assert M.DEFAULT_CHART_ENGINE == "Plotly" and M.CHART_ENGINES[0] == "Plotly"
-    assert isinstance(M.gate_context_for("BTCUSDT", "1h"), str) and M.gate_context_for("BTCUSDT", "1h")
+    # gate_context_for 는 display.lw_gate_context.gate_label 에 위임한다 (네트워크 없이 확인)
+    M.gate_label = lambda symbol, interval: f"[{symbol}/{interval}]"
+    assert M.gate_context_for("BTCUSDT", "1h") == "[BTCUSDT/1h]"
+    assert "struct_reference=struct_reference(df, symbol, interval)" in body
 
 
 def test_plotly_builder_is_untouched_by_lw_layer():
