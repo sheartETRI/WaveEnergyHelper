@@ -8,6 +8,10 @@
 # 검출기는 기존 것을 그대로 쓴다(indicators/). 알람 패널만 신규(display/alarm_panel.py).
 #
 # 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
+import time
+from typing import Optional
+
+import pandas as pd
 import streamlit as st
 
 from charts.lw_builder import render_lw_chart
@@ -16,7 +20,7 @@ from charts.plotly_builder import (
     render_chart,
 )
 from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
-from data.binance import fetch_klines, get_auto_limit
+from data.binance import clear_klines_cache, fetch_klines, get_auto_limit, last_fetch_at
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
@@ -79,8 +83,34 @@ def load_frame(symbol: str, interval: str, with_macd: bool = True):
     return df
 
 
+# 데이터 새로고침 — 데이터 계층 캐시(fetch_klines, ttl=600)를 비우고 이 rerun 에서 최신 봉까지 다시 받는다.
+# 버튼 클릭 자체가 rerun 이므로 별도 rerun 호출은 없다. 자동 주기 갱신은 없다(금지 사항).
+REFRESH_BUTTON_LABEL = "🔄 데이터 새로고침"
+REFRESH_RESET_NOTE = "새로고침 시 차트 줌·확대 상태가 초기화됩니다."
+
+
+def data_freshness_caption(loaded_at: Optional[float], last_bar) -> str:
+    """'마지막 로드 YYYY-MM-DD HH:MM:SS · 마지막 봉 MM-DD HH:MM' 1줄. 로드 시각은 로컬, 봉 시각은 데이터 그대로(UTC).
+
+    loaded_at 은 실제 수신 시각(epoch) — 캐시 히트 rerun 에서는 바뀌지 않는다. 없으면 '—'.
+    """
+    loaded = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(loaded_at)) if loaded_at else "—"
+    bar = f"{pd.Timestamp(last_bar):%m-%d %H:%M}" if last_bar is not None else "—"
+    return f"마지막 로드 {loaded} · 마지막 봉 {bar}"
+
+
+def render_refresh_button() -> "st.delta_generator.DeltaGenerator":
+    """사이드바 상단: 새로고침 버튼 + 신선도 캡션 자리(적재 뒤 main 이 채움) + 상태 초기화 고지."""
+    if st.sidebar.button(REFRESH_BUTTON_LABEL, help="OHLCV 캐시를 비우고 최신 봉까지 다시 받습니다."):
+        clear_klines_cache()
+    slot = st.sidebar.empty()
+    st.sidebar.caption(REFRESH_RESET_NOTE)
+    return slot
+
+
 def render_sidebar() -> dict:
     """전역 필터만 사이드바에 둔다(본문은 메인 영역)."""
+    freshness_slot = render_refresh_button()
     st.sidebar.header("대상")
     symbol = st.sidebar.selectbox("심볼", options=SUPPORTED_SYMBOLS, index=0)
     interval = st.sidebar.selectbox(
@@ -151,6 +181,7 @@ def render_sidebar() -> dict:
         "show_rsi": show_rsi,
         "layout_mode": layout_mode,
         "chart_height": chart_height,
+        "freshness_slot": freshness_slot,
     }
 
 
@@ -165,6 +196,9 @@ def main():
     if df is None or df.empty:
         st.error(f"{symbol} {interval} 데이터를 불러오지 못했습니다.")
         return
+    cfg["freshness_slot"].caption(
+        data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
+    )
 
     render_alarm_panel(
         df, symbol, interval,

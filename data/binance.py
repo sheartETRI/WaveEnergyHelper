@@ -33,6 +33,25 @@ def get_auto_limit(interval: str) -> int:
     return limit_map.get(interval, 500)
 
 
+# 마지막 실제 요청 시각 (symbol, interval) → epoch 초. cache_data 는 캐시 미스일 때만 함수 본문을 실행하므로
+# 본문에서 기록하면 "캐시가 아니라 실제로 받은" 시각이 된다. 프로세스 전역(캐시와 같은 범위).
+_LAST_FETCH_AT: dict = {}
+
+
+def last_fetch_at(symbol: str, interval: str):
+    """마지막으로 Binance 에서 실제 수신한 시각(epoch 초). 이 프로세스에서 받은 적 없으면 None."""
+    return _LAST_FETCH_AT.get((symbol, interval))
+
+
+def clear_klines_cache() -> None:
+    """OHLCV 캐시(fetch_klines · fetch_klines_paginated)만 비운다 — 다음 호출이 최신 봉까지 다시 받는다.
+
+    build_dataframe·지표 캐시는 입력(raw)으로 키가 잡혀 raw 가 바뀌면 자동으로 재계산되므로 건드리지 않는다.
+    """
+    fetch_klines.clear()
+    fetch_klines_paginated.clear()
+
+
 @st.cache_data(ttl=600)
 def fetch_klines(symbol: str, interval: str, limit: int):
     """Fetches raw OHLCV data from the Binance public API."""
@@ -43,6 +62,7 @@ def fetch_klines(symbol: str, interval: str, limit: int):
         data = response.json()
         if not isinstance(data, list) or not data:
             return None
+        _LAST_FETCH_AT[(symbol, interval)] = time.time()
         return data
     except Exception:
         return None
