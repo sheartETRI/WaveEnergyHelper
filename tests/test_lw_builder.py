@@ -75,7 +75,8 @@ def test_volume_colors_follow_bull_bear_tokens():
 
 
 def test_payload_without_ohlc_or_empty_is_empty():
-    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None}
+    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None,
+             "markers": {"stoch": {}, "rsi": [], "macd": []}}
     assert LW.frame_to_lw_payload(pd.DataFrame()) == empty
     assert LW.frame_to_lw_payload(pd.DataFrame({"close": [1.0]})) == empty
 
@@ -298,3 +299,56 @@ def test_html_declares_panes_and_resize_option():
     html2 = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="",
                              show_stochastic=False, show_macd=False, show_rsi=False)
     assert 'var PANES = [{"kind": "price", "stretch": 39}];' in html2
+
+
+# ============================================================ 2단계: 알람 마커
+def test_markers_follow_indicator_columns_and_macd_events():
+    from analysis.alarm_signals import macd_event_positions
+    from config.settings import STOCH_LAYERS
+
+    df = _pipeline_frame()
+    payload = LW.frame_to_lw_payload(df)
+    mk = payload["markers"]
+    # 스토캐: 층별 DB/DT/TB/TT non-null 봉 수와 일치, 시간 오름차순
+    for layer in STOCH_LAYERS:
+        label = layer["label"]
+        expected = sum(int(df[f"stoch_{k}_{label}"].notna().sum()) for k in ("db", "dt", "tb", "tt")
+                       if f"stoch_{k}_{label}" in df.columns)
+        got = mk["stoch"].get(label, [])
+        assert len(got) == expected
+        times = [m["time"] for m in got]
+        assert times == sorted(times)
+    assert sum(len(v) for v in mk["stoch"].values()) > 0
+    # RSI
+    assert len(mk["rsi"]) == int(df["rsi_db"].notna().sum()) + int(df["rsi_dt"].notna().sum()) > 0
+    # MACD: 확정 봉 = macd_event_positions (알람과 동일)
+    pos = macd_event_positions(df)
+    assert len(mk["macd"]) == sum(len(v) for v in pos.values()) > 0
+    macd_times = {m["time"] for m in mk["macd"]}
+    expected_times = {int(pd.Timestamp(ts).timestamp()) for v in pos.values() for ts in v}
+    assert macd_times == expected_times
+    # 스타일: 텍스트 라벨 유지, 방향 색·shape·position 매핑
+    styles = {(m["text"], m["shape"], m["color"], m["position"]) for v in mk["stoch"].values() for m in v}
+    assert styles <= set(LW.STOCH_MARKER_STYLE.values())
+    macd_styles = {(m["text"], m["shape"], m["color"], m["position"]) for m in mk["macd"]}
+    assert macd_styles <= {("GC", "circle", "#0B8F45", "aboveBar"), ("DC", "circle", "#C62828", "belowBar"),
+                           ("0↑", "square", "#1565C0", "aboveBar"), ("0↓", "square", "#AD1457", "belowBar")}
+    for m in mk["macd"] + mk["rsi"]:
+        assert set(m) == {"time", "position", "shape", "color", "text"}
+    json.dumps(payload)
+
+
+def test_markers_are_wired_to_pane_series_in_html():
+    df = _pipeline_frame()
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=1000, vendor_js="")
+    assert "LWC.createSeriesMarkers(stochK[label], M.stoch[label])" in html
+    assert "LWC.createSeriesMarkers(rsiLine, M.rsi)" in html and "LWC.createSeriesMarkers(macdLine, M.macd)" in html
+    assert '"text": "DB"' in html and '"text": "GC"' in html or '"text": "DC"' in html
+    # 마커는 억제 없이 전량 — 별도 억제 상수·함수가 없다
+    src = open(LW.__file__, encoding="utf-8").read()
+    assert "suppress" not in src.lower() and "억제 로직 없음" in src
+
+
+def test_markers_empty_without_indicator_columns():
+    mk = LW.frame_to_lw_payload(_frame())["markers"]
+    assert mk == {"stoch": {}, "rsi": [], "macd": []}

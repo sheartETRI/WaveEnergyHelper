@@ -28,7 +28,9 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from analysis.alarm_signals import macd_event_positions
 from charts.plotly_builder import (
+    _MACD_EVENT_STYLE,
     COLOR_BEAR,
     COLOR_BULL,
     RECENT_WINDOW,
@@ -85,6 +87,19 @@ RSI_GUIDE_STYLE = (   # (값 키, 색, 선 스타일) — plotly add_rsi_panel �
     ("oversold", "rgba(0,255,255,0.5)", LW_LINE_STYLE_DASHED),
     ("midline", "rgba(0,128,0,0.8)", LW_LINE_STYLE_DOTTED),
 )
+
+# --- 알람 마커 (plotly add_stochastic_*_markers · _MACD_EVENT_STYLE 승계) ---
+# 텍스트 라벨 유지, 방향 색 승계. Plotly 심볼 → LW shape: circle→circle, diamond→square.
+# 텍스트 위치 top center → aboveBar, bottom center → belowBar. 위치(봉)는 지표 컬럼 non-null 봉 /
+# macd_event_positions 의 확정 봉 — plotly 와 동일 원칙, 억제 로직 없음.
+STOCH_MARKER_STYLE = {   # kind → (text, shape, color, position)
+    "db": ("DB", "circle", "#0B8F45", "aboveBar"),
+    "dt": ("DT", "circle", "#C62828", "belowBar"),
+    "tb": ("TB", "square", "#1565C0", "aboveBar"),
+    "tt": ("TT", "square", "#AD1457", "belowBar"),
+}
+_LW_SHAPE = {"circle": "circle", "diamond": "square", "square": "square"}
+_LW_POSITION = {"top center": "aboveBar", "bottom center": "belowBar"}
 
 
 # ------------------------------------------------------------------ 토큰
@@ -187,6 +202,47 @@ def rsi_payload(frame: pd.DataFrame, times: list[int]) -> Optional[dict]:
     return {"line": line, "guides": guides}
 
 
+def _marker(t: int, style: tuple) -> dict:
+    text, shape, color, position = style
+    return {"time": t, "position": position, "shape": shape, "color": color, "text": text}
+
+
+def _column_markers(frame: pd.DataFrame, times: list[int], col: str, style: tuple) -> list[dict]:
+    if col not in frame.columns:
+        return []
+    return [_marker(t, style) for t, v in zip(times, frame[col]) if pd.notna(v)]
+
+
+def markers_payload(frame: pd.DataFrame, times: list[int]) -> dict:
+    """알람 마커 — 시리즈별(스토캐 층별 K · RSI · MACD) 시간 오름차순 목록.
+
+    - 스토캐 DB/DT/TB/TT: ``stoch_{kind}_{label}`` non-null 봉 (plotly 와 동일 컬럼).
+    - RSI DB/DT: ``rsi_db`` / ``rsi_dt`` (plotly 는 스토캐 DB/DT 마커 함수를 재사용 → 같은 스타일).
+    - MACD GC/DC/0↑/0↓: ``analysis.alarm_signals.macd_event_positions`` 의 확정 봉 (알람과 동일).
+    """
+    time_of = dict(zip(pd.to_datetime(frame.index), times))
+    stoch: dict = {}
+    for layer in STOCH_LAYERS:
+        label = layer["label"]
+        out: list[dict] = []
+        for kind, style in STOCH_MARKER_STYLE.items():
+            out += _column_markers(frame, times, f"stoch_{kind}_{label}", style)
+        out.sort(key=lambda m: m["time"])
+        if out:
+            stoch[label] = out
+    rsi = (_column_markers(frame, times, "rsi_db", STOCH_MARKER_STYLE["db"])
+           + _column_markers(frame, times, "rsi_dt", STOCH_MARKER_STYLE["dt"]))
+    rsi.sort(key=lambda m: m["time"])
+    macd: list[dict] = []
+    if "macd" in frame.columns:
+        for kind, positions in macd_event_positions(frame).items():
+            text, symbol, color, text_position = _MACD_EVENT_STYLE[kind]
+            style = (text, _LW_SHAPE[symbol], color, _LW_POSITION[text_position])
+            macd += [_marker(time_of[ts], style) for ts in positions if ts in time_of]
+        macd.sort(key=lambda m: m["time"])
+    return {"stoch": stoch, "rsi": rsi, "macd": macd}
+
+
 def frame_to_lw_payload(df: pd.DataFrame) -> dict:
     """데이터프레임 → LW setData 용 JSON 직렬화 가능 dict.
 
@@ -195,7 +251,8 @@ def frame_to_lw_payload(df: pd.DataFrame) -> dict:
     - 거래량 색은 종가≥시가 적 / 그 외 청 (plotly_builder.add_volume_panel 과 동일 규칙).
     - 하위 패널(stoch/macd/rsi)은 컬럼이 없으면 None — pane 을 만들지 않는다.
     """
-    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None}
+    empty = {"candles": [], "volume": [], "mas": {}, "stoch": None, "macd": None, "rsi": None,
+             "markers": {"stoch": {}, "rsi": [], "macd": []}}
     required = {"open", "high", "low", "close"}
     if df is None or df.empty or not required.issubset(df.columns):
         return empty
@@ -225,6 +282,7 @@ def frame_to_lw_payload(df: pd.DataFrame) -> dict:
         "stoch": stoch_payload(frame, times),
         "macd": macd_payload(frame, times),
         "rsi": rsi_payload(frame, times),
+        "markers": markers_payload(frame, times),
     }
 
 
@@ -363,6 +421,14 @@ _JS_TEMPLATE = """
     PAYLOAD.rsi.guides.forEach(function (g) { guide(rsiLine, g.value, g.color, g.style); });
     fixedRange(rsiLine, 0, 100);
   }
+
+  // ---- 알람 마커 (createSeriesMarkers) — 텍스트 라벨 유지, 확정 봉 위치
+  var M = PAYLOAD.markers || { stoch: {}, rsi: [], macd: [] };
+  Object.keys(M.stoch).forEach(function (label) {
+    if (stochK[label] && M.stoch[label].length) LWC.createSeriesMarkers(stochK[label], M.stoch[label]);
+  });
+  if (rsiLine && M.rsi.length) LWC.createSeriesMarkers(rsiLine, M.rsi);
+  if (macdLine && M.macd.length) LWC.createSeriesMarkers(macdLine, M.macd);
 
   // ---- pane 비중 (지표 중심 근사) — 경계 드래그로 사용자가 바꿀 수 있다
   var panes = chart.panes();
