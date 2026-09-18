@@ -31,6 +31,66 @@ MACD_DELAY_NOTE = "MACD 크로스·0선 신호는 교차 다음 봉이 부호를
 
 _ZONE_ICON = {"과매도": "🔵", "과매수": "🔴", "중립": "⚪", "-": "⚪"}
 
+# --- 이력 표 표시 정리 (알람 탭) — 표시 계층 전용: 신호 정의·판정·병합 없음 ---
+HISTORY_KINDS = ("확정", "후보")
+# 레이어 필터 옵션 정렬: 스토캐 대/중/소 → RSI → MACD (이름 첫 글자 기준, 정의 파일의 비공개 맵을 쓰지 않는다)
+_LAYER_ORDER = {"대": 0, "중": 1, "소": 2, "R": 3, "M": 4}
+# 같은 시각 묶음 음영(2건 이상인 시각만). 인접 묶음이 붙어 보이지 않게 두 색을 번갈아 쓴다.
+HISTORY_GROUP_COLORS = ("#FFF4E5", "#EAF2FF")
+HISTORY_COLUMN_WIDTHS = {"시각": "medium", "신호": "medium", "레이어": "small", "구분": "small",
+                         "지표값": "small", "비고": "large"}   # 비고가 우측에서 잘리지 않게
+
+
+def history_layer_options(frame: pd.DataFrame) -> List[str]:
+    """이력 표에 실제로 있는 레이어 이름만, 대/중/소/RSI/MACD 순."""
+    if frame is None or frame.empty or "레이어" not in frame.columns:
+        return []
+    names = list(dict.fromkeys(str(v) for v in frame["레이어"].tolist()))
+    return sorted(names, key=lambda n: (_LAYER_ORDER.get(n[:1], 9), n))
+
+
+def filter_history_frame(frame: pd.DataFrame, layers: Optional[List[str]] = None,
+                         kinds: Optional[List[str]] = None) -> pd.DataFrame:
+    """표시 필터 — 빈 선택/None 은 '전체'(사이드바 스토캐 레이어 선택과 같은 관례). 행 순서는 유지."""
+    if frame is None or frame.empty:
+        return frame
+    out = frame
+    if layers:
+        out = out[out["레이어"].isin(layers)]
+    if kinds:
+        out = out[out["구분"].isin(kinds)]
+    return out
+
+
+def history_group_colors(frame: pd.DataFrame) -> List[str]:
+    """행별 배경색 — 같은 시각이 2건 이상이면(동시 신호, 상충 포함) 그 묶음을 음영, 단독 행은 빈 문자열.
+
+    signals_to_frame 이 (시각, kind) 정렬을 역순으로 내므로 같은 시각은 이미 인접해 있다 — 여기서는 색만 붙인다.
+    """
+    if frame is None or frame.empty:
+        return []
+    ts = frame["시각"].tolist()
+    colors, band, i = [], 0, 0
+    while i < len(ts):
+        j = i
+        while j < len(ts) and ts[j] == ts[i]:
+            j += 1
+        if j - i >= 2:
+            colors += [HISTORY_GROUP_COLORS[band % len(HISTORY_GROUP_COLORS)]] * (j - i)
+            band += 1
+        else:
+            colors.append("")
+        i = j
+    return colors
+
+
+def style_history_frame(frame: pd.DataFrame):
+    """같은 시각 묶음에 배경색을 입힌 Styler (st.dataframe 에 그대로 넘긴다)."""
+    colors = history_group_colors(frame)
+    return frame.style.apply(
+        lambda _col: [f"background-color: {c}" if c else "" for c in colors], axis=0,
+    )
+
 
 def signal_icon(signal: AlarmSignal) -> str:
     """방향·확정 여부를 한 글자로. 확정은 채운 표식, 후보는 빈 표식."""
@@ -140,15 +200,34 @@ def render_alarm_panel(
         if frame.empty:
             st.caption("해당 구간에 신호 없음")
         else:
-            st.dataframe(
-                frame,
-                hide_index=True,
-                column_config={
-                    "시각": st.column_config.DatetimeColumn("시각", format="YYYY-MM-DD HH:mm"),
-                    "지표값": st.column_config.NumberColumn("지표값", format="%.1f"),
-                },
+            # 표시 필터(기본 전체) — 신호 산출은 위 recent_signals 그대로, 표에서만 거른다
+            col_layer, col_kind = st.columns([3, 2])
+            layer_pick = col_layer.multiselect(
+                "레이어 필터", options=history_layer_options(frame), default=history_layer_options(frame),
+                help="비우면 전체",
             )
-            st.caption(
-                f"확정 {int((frame['구분'] == '확정').sum())}건 · "
-                f"후보 {int((frame['구분'] == '후보').sum())}건"
-            )
+            kind_pick = col_kind.multiselect("구분 필터", options=list(HISTORY_KINDS), default=list(HISTORY_KINDS),
+                                             help="비우면 전체")
+            shown = filter_history_frame(frame, layers=layer_pick, kinds=kind_pick)
+            if shown.empty:
+                st.caption("필터에 맞는 신호 없음")
+            else:
+                st.dataframe(
+                    style_history_frame(shown),
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "시각": st.column_config.DatetimeColumn("시각", format="YYYY-MM-DD HH:mm",
+                                                                  width=HISTORY_COLUMN_WIDTHS["시각"]),
+                        "신호": st.column_config.TextColumn("신호", width=HISTORY_COLUMN_WIDTHS["신호"]),
+                        "레이어": st.column_config.TextColumn("레이어", width=HISTORY_COLUMN_WIDTHS["레이어"]),
+                        "구분": st.column_config.TextColumn("구분", width=HISTORY_COLUMN_WIDTHS["구분"]),
+                        "지표값": st.column_config.NumberColumn("지표값", format="%.1f",
+                                                                width=HISTORY_COLUMN_WIDTHS["지표값"]),
+                        "비고": st.column_config.TextColumn("비고", width=HISTORY_COLUMN_WIDTHS["비고"]),
+                    },
+                )
+                st.caption(
+                    f"확정 {int((shown['구분'] == '확정').sum())}건 · "
+                    f"후보 {int((shown['구분'] == '후보').sum())}건 · 같은 시각 묶음은 배경색으로 표시"
+                )
