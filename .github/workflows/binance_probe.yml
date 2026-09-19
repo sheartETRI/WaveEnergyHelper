@@ -1,0 +1,59 @@
+# 테스트 전용: GitHub Actions 러너에서 바이낸스 공개 엔드포인트 접근 가능 여부 확인.
+# 수동(workflow_dispatch)만. schedule·Secrets·알림·스캐너 없음.
+name: binance-probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requests
+        run: python -m pip install --quiet requests
+
+      - name: Write probe script
+        run: |
+          cat > probe.py <<'PY'
+          import sys, time, requests
+
+          url = sys.argv[1]
+          t0 = time.perf_counter()
+          try:
+              r = requests.get(url, timeout=15)
+              dt = time.perf_counter() - t0
+              print(f"URL      : {url}")
+              print(f"STATUS   : {r.status_code}")
+              print(f"ELAPSED  : {dt:.3f}s")
+              print(f"HEADERS  : server={r.headers.get('server')} content-type={r.headers.get('content-type')}")
+              print(f"BODY[:400]: {r.text[:400]!r}")
+              sys.exit(0 if r.status_code == 200 else 1)
+          except Exception as e:
+              dt = time.perf_counter() - t0
+              print(f"URL      : {url}")
+              print(f"ERROR    : {type(e).__name__}: {e}")
+              print(f"ELAPSED  : {dt:.3f}s")
+              sys.exit(2)
+          PY
+
+      - name: (a) api.binance.com /api/v3/time
+        continue-on-error: true
+        run: python probe.py "https://api.binance.com/api/v3/time"
+
+      - name: (b) api.binance.com /api/v3/klines BTCUSDT 1h limit=5
+        continue-on-error: true
+        run: python probe.py "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=5"
+
+      - name: (c) data-api.binance.vision /api/v3/klines BTCUSDT 1h limit=5
+        continue-on-error: true
+        run: python probe.py "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=5"
+
+      - name: (d) runner public IP / region (ipinfo.io)
+        continue-on-error: true
+        run: python probe.py "https://ipinfo.io/json"
