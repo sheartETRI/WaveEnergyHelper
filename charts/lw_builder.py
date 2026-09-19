@@ -40,7 +40,7 @@ from charts.plotly_builder import (
     TV_TEXT,
 )
 from charts.theme import MACD_HIST_COLORS, ZONE_FILL_COLORS
-from display.tz_label import UTC_LABEL
+from display.tz_label import KST_LABEL, to_kst
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -158,11 +158,18 @@ def macd_hist_color(cur, prev) -> str:
 
 # ------------------------------------------------------------------ 직렬화
 def _unix_seconds(ts: pd.Timestamp) -> int:
-    """naive 인덱스는 UTC 로 간주한다 — LW 도 UTC 로 표시하므로 Plotly 가 보여주던 벽시계와 같다."""
+    """naive 인덱스는 UTC 로 간주한다(변환 없음). 데이터 계층 규약 그대로."""
     ts = pd.Timestamp(ts)
     if ts.tzinfo is not None:
         ts = ts.tz_convert("UTC").tz_localize(None)
     return int(ts.timestamp())
+
+
+def _display_seconds(ts: pd.Timestamp) -> int:
+    """LW 에 넘길 time — **표시용 KST 시프트**. LW 는 시간대 개념 없이 epoch 를 UTC 벽시계로 그리므로,
+    naive UTC 인덱스에 +9h 를 더한 값을 epoch 로 넘기면 축·툴팁이 KST 벽시계로 읽힌다(LW 공식 권장 방식).
+    시간축 자체(눈금 단계·밀도)는 옮기지 않는다. 프레임 인덱스는 건드리지 않는다."""
+    return _unix_seconds(to_kst(ts))
 
 
 def _line_points(times: list[int], series: pd.Series) -> list[dict]:
@@ -173,7 +180,7 @@ def _normalize(df: pd.DataFrame) -> tuple[pd.DataFrame, list[int]]:
     frame = df.copy()
     frame.index = pd.to_datetime(frame.index)
     frame = frame[~frame.index.duplicated(keep="last")].sort_index()
-    return frame, [_unix_seconds(ts) for ts in frame.index]
+    return frame, [_display_seconds(ts) for ts in frame.index]   # 표시 시프트는 여기 1회
 
 
 def stoch_payload(frame: pd.DataFrame, times: list[int]) -> Optional[dict]:
@@ -428,9 +435,9 @@ def load_vendor_js(path: str = VENDOR_PATH) -> str:
         return fh.read()
 
 
-# ------------------------------------------------------------------ 시간 표기 (한국식 순서, UTC)
-# 프레임 인덱스는 naive UTC(_unix_seconds) 이고 LW 도 UTC 로 그린다 — 알람 탭 신호 시각과 같은 벽시계.
-# 시간대 변환은 하지 않는다(정의·알람 시각과 어긋나면 안 됨).
+# ------------------------------------------------------------------ 시간 표기 (한국식 순서, KST 표시)
+# 프레임 인덱스는 naive UTC 이고 PAYLOAD 의 time 만 _display_seconds 로 +9h 시프트한다(표시 전용). 포맷 함수는
+# 받은 epoch 를 그대로 UTC 벽시계로 찍으므로 결과가 KST 문자열이 된다. 알람 탭도 같은 헬퍼로 KST 표시.
 DAILY_PLUS_SUFFIXES = ("d", "w", "M")   # 일봉 이상: 툴팁에 시:분을 생략 (봉 시각이 항상 00:00 이라 정보가 없다)
 
 
@@ -774,9 +781,9 @@ def build_lw_html(
     panes = pane_layout(payload, show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi)
     lines = struct_reference_lines(struct_reference)
     extra = list(tracker_lines or [])
-    # 캡션 끝 시간대 표기 — 차트 시각은 UTC(변환 없음). 알람 탭과 같은 라벨(display.tz_label).
+    # 캡션 끝 시간대 표기 — 축·툴팁·오버레이 시각은 KST 표시(PAYLOAD 시프트). 알람 탭과 같은 라벨(display.tz_label).
     caption_html = (f"{_escape(str(symbol))} {_escape(str(display_interval))} · {_escape(gate_context)}"
-                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)} {_escape(UTC_LABEL)}")
+                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)} {_escape(KST_LABEL)}")
     vendor = vendor_js if vendor_js is not None else load_vendor_js()
     height = int(chart_height)
 

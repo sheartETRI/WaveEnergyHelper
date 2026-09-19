@@ -57,11 +57,14 @@ def test_payload_sorted_unique_and_nan_free():
     json.dumps(payload)                                             # 직렬화 가능
 
 
-def test_payload_time_is_utc_seconds_of_naive_index():
+def test_payload_time_is_kst_shifted_seconds_of_naive_utc_index():
+    """표시 전용 시프트: naive UTC 인덱스 + 9h 를 epoch 로. 인덱스 자체는 불변, 봉 간격 불변."""
     df = _frame(3)
     payload = LW.frame_to_lw_payload(df)
-    assert payload["candles"][0]["time"] == int(pd.Timestamp("2026-01-01").timestamp())
+    assert payload["candles"][0]["time"] == int(pd.Timestamp("2026-01-01 09:00").timestamp())
     assert payload["candles"][1]["time"] - payload["candles"][0]["time"] == 3600
+    assert df.index[0] == pd.Timestamp("2026-01-01")                       # 프레임 인덱스 무변경
+    assert LW._unix_seconds(pd.Timestamp("2026-01-01")) == int(pd.Timestamp("2026-01-01").timestamp())
 
 
 def test_volume_colors_follow_bull_bear_tokens():
@@ -343,7 +346,7 @@ def test_markers_follow_indicator_columns_and_macd_events():
     pos = macd_event_positions(df)
     assert len(mk["macd"]) == sum(len(v) for v in pos.values()) > 0
     macd_times = {m["time"] for m in mk["macd"]}
-    expected_times = {int(pd.Timestamp(ts).timestamp()) for v in pos.values() for ts in v}
+    expected_times = {LW._display_seconds(pd.Timestamp(ts)) for v in pos.values() for ts in v}   # 마커도 같은 표시 시프트
     assert macd_times == expected_times
     # 스타일: 텍스트 라벨 유지, 방향 색·shape·position 매핑
     styles = {(m["text"], m["shape"], m["color"], m["position"]) for v in mk["stoch"].values() for m in v}

@@ -1,4 +1,4 @@
-"""LW 차트 시간 표기(한국식 순서, UTC) — 포맷 함수 단위 테스트(node 로 실제 JS 실행) + 배선 + 시간대 불변."""
+"""LW 차트 시간 표기(한국식 순서, KST 표시) — 포맷 함수 단위 테스트(node 로 실제 JS 실행) + 배선 + 표시 시프트."""
 import json
 import os
 import shutil
@@ -57,12 +57,14 @@ def test_tick_marks_follow_lw_types_in_korean_order():
 
 
 # ------------------------------------------------------------ 시간대 불변 · 배선
-def test_time_axis_stays_utc_and_matches_alarm_timestamps():
-    """naive 인덱스 = UTC(바이낸스 open_time) → LW 도 UTC. 변환 없음이 알람 탭 시각과의 일치 조건이다."""
+def test_chart_tooltip_shows_kst_via_payload_shift():
+    """naive 인덱스 = UTC(바이낸스 open_time). 차트는 PAYLOAD 시프트로 KST 벽시계를 찍는다(헬퍼 to_kst 와 동일값)."""
+    from display.tz_label import to_kst
     ts = pd.Timestamp("2026-09-19 05:00")
-    assert LW._unix_seconds(ts) == int(ts.timestamp())            # tz 부여·이동 없음
-    r = _run_js(f"var TOOLTIP_CLOCK = true; console.log(JSON.stringify([lwTooltipTime({LW._unix_seconds(ts)})]));")
-    assert r == ["2026-09-19 05:00"]                              # 알람 탭 '마지막 봉 09-19 05:00' 과 같은 벽시계
+    assert LW._unix_seconds(ts) == int(ts.timestamp())            # 데이터 규약(UTC) 자체는 불변
+    assert LW._display_seconds(ts) == int(to_kst(ts).timestamp())  # 시프트 = 헬퍼 1곳
+    r = _run_js(f"var TOOLTIP_CLOCK = true; console.log(JSON.stringify([lwTooltipTime({LW._display_seconds(ts)})]));")
+    assert r == ["2026-09-19 14:00"]                              # 차트 툴팁 = KST
 
 
 def _ohlc(n=30):
@@ -78,5 +80,6 @@ def test_html_wires_formatters_and_interval_flag():
     assert "timeFormatter: lwTooltipTime" in html and "tickMarkFormatter: lwTickMark" in html
     daily = LW.build_lw_html(_ohlc(), "BTCUSDT", "1d", "[게이트 미적용 TF]", chart_height=600, vendor_js="")
     assert "var TOOLTIP_CLOCK = false;" in daily
-    # 시간대 옵션을 임의로 넣지 않았다
+    # LW 시간대 옵션·tz 객체 없이 PAYLOAD 시프트만 쓴다
     assert "timezone" not in html.lower() and "Asia/Seoul" not in html
+    assert "(KST)" in html
