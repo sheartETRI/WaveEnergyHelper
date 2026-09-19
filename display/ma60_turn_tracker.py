@@ -32,6 +32,7 @@ warnings.filters[:] = _warn_filters
 logging.disable(_log_disable)
 
 from display.asof import _coerce_ma_numeric  # noqa: E402
+from display.tz_label import KST_LABEL, to_kst  # noqa: E402
 from indicators.ma_patterns import add_ma_patterns  # noqa: E402
 
 # ------------------------------------------------------------------ 체리픽 매니페스트
@@ -60,6 +61,8 @@ ALREADY_UP_MARK = "이미 상방"     # 확정(가용) 시점에 MA60 이 이미
 
 COLUMNS = ("상태", "확정 시각", "경과", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
            "패턴 저점", "기준선(×0.995)", "소멸 시각")
+TIME_COLUMNS = ("확정 시각", "전환 시각", "소멸 시각")
+DISPLAY_HEADERS = {c: f"{c} {KST_LABEL}" for c in TIME_COLUMNS}   # 표 헤더 라벨만 KST 표기(컬럼 키 불변)
 
 
 # ------------------------------------------------------------------ 계산
@@ -163,12 +166,12 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
         lines.append("해당 구간에 대파동 쌍바닥 후보 없음")
     for d in (frame if frame is not None else pd.DataFrame()).to_dict("records"):
         if d["상태"] == STATUS_TURNED:
-            tail = f"전환 {pd.Timestamp(d['전환 시각']):%m-%d %H:%M} @ {d['전환 시 가격']:,.8g}"
+            tail = f"전환 {to_kst(d['전환 시각']):%m-%d %H:%M} @ {d['전환 시 가격']:,.8g}"
         elif d["상태"] == STATUS_EXPIRED:
-            tail = f"소멸 {pd.Timestamp(d['소멸 시각']):%m-%d %H:%M}"
+            tail = f"소멸 {to_kst(d['소멸 시각']):%m-%d %H:%M}"
         else:
             tail = f"경과 {d['경과']} · 60MA {d['60MA 현재']}"
-        lines.append(f"[{d['상태']}] 확정 {pd.Timestamp(d['확정 시각']):%m-%d %H:%M} · {tail} · "
+        lines.append(f"[{d['상태']}] 확정 {to_kst(d['확정 시각']):%m-%d %H:%M} · {tail} · "
                      f"저점 {d['패턴 저점']:,.8g} · 기준선 {d['기준선(×0.995)']:,.8g}"
                      + (f" · {ALREADY_UP_MARK}" if d["확정 시 60MA"] == ALREADY_UP_MARK else ""))
     lines.append(summary_line(frame, recent_bars))
@@ -202,7 +205,8 @@ TABLE_COLUMN_WIDTHS = {"상태": "small", "경과": "small", "60MA 현재": "sma
 
 
 def _fmt_ts(v) -> str:
-    return "" if v is None or pd.isna(v) else f"{pd.Timestamp(v):%Y-%m-%d %H:%M}"
+    """표시 직전 KST 변환 — track_candidates 의 시각(UTC, 계측·테스트 대조용)은 그대로 둔다."""
+    return "" if v is None or pd.isna(v) else f"{to_kst(v):%Y-%m-%d %H:%M}"
 
 
 def _fmt_px(v) -> str:
@@ -241,11 +245,11 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
         else:
             st.dataframe(
                 display_frame(frame), hide_index=True, width="stretch",
-                column_config={c: st.column_config.TextColumn(c, width=TABLE_COLUMN_WIDTHS.get(c))
+                column_config={c: st.column_config.TextColumn(DISPLAY_HEADERS.get(c, c), width=TABLE_COLUMN_WIDTHS.get(c))
                                for c in COLUMNS},
             )
         st.caption(summary_line(frame, recent_bars))
         st.caption(f"대기 중 = 대파동(20,10,10) 쌍바닥 확정 후 {OBS_BARS}봉 창이 살아 있는 후보 · "
-                   "경과는 후보 가용 시점(피봇 확정 지연 반영) 기준 · 마지막 봉은 진행 중일 수 있음 · "
+                   f"경과는 후보 가용 시점(피봇 확정 지연 반영) 기준 · 시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
                    "확정 시 60MA '이미 상방' 은 전환이 아니므로 창 안의 새 전환만 셈.")
     return frame

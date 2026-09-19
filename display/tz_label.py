@@ -15,7 +15,6 @@ from datetime import timedelta
 import pandas as pd
 
 KST_LABEL = "(KST)"
-UTC_LABEL = "(UTC)"                 # 이전 표기 — 표시 지점을 KST 로 교체하는 커밋에서 제거
 KST_OFFSET = timedelta(hours=9)     # Asia/Seoul: DST 없음(1988년 이후) → 고정 오프셋
 
 _TS_TEXT = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")

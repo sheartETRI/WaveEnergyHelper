@@ -56,9 +56,10 @@ def test_clear_klines_cache_clears_only_fetch_functions(monkeypatch):
 
 
 def test_freshness_caption_format():
-    ts = time.mktime((2026, 9, 19, 6, 30, 12, 0, 0, -1))
-    assert M.data_freshness_caption(ts, pd.Timestamp("2026-09-19 06:00")) == "마지막 로드 2026-09-19 06:30:12 · 마지막 봉 09-19 06:00"
-    assert M.data_freshness_caption(None, None) == "마지막 로드 — · 마지막 봉 —"
+    # 로드 시각(epoch, UTC 기준)·봉 시각(UTC) 모두 KST 로 표시 — 머신 로컬 시간대에 의존하지 않는다
+    ts = pd.Timestamp("2026-09-19 06:30:12").timestamp()
+    assert M.data_freshness_caption(ts, pd.Timestamp("2026-09-19 06:00")) == "마지막 로드 2026-09-19 15:30:12 · 마지막 봉 09-19 15:00 (KST)"
+    assert M.data_freshness_caption(None, None) == "마지막 로드 — · 마지막 봉 — (KST)"
 
 
 def test_main_wires_refresh_button_without_autorefresh():

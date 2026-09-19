@@ -236,7 +236,9 @@ def test_display_frame_formats_without_none_or_truncation_risk():
     d = T.display_frame(f)
     assert list(d.columns) == list(T.COLUMNS)
     assert d.loc[0, "전환 시각"] == "" and d.loc[0, "전환 시 가격"] == ""
-    assert d.loc[0, "확정 시각"] == "2026-09-14 12:00" and d.loc[0, "소멸 시각"] == "2026-09-17 20:00"
+    assert d.loc[0, "확정 시각"] == "2026-09-14 21:00" and d.loc[0, "소멸 시각"] == "2026-09-18 05:00"   # 표시 = KST(+9h)
+    assert f.loc[0, "확정 시각"] == pd.Timestamp("2026-09-14 12:00")                                    # 원본 프레임(UTC) 불변
+    assert T.DISPLAY_HEADERS["확정 시각"] == "확정 시각 (KST)"
     assert d.loc[0, "패턴 저점"] == "76,046.58"
     assert "None" not in d.to_string()
     assert set(T.TABLE_COLUMN_WIDTHS) <= set(T.COLUMNS)

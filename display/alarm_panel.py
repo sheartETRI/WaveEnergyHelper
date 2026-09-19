@@ -22,7 +22,7 @@ from analysis.alarm_signals import (
     rsi_zone,
     signals_to_frame,
 )
-from display.tz_label import UTC_LABEL
+from display.tz_label import KST_LABEL, kst_text, to_kst
 
 # 기본 이력 창(봉). 사이드바에서 조절.
 DEFAULT_HISTORY_BARS = 120
@@ -38,9 +38,24 @@ HISTORY_KINDS = ("확정", "후보")
 _LAYER_ORDER = {"대": 0, "중": 1, "소": 2, "R": 3, "M": 4}
 # 같은 시각 묶음 음영(2건 이상인 시각만). 인접 묶음이 붙어 보이지 않게 두 색을 번갈아 쓴다.
 HISTORY_GROUP_COLORS = ("#FFF4E5", "#EAF2FF")
-HISTORY_TIME_HEADER = f"시각 {UTC_LABEL}"   # 표 헤더 라벨만 — 프레임 컬럼 키 "시각" 은 그대로(필터·묶음 로직 불변)
+HISTORY_TIME_HEADER = f"시각 {KST_LABEL}"   # 표 헤더 라벨만 — 프레임 컬럼 키 "시각" 은 그대로(필터·묶음 로직 불변)
 HISTORY_COLUMN_WIDTHS = {"시각": "medium", "신호": "medium", "레이어": "small", "구분": "small",
                          "지표값": "small", "비고": "large"}   # 비고가 우측에서 잘리지 않게
+
+
+def history_frame_kst(frame: pd.DataFrame) -> pd.DataFrame:
+    """이력 표 표시용 사본 — '시각' 을 KST 로, '비고' 안의 UTC 시각 문자열(예: MACD 교차 시각)도 KST 로.
+
+    signals_to_frame(정의 계층)의 출력은 건드리지 않는다. 같은 시각 묶음·필터는 균일 시프트라 불변.
+    """
+    if frame is None or frame.empty:
+        return frame
+    out = frame.copy()
+    if "시각" in out.columns:
+        out["시각"] = out["시각"].map(to_kst)
+    if "비고" in out.columns:
+        out["비고"] = out["비고"].map(lambda v: kst_text(v) if isinstance(v, str) else v)
+    return out
 
 
 def history_layer_options(frame: pd.DataFrame) -> List[str]:
@@ -131,7 +146,7 @@ def build_bar_caption(df: pd.DataFrame) -> str:
     last_ts = df.index[-1]
     close = df["close"].iloc[-1] if "close" in df.columns else None
     price = "" if close is None or pd.isna(close) else f"  ·  종가 {float(close):,.8g}"
-    return f"마지막 봉 {last_ts:%Y-%m-%d %H:%M} {UTC_LABEL} (미확정 가능){price}"
+    return f"마지막 봉 {to_kst(last_ts):%Y-%m-%d %H:%M} {KST_LABEL} (미확정 가능){price}"
 
 
 def has_macd(df: pd.DataFrame) -> bool:
@@ -184,7 +199,8 @@ def render_alarm_panel(
 
         col_zone, col_bar, col_count = st.columns(3)
         col_zone.metric("RSI 구역", f"{_ZONE_ICON.get(zone, '⚪')} {zone}")
-        col_bar.metric(f"마지막 봉 {UTC_LABEL}", f"{df.index[-1]:%m-%d %H:%M}", help="미확정(진행 중) 봉일 수 있음 · 시각은 UTC")
+        col_bar.metric(f"마지막 봉 {KST_LABEL}", f"{to_kst(df.index[-1]):%m-%d %H:%M}",
+                       help="미확정(진행 중) 봉일 수 있음 · 시각은 KST 표시(데이터는 UTC)")
         col_count.metric(f"최근 {history_bars}봉 신호", f"{len(signals)}건")
         st.caption(build_bar_caption(df))
         if has_macd(df):
@@ -198,7 +214,7 @@ def render_alarm_panel(
             st.caption("마지막 봉에 새 신호 없음")
 
         st.markdown(f"**최근 {history_bars}봉 신호 이력**")
-        frame = signals_to_frame(signals)
+        frame = history_frame_kst(signals_to_frame(signals))   # 표시 직전 1회 KST 변환(정의 계층 프레임은 UTC)
         if frame.empty:
             st.caption("해당 구간에 신호 없음")
         else:

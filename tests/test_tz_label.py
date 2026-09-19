@@ -58,3 +58,34 @@ def test_recording_and_definition_layers_never_convert_timezone():
     # 기록 경로 대표 파일이 존재하고 위 검사에 포함되었는지
     for rel in ("analysis/wave_align_gate_forward.py", "analysis/wave_live_forward_journal.py", "analysis/alarm_signals.py"):
         assert os.path.isfile(os.path.join(ROOT, rel))
+
+
+# ------------------------------------------------------------ 표시 지점 일관성 (전부 KST, 같은 헬퍼)
+def test_every_display_point_shows_same_kst_wall_clock():
+    import charts.lw_builder as LW
+    import display.alarm_panel as AP
+    import display.ma60_turn_tracker as T
+    import main as M
+    ts = pd.Timestamp("2026-09-19 05:00")           # 데이터(UTC) → 화면 2026-09-19 14:00 (KST)
+    kst = "2026-09-19 14:00"
+    # 차트: PAYLOAD 시프트 값이 헬퍼와 같다(툴팁 문자열은 test_lw_time_format 에서 node 로 확인)
+    assert LW._display_seconds(ts) == int(TZ.to_kst(ts).timestamp())
+    # 알람 탭 마지막 봉
+    idx = pd.date_range(ts - pd.Timedelta(hours=2), periods=3, freq="h")
+    df = pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}, index=idx)
+    assert AP.build_bar_caption(df).startswith(f"마지막 봉 {kst} {TZ.KST_LABEL}")
+    assert AP.HISTORY_TIME_HEADER == f"시각 {TZ.KST_LABEL}"
+    # 알람 탭 이력 표(시각 + 비고 안 교차 시각) — 정의 계층 프레임은 UTC 그대로, 표시 사본만 KST
+    raw = pd.DataFrame({"시각": [ts], "신호": ["MACD 골든크로스"], "레이어": ["MACD"], "구분": ["확정"],
+                        "지표값": [1.0], "비고": ["교차 2026-09-19 04:00 · MACD -1.0"]})
+    shown = AP.history_frame_kst(raw)
+    assert shown.loc[0, "시각"] == pd.Timestamp(kst) and shown.loc[0, "비고"] == "교차 2026-09-19 13:00 · MACD -1.0"
+    assert raw.loc[0, "시각"] == ts and raw.loc[0, "비고"].startswith("교차 2026-09-19 04:00")
+    # 60MA 추적 섹션
+    assert T._fmt_ts(ts) == kst and T.DISPLAY_HEADERS["전환 시각"] == f"전환 시각 {TZ.KST_LABEL}"
+    # 사이드바
+    cap = M.data_freshness_caption(ts.timestamp(), ts)
+    assert cap == f"마지막 로드 2026-09-19 14:00:00 · 마지막 봉 09-19 14:00 {TZ.KST_LABEL}"
+    # UTC 라벨은 어디에도 남지 않았다
+    for mod in (LW, AP, T, M):
+        assert "UTC_LABEL" not in open(mod.__file__, encoding="utf-8").read()

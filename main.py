@@ -8,7 +8,6 @@
 # 검출기는 기존 것을 그대로 쓴다(indicators/). 알람 패널만 신규(display/alarm_panel.py).
 #
 # 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
-import time
 from typing import Optional
 
 import pandas as pd
@@ -26,6 +25,7 @@ from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
 from display.ma60_turn_tracker import render_tracker_section, tracker_reference_lines
+from display.tz_label import KST_LABEL, to_kst
 from indicators.moving_averages import add_moving_averages
 from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
@@ -94,13 +94,14 @@ REFRESH_RESET_NOTE = "새로고침 시 차트 줌·확대 상태가 초기화됩
 
 
 def data_freshness_caption(loaded_at: Optional[float], last_bar) -> str:
-    """'마지막 로드 YYYY-MM-DD HH:MM:SS · 마지막 봉 MM-DD HH:MM' 1줄. 로드 시각은 로컬, 봉 시각은 데이터 그대로(UTC).
+    """'마지막 로드 YYYY-MM-DD HH:MM:SS · 마지막 봉 MM-DD HH:MM (KST)' 1줄 — 둘 다 KST 표시(표시 직전 변환).
 
-    loaded_at 은 실제 수신 시각(epoch) — 캐시 히트 rerun 에서는 바뀌지 않는다. 없으면 '—'.
+    loaded_at 은 실제 수신 시각(epoch, UTC 기준) — 캐시 히트 rerun 에서는 바뀌지 않는다. 없으면 '—'.
+    봉 시각은 데이터(UTC) 를 to_kst 로만 바꾼다; 머신 로컬 시간대에 의존하지 않는다.
     """
-    loaded = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(loaded_at)) if loaded_at else "—"
-    bar = f"{pd.Timestamp(last_bar):%m-%d %H:%M}" if last_bar is not None else "—"
-    return f"마지막 로드 {loaded} · 마지막 봉 {bar}"
+    loaded = f"{to_kst(pd.Timestamp(loaded_at, unit='s')):%Y-%m-%d %H:%M:%S}" if loaded_at else "—"
+    bar = f"{to_kst(last_bar):%m-%d %H:%M}" if last_bar is not None else "—"
+    return f"마지막 로드 {loaded} · 마지막 봉 {bar} {KST_LABEL}"
 
 
 def render_refresh_button() -> "st.delta_generator.DeltaGenerator":
