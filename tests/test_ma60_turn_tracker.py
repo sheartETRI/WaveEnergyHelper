@@ -240,8 +240,8 @@ def test_display_frame_formats_without_none_or_truncation_risk():
         "60MA 현재": "상방", "확정 시 60MA": "하방", "전환 시각": pd.NaT, "전환 시 가격": np.nan,
         "패턴 저점": 76046.58, "기준선(×0.995)": 75666.347, "소멸 시각": pd.Timestamp("2026-09-17 20:00"),
     }])
-    d = T.display_frame(f)
-    assert list(d.columns) == list(T.COLUMNS)
+    d = T.display_frame(f, "BTCUSDT", "4h")
+    assert list(d.columns) == list(T.COLUMNS) and d.loc[0, T.TF_COL] == "BTCUSDT 4h"
     assert d.loc[0, "전환 시각"] == "" and d.loc[0, "전환 시 가격"] == ""
     assert d.loc[0, "확정 시각"] == "2026-09-14 21:00" and d.loc[0, "소멸 시각"] == "2026-09-18 05:00"   # 표시 = KST(+9h)
     assert f.loc[0, "확정 시각"] == pd.Timestamp("2026-09-14 12:00")                                    # 원본 프레임(UTC) 불변
@@ -287,3 +287,19 @@ def test_elapsed_column_is_in_table_and_named_by_meaning():
     df = _synthetic_frame()
     text = " | ".join(T.build_lines(T.track_candidates(df, recent_bars=len(df))))
     assert "소요 " in text and "경과 " in text     # 전환 발생은 '소요', 대기 중은 '경과' 로 읽힌다
+
+
+def test_tf_column_and_bar_unit_caption_make_elapsed_readable():
+    """표는 현재 심볼·TF 한 셀만 담으므로 맨 앞 열과 캡션에 TF 를 적는다 — '1/20' 이 4시간짜리 봉임을 표만 보고 알 수 있게."""
+    assert T.COLUMNS[0] == T.TF_COL == "심볼·TF"
+    f = pd.DataFrame([{"상태": T.STATUS_TURNED, "확정 시각": pd.Timestamp("2026-09-18 08:00"), "경과/소요": "1/20",
+                       "60MA 현재": "상방", "확정 시 60MA": "하방", "전환 시각": pd.Timestamp("2026-09-18 12:00"),
+                       "전환 시 가격": 80725.6, "패턴 저점": 74967.97, "기준선(×0.995)": 74593.13, "소멸 시각": pd.NaT}])
+    d = T.display_frame(f, "BTCUSDT", "4h")
+    assert d.iloc[0].tolist()[:4] == ["BTCUSDT 4h", T.STATUS_TURNED, "2026-09-18 17:00", "1/20"]
+    assert T.bar_hours("4h") == 4 and T.bar_hours("15m") == 0.25 and T.bar_hours("1d") == 24 and T.bar_hours("1M") is None
+    assert T.bar_unit_caption("4h") == "경과/소요 단위 = 4h 봉 (1봉 = 4시간)"
+    assert T.bar_unit_caption("1d") == "경과/소요 단위 = 1d 봉 (1봉 = 1일)"
+    assert T.bar_unit_caption("1M") == "경과/소요 단위 = 1M 봉"
+    src = open(T.__file__, encoding="utf-8").read()
+    assert "st.caption(bar_unit_caption(interval))" in src and "display_frame(frame, symbol, interval)" in src

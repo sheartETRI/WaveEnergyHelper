@@ -59,7 +59,10 @@ STATUS_ORDER = (STATUS_WAITING, STATUS_TURNED, STATUS_EXPIRED, STATUS_NO_MA)
 
 ALREADY_UP_MARK = "이미 상방"     # 확정(가용) 시점에 MA60 이 이미 상방이던 건 — 계측 37.6%
 
-COLUMNS = ("상태", "확정 시각", "경과/소요", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
+# 표는 현재 표시 중인 심볼·TF 한 셀만 담는다(적재 프레임 1개). 그래도 '경과 1/20' 이 몇 시간인지 표만 보고 알 수 있게
+# 맨 앞에 심볼·TF 열을 두고(TF_COL), 캡션에 1봉 시간을 적는다.
+TF_COL = "심볼·TF"
+COLUMNS = (TF_COL, "상태", "확정 시각", "경과/소요", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
            "패턴 저점", "기준선(×0.995)", "소멸 시각")
 TIME_COLUMNS = ("확정 시각", "전환 시각", "소멸 시각")
 DISPLAY_HEADERS = {c: f"{c} {KST_LABEL}" for c in TIME_COLUMNS}   # 표 헤더 라벨만 KST 표기(컬럼 키 불변)
@@ -219,7 +222,7 @@ def tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:
 
 
 # 폭은 자동(None) — 문자열 표라 내용 폭에 맞춰지고, 빈 시각 열이 자리를 차지하지 않는다. 좁혀야 할 열만 지정.
-TABLE_COLUMN_WIDTHS = {"상태": "small", "경과/소요": "small", "60MA 현재": "small", "확정 시 60MA": "small"}
+TABLE_COLUMN_WIDTHS = {TF_COL: "small", "상태": "small", "경과/소요": "small", "60MA 현재": "small", "확정 시 60MA": "small"}
 
 
 def _fmt_ts(v) -> str:
@@ -231,9 +234,33 @@ def _fmt_px(v) -> str:
     return "" if v is None or pd.isna(v) else f"{float(v):,.8g}"
 
 
-def display_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    """표시용 문자열 표 — 시각은 'YYYY-MM-DD HH:mm', 빈 값은 공백(None 노출·폭 잘림 방지). 값 계산 없음."""
-    out = frame[list(COLUMNS)].copy()
+def bar_hours(interval: str) -> Optional[float]:
+    """TF 문자열 → 1봉 시간(시). 1M(월)은 달 길이가 달라 None."""
+    iv = str(interval)
+    unit, num = iv[-1], iv[:-1]
+    try:
+        n = float(num)
+    except ValueError:
+        return None
+    return {"m": n / 60.0, "h": n, "d": n * 24.0, "w": n * 24.0 * 7}.get(unit)
+
+
+def bar_unit_caption(interval: str) -> str:
+    h = bar_hours(interval)
+    if h is None:
+        return f"경과/소요 단위 = {interval} 봉"
+    unit = f"{h:g}시간" if h < 24 else f"{h / 24:g}일"
+    return f"경과/소요 단위 = {interval} 봉 (1봉 = {unit})"
+
+
+def display_frame(frame: pd.DataFrame, symbol: str = "", interval: str = "") -> pd.DataFrame:
+    """표시용 문자열 표 — 시각은 'YYYY-MM-DD HH:mm', 빈 값은 공백(None 노출·폭 잘림 방지). 값 계산 없음.
+
+    심볼·TF 열은 여기서 채운다(생애주기 계산은 TF 를 모른다 — 표시 전용 정보).
+    """
+    out = frame[[c for c in COLUMNS if c != TF_COL]].copy()
+    out.insert(0, TF_COL, f"{symbol} {interval}".strip())
+    out = out[list(COLUMNS)]
     for c in ("확정 시각", "전환 시각", "소멸 시각"):
         out[c] = out[c].map(_fmt_ts)
     for c in ("전환 시 가격", "패턴 저점", "기준선(×0.995)"):
@@ -261,8 +288,9 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
         if frame.empty:
             st.caption("해당 구간에 대파동 쌍바닥 후보 없음")
         else:
+            st.caption(bar_unit_caption(interval))
             st.dataframe(
-                display_frame(frame), hide_index=True, width="stretch",
+                display_frame(frame, symbol, interval), hide_index=True, width="stretch",
                 column_config={c: st.column_config.TextColumn(DISPLAY_HEADERS.get(c, c), width=TABLE_COLUMN_WIDTHS.get(c))
                                for c in COLUMNS},
             )
