@@ -1,43 +1,60 @@
-"""시각 표기 UTC 라벨 — 차트 캡션·알람 탭(마지막 봉·이력 표 헤더)이 같은 라벨을 쓰고, 시간대 변환은 없다."""
+"""화면 시각 KST 표기 — 헬퍼 정확성(+9h, DST 없음), 기록 계층 무변환, 표시 지점 일관성."""
 import os
 import sys
+from zoneinfo import ZoneInfo
 
-import numpy as np
 import pandas as pd
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import charts.lw_builder as LW  # noqa: E402
-import display.alarm_panel as AP  # noqa: E402
-from display.tz_label import UTC_LABEL  # noqa: E402
+import display.tz_label as TZ  # noqa: E402
 
 
-def _ohlc(n=30):
-    idx = pd.date_range("2026-09-19 00:00", periods=n, freq="h")
-    c = np.linspace(100, 110, n)
-    return pd.DataFrame({"open": c, "high": c + 1, "low": c - 1, "close": c, "volume": 1.0}, index=idx)
+# ------------------------------------------------------------ 헬퍼
+@pytest.mark.parametrize("ts", ["2026-01-15 00:00", "2026-03-29 01:30", "2026-06-30 23:59", "2026-09-19 05:00",
+                                "2026-10-25 01:00", "2026-12-31 15:00", "2024-02-29 12:00"])
+def test_to_kst_is_exactly_plus_nine_hours_no_dst(ts):
+    t = pd.Timestamp(ts)
+    k = TZ.to_kst(t)
+    assert k - t == pd.Timedelta(hours=9)
+    assert k.tzinfo is None                                    # naive → naive
+    # zoneinfo 로 교차 확인: Asia/Seoul 은 연중 +9h (DST 없음)
+    ref = t.tz_localize("UTC").tz_convert(ZoneInfo("Asia/Seoul")).tz_localize(None)
+    assert k == ref
 
 
-def test_label_is_single_constant_used_by_chart_and_alarm_tab():
-    assert UTC_LABEL == "(UTC)"
-    html = LW.build_lw_html(_ohlc(), "BTCUSDT", "1h", "[게이트 미적용 TF]", chart_height=600, vendor_js="")
-    caption = html.split('id="lw-caption"', 1)[1].split("</div>", 1)[0]
-    assert caption.rstrip().endswith(UTC_LABEL)                                  # 캡션 끝 = (UTC)
-    assert AP.build_bar_caption(_ohlc()) == f"마지막 봉 2026-09-20 05:00 {UTC_LABEL} (미확정 가능)  ·  종가 110"
-    assert AP.HISTORY_TIME_HEADER == f"시각 {UTC_LABEL}"
-    src = open(AP.__file__, encoding="utf-8").read()
-    assert 'col_bar.metric(f"마지막 봉 {UTC_LABEL}"' in src
-    assert "DatetimeColumn(HISTORY_TIME_HEADER" in src
-    # 두 모듈 모두 상수를 import 해 쓴다(문자열 하드코딩 없음)
-    assert "from display.tz_label import UTC_LABEL" in src
-    assert "from display.tz_label import UTC_LABEL" in open(LW.__file__, encoding="utf-8").read()
+def test_to_kst_handles_aware_and_nat():
+    aware = pd.Timestamp("2026-09-19 05:00", tz="UTC")
+    assert TZ.to_kst(aware) == pd.Timestamp("2026-09-19 14:00")
+    assert TZ.to_kst(pd.NaT) is pd.NaT
+    assert TZ.KST_LABEL == "(KST)" and TZ.KST_OFFSET == pd.Timedelta(hours=9)
 
 
-def test_no_timezone_conversion_anywhere():
-    df = _ohlc()
-    assert LW._unix_seconds(df.index[-1]) == int(df.index[-1].timestamp())      # naive = UTC, 이동 없음
-    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 미적용 TF]", chart_height=600, vendor_js="")
-    assert "Asia/Seoul" not in html and "tz_convert" not in open(AP.__file__, encoding="utf-8").read()
-    frame = pd.DataFrame({"시각": [pd.Timestamp("2026-09-19 05:00")]})
-    assert "시각" in frame.columns and AP.filter_history_frame(frame).equals(frame)   # 컬럼 키 불변
+def test_kst_text_shifts_embedded_timestamps_only():
+    assert TZ.kst_text("교차 2026-09-18 08:00 · hist 423.9") == "교차 2026-09-18 17:00 · hist 423.9"
+    assert TZ.kst_text("교차 2026-09-18 20:00 · MACD -343.7") == "교차 2026-09-19 05:00 · MACD -343.7"   # 날짜 넘어감
+    assert TZ.kst_text("LL") == "LL" and TZ.kst_text(None) is None
+
+
+# ------------------------------------------------------------ 기록·정의 계층 무변환
+RECORD_AND_DEFINITION_DIRS = ("analysis", "indicators", "data", "config")
+
+
+def test_recording_and_definition_layers_never_convert_timezone():
+    """사이드카·저널·검출기·데이터 적재는 naive UTC 그대로 — 표시 헬퍼를 import 하지도, tz 변환을 하지도 않는다."""
+    hits = []
+    for d in RECORD_AND_DEFINITION_DIRS:
+        for root, _dirs, files in os.walk(os.path.join(ROOT, d)):
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                src = open(os.path.join(root, f), encoding="utf-8", errors="ignore").read()
+                for banned in ("display.tz_label", "to_kst", "kst_text", "Asia/Seoul", "tz_convert(", "KST"):
+                    if banned in src:
+                        hits.append((os.path.relpath(os.path.join(root, f), ROOT), banned))
+    assert hits == [], hits
+    # 기록 경로 대표 파일이 존재하고 위 검사에 포함되었는지
+    for rel in ("analysis/wave_align_gate_forward.py", "analysis/wave_live_forward_journal.py", "analysis/alarm_signals.py"):
+        assert os.path.isfile(os.path.join(ROOT, rel))
