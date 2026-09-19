@@ -88,6 +88,8 @@ SOLO_STRIP_BG = "#F0F3FA"   # 불투명 — 접힌 띠에는 pane 이름만 보�
 # 오버레이(캡션·버튼·접힌 띠) z-index — LW v5 pane 분리선 히트 영역(z-index 50, 세로 9px)보다 위. 띠가 14px 이면
 # 분리선 히트 영역이 버튼 줄(top 6px)과 겹쳐 클릭을 가로채므로 반드시 50 초과.
 LW_OVERLAY_Z = 60
+# 크로스헤어 정보 오버레이(#lw-ohlc): 게이트·기준선 캡션 줄(top 6px, 높이 ≈20px) 바로 아래. 겹치지 않게 고정 오프셋.
+OHLC_OVERLAY_OFFSET_PX = 24   # 실측: 캡션 높이 22.5px(top 6 → bottom 28.5) → 30px 에서 시작
 PANE_SEPARATOR_COLOR = "#E0E3EB"
 PANE_SEPARATOR_HOVER_COLOR = "rgba(178, 181, 189, 0.35)"
 
@@ -400,7 +402,10 @@ def chart_options() -> dict:
                             "scaleMargins": {"top": 0.08, "bottom": PRICE_SCALE_BOTTOM_MARGIN}},
         "timeScale": {"timeVisible": True, "secondsVisible": False, "borderVisible": False,
                       "rightOffset": 3},
-        "crosshair": {"mode": 0},   # Normal — 자유 크로스헤어
+        # Normal(0) — 자유 크로스헤어(Magnet 아님). 어느 pane 위에서든 수직·수평선과 축 라벨을 그린다.
+        "crosshair": {"mode": 0,
+                      "vertLine": {"visible": True, "labelVisible": True},
+                      "horzLine": {"visible": True, "labelVisible": True}},
         "handleScroll": {"mouseWheel": True, "pressedMouseMove": True,
                          "horzTouchDrag": True, "vertTouchDrag": False},
         "handleScale": {"mouseWheel": True, "pinch": True, "axisPressedMouseMove": True,
@@ -573,6 +578,51 @@ _JS_TEMPLATE = """
   if (rsiLine && M.rsi.length) LWC.createSeriesMarkers(rsiLine, M.rsi);
   if (macdLine && M.macd.length) LWC.createSeriesMarkers(macdLine, M.macd);
 
+  // ---- 크로스헤어 정보 오버레이: 커서 봉의 시/고/저/종·직전 종가 대비 변화율 + 하위 pane 값.
+  //      값은 PAYLOAD(시간→값 맵)에서 읽으므로 hover 와 '커서 밖 = 마지막 봉' 이 같은 경로다.
+  function tmap(arr) { var m = {}; (arr || []).forEach(function (p) { m[p.time] = p.value; }); return m; }
+  var candleAt = {}, candleIdx = {};
+  PAYLOAD.candles.forEach(function (c, i) { candleAt[c.time] = c; candleIdx[c.time] = i; });
+  var subMaps = { stoch: [], macd: null, rsi: null };
+  if (PAYLOAD.stoch) PAYLOAD.stoch.layers.forEach(function (L) {
+    subMaps.stoch.push({ label: L.label, offset: L.offset, k: tmap(L.k), d: tmap(L.d) });
+  });
+  if (PAYLOAD.macd) subMaps.macd = { macd: tmap(PAYLOAD.macd.macd), signal: tmap(PAYLOAD.macd.signal), hist: tmap(PAYLOAD.macd.hist) };
+  if (PAYLOAD.rsi) subMaps.rsi = tmap(PAYLOAD.rsi.line);
+  var fmtPrice = function (v) { try { return candles.priceFormatter().format(v); } catch (e) { return String(v); } };
+  function fmt1(v) { return (v === undefined || v === null || isNaN(v)) ? '—' : (Math.round(v * 10) / 10).toFixed(1); }
+  function span(text, color) { return '<span style="color:' + color + '">' + text + '</span>'; }
+  function renderInfo(time) {
+    var c = candleAt[time];
+    var box = document.getElementById('lw-ohlc');
+    if (!c) { box.innerHTML = ''; return; }
+    var i = candleIdx[time], prev = i > 0 ? PAYLOAD.candles[i - 1].close : null;
+    var chg = (prev && prev !== 0) ? (c.close - prev) / prev * 100 : null;
+    var up = chg === null ? (c.close >= c.open) : chg >= 0;
+    var col = up ? CANDLE_OPTS.upColor : CANDLE_OPTS.downColor;
+    var chgText = chg === null ? '' : ' ' + span((chg >= 0 ? '+' : '') + chg.toFixed(2) + '%', col);
+    var line1 = lwTooltipTime(time) + ' · 시 ' + fmtPrice(c.open) + ' 고 ' + fmtPrice(c.high)
+              + ' 저 ' + fmtPrice(c.low) + ' 종 ' + span(fmtPrice(c.close), col) + chgText;
+    var parts = [];
+    if (subMaps.stoch.length && paneOf.stoch !== undefined) {
+      parts.push('스토캐 K ' + subMaps.stoch.map(function (L) {
+        var k = L.k[time]; return L.label + ' ' + fmt1(k === undefined ? undefined : k - L.offset);
+      }).join(' · '));
+    }
+    if (subMaps.macd && paneOf.macd !== undefined) {
+      parts.push('MACD ' + fmt1(subMaps.macd.macd[time]) + ' / 신호 ' + fmt1(subMaps.macd.signal[time])
+                 + ' / 히스토 ' + fmt1(subMaps.macd.hist[time]));
+    }
+    if (subMaps.rsi && paneOf.rsi !== undefined) parts.push('RSI ' + fmt1(subMaps.rsi[time]));
+    box.innerHTML = line1 + (parts.length ? '<br>' + parts.join(' · ') : '');
+  }
+  var lastTime = PAYLOAD.candles.length ? PAYLOAD.candles[PAYLOAD.candles.length - 1].time : null;
+  chart.subscribeCrosshairMove(function (param) {
+    var t = (param && param.time !== undefined && candleAt[param.time]) ? param.time : lastTime;
+    renderInfo(t);
+  });
+  renderInfo(lastTime);
+
   // ---- pane 비중 (지표 중심 근사) — 경계 드래그로 사용자가 바꿀 수 있다
   var panes = chart.panes();
   PANES.forEach(function (p, i) { if (panes[i]) panes[i].setStretchFactor(p.stretch); });
@@ -671,6 +721,7 @@ _JS_TEMPLATE = """
     // 가격 pane 이 접히면 캡션·버튼 줄을 띠 아래로 내려 '가격' 띠 이름과 겹치지 않게 한다
     var overlayTop = (kind !== SOLO_ALL && kind !== 'price') ? (SOLO_COLLAPSED_PX + 6) : 6;
     document.getElementById('lw-caption').style.top = overlayTop + 'px';
+    document.getElementById('lw-ohlc').style.top = (overlayTop + OHLC_OFFSET) + 'px';
     document.getElementById('lw-solo').style.top = overlayTop + 'px';
     applyFixedScales();
     layoutStrips();
@@ -691,7 +742,8 @@ _JS_TEMPLATE = """
                   stochK: stochK, stochD: stochD, macd: macdLine, macdHist: macdHist, macdSignal: macdSignal,
                   rsi: rsiLine, vzoom: vz, resetVertical: resetVertical, overPriceAxis: overPriceAxis,
                   solo: solo, applySolo: applySolo, stochZones: stochZones, rsiZones: rsiZones,
-                  strips: strips, layoutStrips: layoutStrips, frameEl: frameEl };  // 검증·측정용 핸들
+                  strips: strips, layoutStrips: layoutStrips, frameEl: frameEl,
+                  renderInfo: renderInfo };  // 검증·측정용 핸들
 })();
 """
 
@@ -744,6 +796,7 @@ def build_lw_html(
         f"var SOLO_ALL = {json.dumps(SOLO_ALL)}; var SOLO_COLLAPSED_PX = {SOLO_COLLAPSED_PX};",
         f"var PANE_LABELS = {json.dumps(PANE_LABELS, ensure_ascii=False)};",
         f"var ZONE_FILL = {json.dumps(ZONE_FILL_COLORS)};",   # charts/theme.py 토큰 — 하드코딩 금지
+        f"var OHLC_OFFSET = {OHLC_OVERLAY_OFFSET_PX};",
         f"var INTERVAL = {json.dumps(str(display_interval))};",
         f"var TOOLTIP_CLOCK = {json.dumps(tooltip_shows_clock(display_interval))};",
     ])
@@ -756,6 +809,10 @@ def build_lw_html(
         f'  <div id="lw-caption" style="position:absolute;top:6px;left:8px;z-index:{LW_OVERLAY_Z};'
         f'font-size:12px;color:{TV_TEXT};background:rgba(255,255,255,0.85);padding:2px 6px;'
         f'border-radius:3px;pointer-events:none;">{caption_html}</div>\n'
+        # 크로스헤어 정보(커서 봉의 시/고/저/종·변화율 + 하위 pane 값). 커서 밖이면 마지막 봉. JS 가 채운다.
+        f'  <div id="lw-ohlc" style="position:absolute;top:{6 + OHLC_OVERLAY_OFFSET_PX}px;left:8px;z-index:{LW_OVERLAY_Z};'
+        f'font-size:12px;color:{TV_TEXT};background:rgba(255,255,255,0.85);padding:2px 6px;'
+        f'border-radius:3px;pointer-events:none;white-space:nowrap;"></div>\n'
         f"{solo_buttons_html(panes)}"
         '  <div id="lw-chart" style="position:absolute;inset:0;"></div>\n'
         # 접힌 pane 위에 얹는 이름 띠(단독 모드에서만 표시, 클릭 → 그 pane 단독). 차트 위 z-index.
