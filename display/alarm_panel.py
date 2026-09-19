@@ -22,6 +22,7 @@ from analysis.alarm_signals import (
     rsi_zone,
     signals_to_frame,
 )
+from display.tz_label import UTC_LABEL
 
 # 기본 이력 창(봉). 사이드바에서 조절.
 DEFAULT_HISTORY_BARS = 120
@@ -37,6 +38,7 @@ HISTORY_KINDS = ("확정", "후보")
 _LAYER_ORDER = {"대": 0, "중": 1, "소": 2, "R": 3, "M": 4}
 # 같은 시각 묶음 음영(2건 이상인 시각만). 인접 묶음이 붙어 보이지 않게 두 색을 번갈아 쓴다.
 HISTORY_GROUP_COLORS = ("#FFF4E5", "#EAF2FF")
+HISTORY_TIME_HEADER = f"시각 {UTC_LABEL}"   # 표 헤더 라벨만 — 프레임 컬럼 키 "시각" 은 그대로(필터·묶음 로직 불변)
 HISTORY_COLUMN_WIDTHS = {"시각": "medium", "신호": "medium", "레이어": "small", "구분": "small",
                          "지표값": "small", "비고": "large"}   # 비고가 우측에서 잘리지 않게
 
@@ -129,7 +131,7 @@ def build_bar_caption(df: pd.DataFrame) -> str:
     last_ts = df.index[-1]
     close = df["close"].iloc[-1] if "close" in df.columns else None
     price = "" if close is None or pd.isna(close) else f"  ·  종가 {float(close):,.8g}"
-    return f"마지막 봉 {last_ts:%Y-%m-%d %H:%M} (미확정 가능){price}"
+    return f"마지막 봉 {last_ts:%Y-%m-%d %H:%M} {UTC_LABEL} (미확정 가능){price}"
 
 
 def has_macd(df: pd.DataFrame) -> bool:
@@ -182,7 +184,7 @@ def render_alarm_panel(
 
         col_zone, col_bar, col_count = st.columns(3)
         col_zone.metric("RSI 구역", f"{_ZONE_ICON.get(zone, '⚪')} {zone}")
-        col_bar.metric("마지막 봉", f"{df.index[-1]:%m-%d %H:%M}", help="미확정(진행 중) 봉일 수 있음")
+        col_bar.metric(f"마지막 봉 {UTC_LABEL}", f"{df.index[-1]:%m-%d %H:%M}", help="미확정(진행 중) 봉일 수 있음 · 시각은 UTC")
         col_count.metric(f"최근 {history_bars}봉 신호", f"{len(signals)}건")
         st.caption(build_bar_caption(df))
         if has_macd(df):
@@ -217,7 +219,7 @@ def render_alarm_panel(
                     hide_index=True,
                     width="stretch",
                     column_config={
-                        "시각": st.column_config.DatetimeColumn("시각", format="YYYY-MM-DD HH:mm",
+                        "시각": st.column_config.DatetimeColumn(HISTORY_TIME_HEADER, format="YYYY-MM-DD HH:mm",
                                                                   width=HISTORY_COLUMN_WIDTHS["시각"]),
                         "신호": st.column_config.TextColumn("신호", width=HISTORY_COLUMN_WIDTHS["신호"]),
                         "레이어": st.column_config.TextColumn("레이어", width=HISTORY_COLUMN_WIDTHS["레이어"]),

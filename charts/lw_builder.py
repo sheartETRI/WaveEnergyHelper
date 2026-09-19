@@ -40,6 +40,7 @@ from charts.plotly_builder import (
     TV_TEXT,
 )
 from charts.theme import MACD_HIST_COLORS, ZONE_FILL_COLORS
+from display.tz_label import UTC_LABEL
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -773,8 +774,9 @@ def build_lw_html(
     panes = pane_layout(payload, show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi)
     lines = struct_reference_lines(struct_reference)
     extra = list(tracker_lines or [])
+    # 캡션 끝 시간대 표기 — 차트 시각은 UTC(변환 없음). 알람 탭과 같은 라벨(display.tz_label).
     caption_html = (f"{_escape(str(symbol))} {_escape(str(display_interval))} · {_escape(gate_context)}"
-                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)}")
+                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)} {_escape(UTC_LABEL)}")
     vendor = vendor_js if vendor_js is not None else load_vendor_js()
     height = int(chart_height)
 
