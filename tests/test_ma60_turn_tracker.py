@@ -127,14 +127,21 @@ def test_waiting_elapsed_and_recent_filter():
     assert len(recent) <= len(full)
     assert (recent["_known_pos"] >= len(df) - 120).all()
     for d in full.to_dict("records"):
-        e, tot = d["경과"].split("/")
-        assert tot == "20" and 0 <= int(e) <= 20
+        if d["상태"] == T.STATUS_NO_MA:
+            assert d[T.ELAPSED_COL] == "—"
+            continue
+        e, tot = d[T.ELAPSED_COL].split(" ")[0].split("/")
+        lag = int(d["_lag"])
+        assert int(tot) == 20 + lag and 0 <= int(e) <= 20 + lag
+        assert (" (가용 +" in d[T.ELAPSED_COL]) == (lag > 0)
         if d["상태"] == T.STATUS_WAITING:
-            assert int(e) < 20
+            assert int(e) < 20 + lag
         if d["상태"] == T.STATUS_EXPIRED:
-            assert e == "20" and pd.notna(d["소멸 시각"]) and pd.isna(d["전환 시각"])
+            assert int(e) == 20 + lag and pd.notna(d["소멸 시각"]) and pd.isna(d["전환 시각"])
         if d["상태"] == T.STATUS_TURNED:
             assert pd.notna(d["전환 시각"]) and pd.notna(d["전환 시 가격"]) and pd.isna(d["소멸 시각"])
+            # 소요 = 전환봉 − 확정봉 (표에 보이는 두 시각의 봉 차이와 일치)
+            assert int(e) == int((pd.Timestamp(d["전환 시각"]) - pd.Timestamp(d["확정 시각"])) / pd.Timedelta(hours=1))
         assert d["기준선(×0.995)"] == pytest.approx(d["패턴 저점"] * (1 - T.BUFFER))
 
 
@@ -229,7 +236,7 @@ def test_alarm_signal_definitions_untouched_by_tracker():
 
 def test_display_frame_formats_without_none_or_truncation_risk():
     f = pd.DataFrame([{
-        "상태": T.STATUS_EXPIRED, "확정 시각": pd.Timestamp("2026-09-14 12:00"), "경과": "20/20",
+        "상태": T.STATUS_EXPIRED, "확정 시각": pd.Timestamp("2026-09-14 12:00"), "경과/소요": "20/20",
         "60MA 현재": "상방", "확정 시 60MA": "하방", "전환 시각": pd.NaT, "전환 시 가격": np.nan,
         "패턴 저점": 76046.58, "기준선(×0.995)": 75666.347, "소멸 시각": pd.Timestamp("2026-09-17 20:00"),
     }])
@@ -242,3 +249,41 @@ def test_display_frame_formats_without_none_or_truncation_risk():
     assert d.loc[0, "패턴 저점"] == "76,046.58"
     assert "None" not in d.to_string()
     assert set(T.TABLE_COLUMN_WIDTHS) <= set(T.COLUMNS)
+
+
+# ------------------------------------------------------------ 경과/소요 열 — 합성 케이스로 상태별 값 단언
+def _sig(n, cands, turn_at=()):
+    up = np.zeros(n, dtype=bool); up[list(turn_at)] = True
+    turn = np.zeros(n, dtype=bool); turn[list(turn_at)] = True
+    return {"cands": cands, "ma60_up": up, "ma60_turn": turn, "ma60_valid": np.ones(n, dtype=bool)}
+
+
+def _cand(c, lag=0, low=100.0):
+    return {"confirm_pos": c, "known_pos": c + lag, "lag": lag, "p1": c - 5, "p2": c - 1, "pattern_low": low}
+
+
+def test_elapsed_column_waiting_turned_expired_from_confirm_bar():
+    n = 60
+    idx = pd.date_range("2026-09-18 00:00", periods=n, freq="h")
+    close = np.linspace(100, 110, n)
+    # 케이스 A: 확정 c=10, 전환 t=14 → 소요 4/20 (위임 사례: 확정→전환 4봉)
+    # 케이스 B: 확정 c=20, 창 안 전환 없음, 창 종료 k+20=40 ≤ last → 소멸 20/20
+    # 케이스 C: 확정 c=50, 아직 창 안(last=59) → 대기 9/20
+    # 케이스 D: 확정 c=42, 가용 지연 lag=1(k=43), 전환 t=47 → 소요 5/21 (가용 +1봉)
+    rows = T.lifecycle_rows(_sig(n, [_cand(10), _cand(20), _cand(50), _cand(42, lag=1)], turn_at=(14, 47)),
+                            idx, close, recent_bars=n)
+    by = {int(r["_confirm_pos"]): r for r in rows}
+    assert by[10]["상태"] == T.STATUS_TURNED and by[10][T.ELAPSED_COL] == "4/20"
+    assert by[10]["전환 시각"] == idx[14] and by[10]["확정 시각"] == idx[10]
+    assert by[20]["상태"] == T.STATUS_EXPIRED and by[20][T.ELAPSED_COL] == "20/20" and by[20]["소멸 시각"] == idx[40]
+    assert by[50]["상태"] == T.STATUS_WAITING and by[50][T.ELAPSED_COL] == "9/20"
+    assert by[42]["상태"] == T.STATUS_TURNED and by[42][T.ELAPSED_COL] == "5/21 (가용 +1봉)"
+    assert by[42]["전환 시각"] == idx[47] and by[42]["확정 시각"] == idx[42]
+    assert T.elapsed_label(0, 0) == "0/20" and T.elapsed_label(22, 2) == "22/22 (가용 +2봉)"
+
+
+def test_elapsed_column_is_in_table_and_named_by_meaning():
+    assert T.ELAPSED_COL == "경과/소요" and T.ELAPSED_COL in T.COLUMNS and "경과" not in T.COLUMNS
+    df = _synthetic_frame()
+    text = " | ".join(T.build_lines(T.track_candidates(df, recent_bars=len(df))))
+    assert "소요 " in text and "경과 " in text     # 전환 발생은 '소요', 대기 중은 '경과' 로 읽힌다

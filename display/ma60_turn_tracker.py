@@ -59,7 +59,7 @@ STATUS_ORDER = (STATUS_WAITING, STATUS_TURNED, STATUS_EXPIRED, STATUS_NO_MA)
 
 ALREADY_UP_MARK = "이미 상방"     # 확정(가용) 시점에 MA60 이 이미 상방이던 건 — 계측 37.6%
 
-COLUMNS = ("상태", "확정 시각", "경과", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
+COLUMNS = ("상태", "확정 시각", "경과/소요", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
            "패턴 저점", "기준선(×0.995)", "소멸 시각")
 TIME_COLUMNS = ("확정 시각", "전환 시각", "소멸 시각")
 DISPLAY_HEADERS = {c: f"{c} {KST_LABEL}" for c in TIME_COLUMNS}   # 표 헤더 라벨만 KST 표기(컬럼 키 불변)
@@ -82,6 +82,56 @@ def _ma_dir(up: np.ndarray, valid: np.ndarray, pos: int) -> str:
     return "상방" if up[pos] else "하방"
 
 
+ELAPSED_COL = "경과/소요"   # 대기 중: 확정봉→현재 경과 봉 수 · 전환 발생: 확정봉→전환봉 소요 봉 수 · 소멸: 창 종료까지(=20+가용 지연)
+
+
+def elapsed_label(bars: int, lag: int) -> str:
+    """'n/20'. 피봇 확정 지연(lag)으로 가용이 확정봉보다 늦은 후보는 창이 그만큼 늦게 닫히므로 분모에 지연을 더해 표기."""
+    denom = OBS_BARS + int(lag)
+    return f"{bars}/{denom}" + (f" (가용 +{int(lag)}봉)" if lag else "")
+
+
+def lifecycle_rows(sig: dict, idx, close: np.ndarray, recent_bars: int) -> List[dict]:
+    """후보 생애주기 분류 — probe.extract_signals 출력만 소비하는 순수 함수(테스트 대상).
+
+    창은 probe.simulate 와 동일하게 가용 시점 k 기준 [k, k+OBS_BARS]. 경과/소요 봉 수는 **표에 보이는 확정봉(c)** 기준:
+      대기 중 = 현재봉 − c · 전환 발생 = 전환봉 − c · 소멸 = (k+OBS_BARS) − c = 20 + 지연.
+    """
+    n = len(idx)
+    up, turn, valid = sig["ma60_up"], sig["ma60_turn"], sig["ma60_valid"]
+    last = n - 1
+    rows: List[dict] = []
+    for cd in sig["cands"]:
+        k, c = int(cd["known_pos"]), int(cd["confirm_pos"])
+        lag = k - c
+        if k < n - int(recent_bars):
+            continue
+        w_hi = k + OBS_BARS
+        hi = min(w_hi, last)
+        rec = {
+            "상태": STATUS_WAITING, "확정 시각": idx[c],
+            ELAPSED_COL: elapsed_label(last - c, lag), "60MA 현재": _ma_dir(up, valid, last),
+            "확정 시 60MA": (ALREADY_UP_MARK if (valid[k] and up[k]) else _ma_dir(up, valid, k)),
+            "전환 시각": pd.NaT, "전환 시 가격": np.nan,
+            "패턴 저점": float(cd["pattern_low"]), "기준선(×0.995)": float(cd["pattern_low"]) * (1.0 - BUFFER),
+            "소멸 시각": pd.NaT,
+            "_known_pos": k, "_confirm_pos": c, "_lag": lag, "_bars": last - c,
+        }
+        if not valid[k:hi + 1].all():
+            rec.update({"상태": STATUS_NO_MA, ELAPSED_COL: "—", "_bars": None})
+        else:
+            hits = np.flatnonzero(turn[k:hi + 1])
+            if len(hits):
+                t = k + int(hits[0])
+                rec.update({"상태": STATUS_TURNED, "전환 시각": idx[t], "전환 시 가격": float(close[t]),
+                            ELAPSED_COL: elapsed_label(t - c, lag), "_bars": t - c})
+            elif w_hi <= last:
+                rec.update({"상태": STATUS_EXPIRED, "소멸 시각": idx[w_hi],
+                            ELAPSED_COL: elapsed_label(w_hi - c, lag), "_bars": w_hi - c})
+        rows.append(rec)
+    return rows
+
+
 def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.DataFrame:
     """최근 recent_bars 안에 가용(known)된 후보의 생애주기 표.
 
@@ -96,39 +146,7 @@ def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.Dat
         sig = probe.extract_signals(pipe)
     except (KeyError, ValueError):
         return pd.DataFrame(columns=list(COLUMNS))
-    n = len(pipe)
-    idx = pipe.index
-    close = pipe["close"].to_numpy(dtype=float)
-    up, turn, valid = sig["ma60_up"], sig["ma60_turn"], sig["ma60_valid"]
-    last = n - 1
-    rows: List[dict] = []
-    for cd in sig["cands"]:
-        k = int(cd["known_pos"])
-        if k < n - int(recent_bars):
-            continue
-        w_hi = k + OBS_BARS
-        hi = min(w_hi, last)
-        elapsed = hi - k
-        rec = {
-            "상태": STATUS_WAITING, "확정 시각": idx[int(cd["confirm_pos"])],
-            "경과": f"{elapsed}/{OBS_BARS}", "60MA 현재": _ma_dir(up, valid, last),
-            "확정 시 60MA": (ALREADY_UP_MARK if (valid[k] and up[k]) else _ma_dir(up, valid, k)),
-            "전환 시각": pd.NaT, "전환 시 가격": np.nan,
-            "패턴 저점": float(cd["pattern_low"]), "기준선(×0.995)": float(cd["pattern_low"]) * (1.0 - BUFFER),
-            "소멸 시각": pd.NaT,
-            "_known_pos": k, "_elapsed": elapsed,
-        }
-        if not valid[k:hi + 1].all():
-            rec["상태"] = STATUS_NO_MA
-        else:
-            hits = np.flatnonzero(turn[k:hi + 1])
-            if len(hits):
-                t = k + int(hits[0])
-                rec.update({"상태": STATUS_TURNED, "전환 시각": idx[t], "전환 시 가격": float(close[t]),
-                            "경과": f"{t - k}/{OBS_BARS}"})
-            elif w_hi <= last:
-                rec.update({"상태": STATUS_EXPIRED, "소멸 시각": idx[w_hi], "경과": f"{OBS_BARS}/{OBS_BARS}"})
-        rows.append(rec)
+    rows = lifecycle_rows(sig, pipe.index, pipe["close"].to_numpy(dtype=float), recent_bars)
     if not rows:
         return pd.DataFrame(columns=list(COLUMNS))
     out = pd.DataFrame(rows).sort_values("_known_pos", ascending=False, kind="mergesort")
@@ -166,11 +184,11 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
         lines.append("해당 구간에 대파동 쌍바닥 후보 없음")
     for d in (frame if frame is not None else pd.DataFrame()).to_dict("records"):
         if d["상태"] == STATUS_TURNED:
-            tail = f"전환 {to_kst(d['전환 시각']):%m-%d %H:%M} @ {d['전환 시 가격']:,.8g}"
+            tail = f"전환 {to_kst(d['전환 시각']):%m-%d %H:%M} @ {d['전환 시 가격']:,.8g} · 소요 {d[ELAPSED_COL]}"
         elif d["상태"] == STATUS_EXPIRED:
-            tail = f"소멸 {to_kst(d['소멸 시각']):%m-%d %H:%M}"
+            tail = f"소멸 {to_kst(d['소멸 시각']):%m-%d %H:%M} · 창 {d[ELAPSED_COL]}"
         else:
-            tail = f"경과 {d['경과']} · 60MA {d['60MA 현재']}"
+            tail = f"경과 {d[ELAPSED_COL]} · 60MA {d['60MA 현재']}"
         lines.append(f"[{d['상태']}] 확정 {to_kst(d['확정 시각']):%m-%d %H:%M} · {tail} · "
                      f"저점 {d['패턴 저점']:,.8g} · 기준선 {d['기준선(×0.995)']:,.8g}"
                      + (f" · {ALREADY_UP_MARK}" if d["확정 시 60MA"] == ALREADY_UP_MARK else ""))
@@ -201,7 +219,7 @@ def tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:
 
 
 # 폭은 자동(None) — 문자열 표라 내용 폭에 맞춰지고, 빈 시각 열이 자리를 차지하지 않는다. 좁혀야 할 열만 지정.
-TABLE_COLUMN_WIDTHS = {"상태": "small", "경과": "small", "60MA 현재": "small", "확정 시 60MA": "small"}
+TABLE_COLUMN_WIDTHS = {"상태": "small", "경과/소요": "small", "60MA 현재": "small", "확정 시 60MA": "small"}
 
 
 def _fmt_ts(v) -> str:
@@ -250,6 +268,8 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
             )
         st.caption(summary_line(frame, recent_bars))
         st.caption(f"대기 중 = 대파동(20,10,10) 쌍바닥 확정 후 {OBS_BARS}봉 창이 살아 있는 후보 · "
-                   f"경과는 후보 가용 시점(피봇 확정 지연 반영) 기준 · 시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
+                   f"경과/소요 = 확정봉 기준 봉 수(대기: 현재까지 경과, 전환 발생: 전환까지 소요, 소멸: 창 종료까지) · "
+                   f"창은 후보 가용 시점(피봇 확정 지연 1~2봉 가능) 기준 {OBS_BARS}봉이라 지연 후보는 분모에 '+N봉' 표기 · "
+                   f"시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
                    "확정 시 60MA '이미 상방' 은 전환이 아니므로 창 안의 새 전환만 셈.")
     return frame
