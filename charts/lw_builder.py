@@ -422,11 +422,48 @@ def load_vendor_js(path: str = VENDOR_PATH) -> str:
         return fh.read()
 
 
+# ------------------------------------------------------------------ 시간 표기 (한국식 순서, UTC)
+# 프레임 인덱스는 naive UTC(_unix_seconds) 이고 LW 도 UTC 로 그린다 — 알람 탭 신호 시각과 같은 벽시계.
+# 시간대 변환은 하지 않는다(정의·알람 시각과 어긋나면 안 됨).
+DAILY_PLUS_SUFFIXES = ("d", "w", "M")   # 일봉 이상: 툴팁에 시:분을 생략 (봉 시각이 항상 00:00 이라 정보가 없다)
+
+
+def tooltip_shows_clock(interval: str) -> bool:
+    """툴팁(크로스헤어 시간 라벨)에 HH:MM 을 붙일지 — 분·시간봉만 True."""
+    return not str(interval).endswith(DAILY_PLUS_SUFFIXES)
+
+
+# tickMarkType: 0 Year · 1 Month · 2 DayOfMonth · 3 Time · 4 TimeWithSeconds (LW 기본 밀도 단계 그대로, 순서만 한국식)
+TIME_FORMAT_JS = """
+function lwPad(n) { return (n < 10 ? '0' : '') + n; }
+function lwParts(t) {
+  var sec = (typeof t === 'number') ? t : (t && t.timestamp !== undefined ? t.timestamp
+            : Date.UTC(t.year, t.month - 1, t.day) / 1000);
+  var d = new Date(sec * 1000);
+  return { y: d.getUTCFullYear(), m: lwPad(d.getUTCMonth() + 1), d: lwPad(d.getUTCDate()),
+           h: lwPad(d.getUTCHours()), mi: lwPad(d.getUTCMinutes()), s: lwPad(d.getUTCSeconds()) };
+}
+function lwYmd(p) { return p.y + '-' + p.m + '-' + p.d; }
+function lwTooltipTime(t) { var p = lwParts(t); return TOOLTIP_CLOCK ? lwYmd(p) + ' ' + p.h + ':' + p.mi : lwYmd(p); }
+function lwTickMark(t, type) {
+  var p = lwParts(t);
+  if (type === 0) return String(p.y);
+  if (type === 1) return p.y + '-' + p.m;
+  if (type === 2) return p.m + '-' + p.d;
+  if (type === 3) return p.h + ':' + p.mi;
+  return p.h + ':' + p.mi + ':' + p.s;
+}
+"""
+
+
 _JS_TEMPLATE = """
 (function () {
   var LWC = LightweightCharts;
   var el = document.getElementById('lw-chart');
   var chart = LWC.createChart(el, OPTS);
+  // 시간 표기: JSON 옵션에는 함수를 못 실으므로 생성 뒤 적용 (TIME_FORMAT_JS)
+  chart.applyOptions({ localization: { timeFormatter: lwTooltipTime },
+                       timeScale: { tickMarkFormatter: lwTickMark } });
   var LINE_BASE = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
   function line(opts, pane) { return chart.addSeries(LWC.LineSeries, Object.assign({}, LINE_BASE, opts), pane); }
   function guide(series, price, color, style) {
@@ -707,6 +744,8 @@ def build_lw_html(
         f"var SOLO_ALL = {json.dumps(SOLO_ALL)}; var SOLO_COLLAPSED_PX = {SOLO_COLLAPSED_PX};",
         f"var PANE_LABELS = {json.dumps(PANE_LABELS, ensure_ascii=False)};",
         f"var ZONE_FILL = {json.dumps(ZONE_FILL_COLORS)};",   # charts/theme.py 토큰 — 하드코딩 금지
+        f"var INTERVAL = {json.dumps(str(display_interval))};",
+        f"var TOOLTIP_CLOCK = {json.dumps(tooltip_shows_clock(display_interval))};",
     ])
     return (
         "<!-- lw_builder stage2 -->\n"
@@ -723,7 +762,7 @@ def build_lw_html(
         '  <div id="lw-strips"></div>\n'
         "</div>\n"
         f"<script>{vendor}</script>\n"
-        f"<script>\n{consts}\n{_JS_TEMPLATE}</script>\n"
+        f"<script>\n{consts}\n{TIME_FORMAT_JS}\n{_JS_TEMPLATE}</script>\n"
     )
 
 
