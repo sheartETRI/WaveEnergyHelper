@@ -377,6 +377,17 @@ def struct_caption_html(lines: list[dict]) -> str:
     )
 
 
+def structure_markers_payload(markers: Optional[list[dict]]) -> list[dict]:
+    """가격 pane 마커 직렬화 — ts(naive UTC) 를 표시 시프트(_display_seconds)한 time 으로. 시간순 정렬(LW 요구)."""
+    if not markers:
+        return []
+    out = []
+    for m in markers:
+        out.append({"time": _display_seconds(pd.Timestamp(m["ts"])), "position": m.get("position", "aboveBar"),
+                    "color": m.get("color", TV_TEXT), "shape": m.get("shape", "circle"), "text": m.get("text", "")})
+    return sorted(out, key=lambda x: x["time"])
+
+
 def tracker_caption_html(lines: list[dict]) -> str:
     """60MA 전환 추적(미검증) 대기 중 후보의 저점·기준선 캡션 조각. 없으면 빈 문자열(캡션 불변).
 
@@ -585,6 +596,8 @@ _JS_TEMPLATE = """
   });
   if (rsiLine && M.rsi.length) LWC.createSeriesMarkers(rsiLine, M.rsi);
   if (macdLine && M.macd.length) LWC.createSeriesMarkers(macdLine, M.macd);
+  // ---- 가격 pane 구조 마커(추세 구조 추적, 미검증): 스윙 고점·저점 HH/HL/LH/LL — 없으면 아무것도 안 그린다
+  if (STRUCTURE_MARKERS.length) LWC.createSeriesMarkers(candles, STRUCTURE_MARKERS);
 
   // ---- 크로스헤어 정보 오버레이: 커서 봉의 시/고/저/종·직전 종가 대비 변화율 + 하위 pane 값.
   //      값은 PAYLOAD(시간→값 맵)에서 읽으므로 hover 와 '커서 밖 = 마지막 봉' 이 같은 경로다.
@@ -769,11 +782,13 @@ def build_lw_html(
     show_rsi: bool = True,
     vendor_js: Optional[str] = None,
     tracker_lines: Optional[list[dict]] = None,
+    structure_markers: Optional[list[dict]] = None,
 ) -> str:
     """components.html 에 넘길 HTML 문자열.
 
     gate_context 는 필수(비어 있으면 ValueError) — 게이트 상태 없이 가격 화면이 단독 표시되지 않는다.
     tracker_lines 는 60MA 전환 추적(미검증) 대기 중 후보의 가격선(구조 기준선과 같은 사전 형식) — 없으면 불변.
+    structure_markers 는 추세 구조 추적(미검증)의 스윙 마커 — [{"ts", "position", "color", "shape", "text"}], 없으면 불변.
     """
     if not isinstance(gate_context, str) or not gate_context.strip():
         raise ValueError("gate_context 는 필수다 — 게이트 상태 라벨 없이 가격 화면을 그리지 않는다")
@@ -806,6 +821,7 @@ def build_lw_html(
         f"var PANE_LABELS = {json.dumps(PANE_LABELS, ensure_ascii=False)};",
         f"var ZONE_FILL = {json.dumps(ZONE_FILL_COLORS)};",   # charts/theme.py 토큰 — 하드코딩 금지
         f"var OHLC_OFFSET = {OHLC_OVERLAY_OFFSET_PX};",
+        f"var STRUCTURE_MARKERS = {json.dumps(structure_markers_payload(structure_markers), ensure_ascii=False)};",
         f"var INTERVAL = {json.dumps(str(display_interval))};",
         f"var TOOLTIP_CLOCK = {json.dumps(tooltip_shows_clock(display_interval))};",
     ])
@@ -877,6 +893,7 @@ def render_lw_chart(
     show_macd: bool = True,
     show_rsi: bool = True,
     tracker_lines: Optional[list[dict]] = None,
+    structure_markers: Optional[list[dict]] = None,
 ) -> None:
     """LW 엔진 렌더. 높이는 사이드바 셀렉트 값을 그대로 iframe 높이로 쓴다."""
     if df is None or df.empty:
@@ -885,7 +902,7 @@ def render_lw_chart(
         df, symbol, display_interval, gate_context,
         chart_height=chart_height, struct_reference=struct_reference,
         show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi,
-        tracker_lines=tracker_lines,
+        tracker_lines=tracker_lines, structure_markers=structure_markers,
     )
     components.html(html, height=int(chart_height), scrolling=False)
     st.caption(LW_CONTROLS_CAPTION)
