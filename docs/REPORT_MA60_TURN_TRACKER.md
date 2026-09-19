@@ -29,7 +29,7 @@
   표시 모듈 본문에 피봇·쌍바닥·MA 기울기 계산 흔적(`stoch_pivot`, `compute_series_pivots`, `shift(`, `np.roll` 등)이
   없음을 함께 확인한다.
 - 계측 스크립트는 import 시 `warnings`/`logging` 을 전역으로 끈다(배치용). 표시 모듈이 import 직후 원상 복구하며
-  테스트로 고정(`logging.root.manager.disable == 0`). 파일은 무변경.
+  테스트로 고정(모듈 리로드 전후 `logging.root.manager.disable`·`warnings.filters` 동일). 파일은 무변경.
 - `extract_signals` 는 가격 10MA 쌍봉 컬럼(`ma10_dt`)도 요구하므로 앱 프레임에 기존 검출기 `indicators.ma_patterns.add_ma_patterns`
   를 한 번 더 적용한다(`st.cache_data`, 1,000봉 기준 첫 계산 ≈1.3초, 이후 rerun 캐시 히트).
 
