@@ -25,6 +25,7 @@ from data.processor import build_dataframe, get_fetch_interval, resample_timefra
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
+from display.ma60_turn_tracker import render_tracker_section, tracker_reference_lines
 from indicators.moving_averages import add_moving_averages
 from indicators.oscillators import add_macd, add_rsi
 from indicators.stochastic import add_stochastic_slow_layers
@@ -213,6 +214,9 @@ def main():
             include_candidates=cfg["include_candidates"],
             layers=cfg["layers"] or None,
         )
+        # 60MA 전환 추적 (미검증) — 별도 섹션. 검출은 validation/wave_ma60_turn_probe 를 import 해 소비.
+        # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님).
+        tracker_frame = render_tracker_section(df, symbol, interval)
 
     with tab_chart:
         if cfg["chart_engine"] == "LW":
@@ -222,6 +226,7 @@ def main():
                 df, symbol, interval, gate_context_for(symbol, interval),
                 chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
                 show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
+                tracker_lines=tracker_reference_lines(tracker_frame),
             )
             return
 
