@@ -41,6 +41,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BTCUSDT|1d|structure_ll|2026-09-15T00:00:00Z": {
+   "event_ts": "2026-09-15T00:00:00Z",
+   "sent_at": "2026-09-20T10:40:08Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|ma60_turn|2026-09-03T12:00:00Z": {
    "event_ts": "2026-09-03T12:00:00Z",
    "sent_at": null,
@@ -100,6 +105,11 @@
    "event_ts": "2026-09-18T12:00:00Z",
    "sent_at": null,
    "delivered": false
+  },
+  "ETHUSDT|1d|structure_ll|2026-09-15T00:00:00Z": {
+   "event_ts": "2026-09-15T00:00:00Z",
+   "sent_at": "2026-09-20T10:40:08Z",
+   "delivered": true
   },
   "ETHUSDT|1h|ma60_turn|2026-09-03T14:00:00Z": {
    "event_ts": "2026-09-03T14:00:00Z",
