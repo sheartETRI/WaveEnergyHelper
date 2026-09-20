@@ -49,21 +49,24 @@ def build_pipe(bars: pd.DataFrame) -> pd.DataFrame:
 def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[EV.Event, str]]:
     """이벤트별 조치 결정 — 순수 함수.
 
-    skip_old: 이벤트 봉이 SCAN_MAX_AGE_DAYS 보다 오래됨(회전 창 밖) · skip_dup: 이력에 있음 ·
+    skip_old: 이벤트 봉이 SCAN_MAX_AGE_DAYS 보다 오래됨(회전 창 밖) · skip_dup: 이력에 있음 또는 같은 실행 안에 같은 키가
+    이미 있음(두 쌍바닥 후보가 같은 봉에서 전환하면 키가 같다 — 한 키에 알림 1건) ·
     record_only: 최초 실행 모드(발송 성공 기록 없음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지 않음 · send: 발송 대상.
     """
     initial = H.nothing_delivered(hist)
     cutoff = pd.Timestamp(now) - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)
     out: List[Tuple[EV.Event, str]] = []
+    seen: set = set()
     for ev in sorted(evs, key=lambda e: (e.symbol, e.tf, e.ts, e.kind)):
         if ev.ts < cutoff:
             out.append((ev, ACT_OLD))
-        elif H.has(hist, ev.key):
+        elif H.has(hist, ev.key) or ev.key in seen:
             out.append((ev, ACT_DUP))
         elif initial and ev.bars_since_known >= H.INITIAL_RECENT_BARS:
             out.append((ev, ACT_RECORD_ONLY))
         else:
             out.append((ev, ACT_SEND))
+        seen.add(ev.key)
     return out
 
 

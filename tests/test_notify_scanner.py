@@ -247,6 +247,16 @@ def test_initial_mode_is_no_delivered_entry_not_just_empty_file():
     assert {a for _, a in S.plan(evs, hist, now)} == {S.ACT_SEND}
 
 
+def test_plan_same_key_twice_in_one_run_sends_once():
+    """두 쌍바닥 후보가 같은 봉에서 전환 → 키 동일 → 한 실행 안에서도 1건만 (Actions 첫 실행 로그에서 관찰된 사례)."""
+    now = pd.Timestamp("2026-09-19 12:00")
+    a = _turn_event("2026-09-19 08:00", known_pos=100)
+    b = EV.Event(a.symbol, a.tf, a.kind, a.ts, a.known_pos, a.last_pos, {**a.fields, "bars": 7})
+    assert a.key == b.key and a != b
+    acts = [act for _, act in S.plan([a, b], H.empty(), now)]
+    assert acts.count(S.ACT_SEND) == 1 and acts.count(S.ACT_DUP) == 1
+
+
 def test_plan_non_initial_sends_everything_unseen_within_scan_window():
     now = pd.Timestamp("2026-09-19 12:00")
     hist = H.empty()
