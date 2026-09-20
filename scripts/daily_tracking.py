@@ -227,6 +227,7 @@ def publish_survival_signal(root: Optional[str] = None, summary: str = "",
     - "skipped" : 추적 클론 밖 (no-op)
     - "ok"      : 커밋·푸시 완료, 또는 변경 없음
     - "warning" : commit/push 실패 — 경고 로그만 남기고 추적은 성공 처리
+                  (push 실패 시 pull --rebase 후 1회 재시도, 그것도 실패하면 warning)
 
     기본값은 호출 시점에 모듈 전역에서 읽는다 (테스트에서 monkeypatch 가 먹도록).
     """
@@ -252,10 +253,22 @@ def publish_survival_signal(root: Optional[str] = None, summary: str = "",
         if code != 0:
             raise RuntimeError(f"commit rc={code} {tail}")
         code, tail = git_fn(["push", "-q", GIT_REMOTE, f"HEAD:{GIT_BRANCH}"], root)
+        retried = ""
         if code != 0:
-            raise RuntimeError(f"push rc={code} {tail}")
+            # 원격이 앞서간 경우(다른 호스트·워크플로가 main 에 푸시) — pull --rebase 후 1회만 재시도.
+            # --autostash: 추적 실행이 갱신하는 보고서·PNG(PUBLISH_PATHS 밖)가 워킹트리에 남아 있어도 rebase 가능.
+            first = f"push rc={code} {tail}"
+            log_fn(f"step=git_publish | status=retry | reason={first[:200]} | action=pull --rebase")
+            code, tail = git_fn(["pull", "-q", "--rebase", "--autostash", GIT_REMOTE, GIT_BRANCH], root)
+            if code != 0:
+                git_fn(["rebase", "--abort"], root)      # 충돌 등으로 중단된 rebase 정리 (결과 무시)
+                raise RuntimeError(f"{first}; pull --rebase rc={code} {tail}")
+            code, tail = git_fn(["push", "-q", GIT_REMOTE, f"HEAD:{GIT_BRANCH}"], root)
+            if code != 0:
+                raise RuntimeError(f"{first}; retry after pull --rebase: push rc={code} {tail}")
+            retried = " | retried=pull-rebase"
         log_fn(f"step=git_publish | status=ok | elapsed={time.monotonic() - started:.1f}s "
-               f"| committed=yes | pushed={GIT_REMOTE}/{GIT_BRANCH}")
+               f"| committed=yes | pushed={GIT_REMOTE}/{GIT_BRANCH}{retried}")
         return "ok"
     except Exception as exc:  # noqa: BLE001 — 생존 신호 실패가 추적 실행을 실패시키지 않는다
         log_fn(f"step=git_publish | status=warning | elapsed={time.monotonic() - started:.1f}s "

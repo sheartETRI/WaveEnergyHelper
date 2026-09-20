@@ -196,6 +196,26 @@ class _FakeGit:
         return 0, ""
 
 
+class _RemoteAheadGit(_FakeGit):
+    """원격이 앞선 상태: pull --rebase 전의 push 는 non-fast-forward 로 거부, rebase 뒤의 push 는 성공."""
+
+    def __init__(self):
+        super().__init__()
+        self.rebased = False
+
+    def __call__(self, args, root, timeout=None):
+        self.calls.append(list(args))
+        sub = args[0]
+        if sub == "diff":
+            return 1, ""
+        if sub == "pull":
+            self.rebased = True
+            return 0, ""
+        if sub == "push" and not self.rebased:
+            return 1, "hint: See the 'Note about fast-forwards' in 'git push --help' for details."
+        return 0, ""
+
+
 def test_publish_is_noop_outside_the_tracking_clone(tmp_path):
     """경로 가드 — 추적 클론 밖에서는 git 을 한 번도 부르지 않는다."""
     git = _FakeGit()
@@ -241,6 +261,7 @@ def test_publish_skips_commit_when_nothing_changed():
 
 
 def test_push_failure_is_a_warning_not_a_failure():
+    """push 가 두 번 다(재시도 포함) 실패해도 경고뿐 — pull --rebase 는 딱 1회."""
     git = _FakeGit(fail_on="push")
     written = []
     status = DT.publish_survival_signal(
@@ -248,8 +269,46 @@ def test_push_failure_is_a_warning_not_a_failure():
         now=datetime(2026, 9, 17),
     )
     assert status == "warning"
-    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push"]
-    assert "status=warning" in written[-1] and "push rc=128" in written[-1]
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push", "pull", "push"]
+    assert "status=warning" in written[-1] and "push rc=128" in written[-1] and "retry" in written[-1]
+
+
+def test_push_rejected_because_remote_is_ahead_is_retried_after_pull_rebase():
+    """2026-09-20 사례: 다른 호스트가 main 에 푸시해 non-fast-forward 거부 → pull --rebase 후 재시도 성공, status=ok."""
+    git = _RemoteAheadGit()
+    written = []
+    status = DT.publish_survival_signal(
+        root=DT.TRACKING_CLONE_ROOT, summary="steps_ok=3/3 | elapsed=1.0s",
+        log_fn=written.append, git_fn=git, now=datetime(2026, 9, 20, 9, 30),
+    )
+    assert status == "ok"
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push", "pull", "push"]
+    pull = git.calls[4]
+    assert "--rebase" in pull and "--autostash" in pull and pull[-2:] == [DT.GIT_REMOTE, DT.GIT_BRANCH]
+    assert git.calls[5][-2:] == [DT.GIT_REMOTE, f"HEAD:{DT.GIT_BRANCH}"]
+    assert any("status=retry" in w and "fast-forwards" in w for w in written)
+    assert "status=ok" in written[-1] and "committed=yes" in written[-1] and "retried=pull-rebase" in written[-1]
+
+
+def test_pull_rebase_failure_aborts_rebase_and_warns():
+    """재시도 경로에서 rebase 자체가 실패(충돌 등)하면 rebase --abort 로 정리하고 warning."""
+    class _Git(_FakeGit):
+        def __call__(self, args, root, timeout=None):
+            self.calls.append(list(args))
+            if args[0] == "diff":
+                return 1, ""
+            if args[0] in ("push", "pull"):
+                return 1, f"{args[0]} failed"
+            return 0, ""
+
+    git = _Git()
+    written = []
+    status = DT.publish_survival_signal(root=DT.TRACKING_CLONE_ROOT, log_fn=written.append, git_fn=git,
+                                        now=datetime(2026, 9, 20))
+    assert status == "warning"
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push", "pull", "rebase"]
+    assert git.calls[-1] == ["rebase", "--abort"]
+    assert "pull --rebase rc=1" in written[-1]
 
 
 def test_main_returns_success_even_when_push_fails(monkeypatch):
@@ -263,7 +322,7 @@ def test_main_returns_success_even_when_push_fails(monkeypatch):
     git = _FakeGit(fail_on="push")
     monkeypatch.setattr(DT, "run_git", git)
     assert DT.main() == 0
-    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push"]
+    assert [c[0] for c in git.calls] == ["add", "diff", "commit", "push", "pull", "push"]
     end = [w for w in written if w.startswith("run=end")]
     assert len(end) == 1
     assert "steps_ok=3/3" in end[0] and "git_publish=warning" in end[0]
