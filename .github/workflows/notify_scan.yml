@@ -9,9 +9,6 @@
 name: notify-scan
 
 on:
-  # [임시] 수동 실행 권한(gh 계정 push 권한 없음) 대체 — 검수 후 제거
-  push:
-    branches: [notify-scan]
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
