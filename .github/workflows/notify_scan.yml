@@ -1,0 +1,92 @@
+# 알림 스캐너 (미검증 · 관측 알림) — 15분 주기 + 수동(workflow_dispatch, dry_run 선택).
+# 스케줄은 GitHub 규칙상 기본 브랜치(main)의 워크플로만 돈다. Actions 지연은 수용.
+#
+# 발송 이력(notify/sent.json)은 main 이 아니라 별도 브랜치 `notify-state` 에 커밋·푸시한다.
+# 이유: 전방 추적 클론(scripts/daily_tracking.py publish_survival_signal)이 pull 없이 HEAD:main 으로 push 하므로
+# 이 워크플로가 main 에 15분마다 커밋하면 추적 push 가 non-fast-forward 로 실패한다. 여기서는 main 에 어떤 커밋도 만들지 않는다.
+#
+# Secrets: TELEGRAM_TOKEN, TELEGRAM_CHAT_ID. 미설정이면 스캐너가 발송 없이 로그만 남기고 rc 0 으로 끝난다.
+name: notify-scan
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "발송·이력 저장 없이 대상 목록만 로그"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notify-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      STATE_BRANCH: notify-state
+      STATE_DIR: ${{ github.workspace }}/../notify-state
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: notify/requirements.txt
+
+      - name: Install
+        run: python -m pip install --quiet -r notify/requirements.txt
+
+      - name: Load sent history (branch notify-state)
+        run: |
+          git config user.name "notify-scan[bot]"
+          git config user.email "notify-scan@users.noreply.github.com"
+          set +e
+          git ls-remote --exit-code --heads origin "$STATE_BRANCH" >/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "0" ]; then
+            git fetch --quiet origin "$STATE_BRANCH:$STATE_BRANCH"
+            git worktree add --quiet "$STATE_DIR" "$STATE_BRANCH"
+            echo "history branch loaded: $(git -C "$STATE_DIR" log -1 --format='%h %ci')"
+          elif [ "$rc" = "2" ]; then
+            git worktree add --quiet --orphan -b "$STATE_BRANCH" "$STATE_DIR"
+            echo "history branch absent - initial run (recent 2 bars only are sent)"
+          else
+            echo "ls-remote failed rc=$rc - refusing to treat as initial run (duplicate guard)"
+            exit 1
+          fi
+
+      - name: Scan
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS="--state $STATE_DIR/notify/sent.json"
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python -m notify.scanner $ARGS
+
+      - name: Commit & push sent history
+        if: ${{ !cancelled() && inputs.dry_run != true }}
+        run: |
+          cd "$STATE_DIR"
+          if [ ! -f notify/sent.json ]; then
+            echo "no history file (nothing recorded)"
+            exit 0
+          fi
+          git add notify/sent.json
+          if git diff --cached --quiet; then
+            echo "history unchanged"
+            exit 0
+          fi
+          git commit --quiet -m "notify: sent history $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push --quiet origin "HEAD:$STATE_BRANCH"
+          echo "pushed $(git log -1 --format='%h') -> origin/$STATE_BRANCH"
