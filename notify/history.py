@@ -5,8 +5,9 @@ key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key).
 
 규칙
 - 발송 성공 → 기록(delivered=true). 발송 실패 → 기록하지 않음(다음 실행 재시도).
-- 이력이 비어 있는 최초 실행 → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만 발송 대상, 나머지는
-  delivered=false 로 기록만 한다(폭탄 방지).
+- 최초 실행(이력에 발송 성공 기록이 하나도 없음) → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만 발송 대상,
+  나머지는 delivered=false 로 기록만 한다(폭탄 방지). '비어 있음' 을 '발송 성공 0건' 으로 읽는 이유: Secrets 미설정
+  상태로 며칠 돌다가 Secrets 를 넣는 순간, 그동안 미발송·미기록으로 남은 이벤트가 한꺼번에 나가는 것을 막기 위해.
 - 이벤트 봉이 RETENTION_DAYS 보다 오래되면 회전(삭제). 스캔은 SCAN_MAX_AGE_DAYS(< RETENTION_DAYS) 안의 이벤트만
   보므로 회전으로 지운 키가 다시 발송되는 일은 없다.
 """
@@ -60,6 +61,11 @@ def save(path: str, hist: dict) -> None:
 
 def is_empty(hist: dict) -> bool:
     return not hist["sent"]
+
+
+def nothing_delivered(hist: dict) -> bool:
+    """발송 성공 기록이 하나도 없음 = 최초 실행 모드(최근 봉만 발송). 파일이 없거나 기록만 있는 경우 모두 해당."""
+    return not any(v.get("delivered") for v in hist["sent"].values())
 
 
 def has(hist: dict, key: str) -> bool:

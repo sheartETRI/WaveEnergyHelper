@@ -233,6 +233,20 @@ def test_plan_initial_run_sends_only_recent_two_bars():
     assert acts[pd.Timestamp("2026-09-10 00:00")] == S.ACT_RECORD_ONLY
 
 
+def test_initial_mode_is_no_delivered_entry_not_just_empty_file():
+    """Secrets 없이 돌며 기록만 쌓인 이력도 최초 실행 모드 — Secrets 투입 순간 밀린 이벤트가 쏟아지지 않는다."""
+    now = pd.Timestamp("2026-09-19 12:00")
+    hist = H.empty()
+    H.record(hist, "X|1h|ma60_turn|2026-09-18T00:00:00Z", "2026-09-18 00:00", delivered=False, now=now)
+    assert not H.is_empty(hist) and H.nothing_delivered(hist)
+    evs = [_turn_event("2026-09-19 08:00", known_pos=100), _turn_event("2026-09-19 00:00", known_pos=98)]
+    acts = {e.ts: a for e, a in S.plan(evs, hist, now)}
+    assert acts[pd.Timestamp("2026-09-19 08:00")] == S.ACT_SEND and acts[pd.Timestamp("2026-09-19 00:00")] == S.ACT_RECORD_ONLY
+    H.record(hist, "Y|1h|ma60_turn|2026-09-18T04:00:00Z", "2026-09-18 04:00", delivered=True, now=now)
+    assert not H.nothing_delivered(hist)
+    assert {a for _, a in S.plan(evs, hist, now)} == {S.ACT_SEND}
+
+
 def test_plan_non_initial_sends_everything_unseen_within_scan_window():
     now = pd.Timestamp("2026-09-19 12:00")
     hist = H.empty()
@@ -321,7 +335,7 @@ def test_send_failure_is_not_recorded_and_retried_next_run(tmp_path, bars, event
     state = str(tmp_path / "sent.json")
     now = _now_after(bars)
     H.save(state, {"version": 1, "sent": {"X|1h|ma60_turn|2026-08-31T00:00:00Z":
-                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": None, "delivered": False}}})
+                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": "2026-08-31T00:00:00Z", "delivered": True}}})
     env = {"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}
     bad = _Sender(ok=False)
     r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=bad, env=env, now=now)
@@ -335,7 +349,7 @@ def test_send_failure_is_not_recorded_and_retried_next_run(tmp_path, bars, event
 def test_secrets_absent_logs_only_and_exits_zero(tmp_path, bars, monkeypatch):
     state = str(tmp_path / "sent.json")
     H.save(state, {"version": 1, "sent": {"X|1h|ma60_turn|2026-08-31T00:00:00Z":
-                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": None, "delivered": False}}})
+                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": "2026-08-31T00:00:00Z", "delivered": True}}})
     assert TG.credentials({}) is None and TG.credentials({"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": " "}) is None
     assert TG.credentials({"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}) == ("t", "c")
     for k in (TG.ENV_TOKEN, TG.ENV_CHAT_ID):

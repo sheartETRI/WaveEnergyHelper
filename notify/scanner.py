@@ -50,9 +50,9 @@ def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[E
     """이벤트별 조치 결정 — 순수 함수.
 
     skip_old: 이벤트 봉이 SCAN_MAX_AGE_DAYS 보다 오래됨(회전 창 밖) · skip_dup: 이력에 있음 ·
-    record_only: 최초 실행(이력 비어 있음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지 않음 · send: 발송 대상.
+    record_only: 최초 실행 모드(발송 성공 기록 없음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지 않음 · send: 발송 대상.
     """
-    initial = H.is_empty(hist)
+    initial = H.nothing_delivered(hist)
     cutoff = pd.Timestamp(now) - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)
     out: List[Tuple[EV.Event, str]] = []
     for ev in sorted(evs, key=lambda e: (e.symbol, e.tf, e.ts, e.kind)):
@@ -98,11 +98,11 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
     now = utcnow() if now is None else pd.Timestamp(now)
     hist = H.load(state_path)
     rotated = H.rotate(hist, now)
-    initial = H.is_empty(hist)          # 회전 후 기준 — plan() 과 같은 판정
+    initial = H.nothing_delivered(hist)      # 회전 후 기준 — plan() 과 같은 판정
     creds = TG.credentials(env)
     log.info("start now=%s UTC dry_run=%s state=%s history=%s rotated=%d secrets=%s",
              now.strftime("%Y-%m-%d %H:%M"), dry_run, state_path,
-             "empty (initial run: recent %d bars only)" % H.INITIAL_RECENT_BARS if initial else H.counts(hist),
+             ("%s — initial mode: recent %d bars only" % (H.counts(hist), H.INITIAL_RECENT_BARS)) if initial else H.counts(hist),
              rotated, "set" if creds else "absent (no send)")
 
     evs, failures = scan_cells(symbols, tfs, fetch)
@@ -119,7 +119,7 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
             continue
         if act == ACT_RECORD_ONLY:
             summary["record_only"] += 1
-            log.info("record-only (initial run, known %d bars ago): %s", ev.bars_since_known, ev.key)
+            log.info("record-only (initial mode, known %d bars ago): %s", ev.bars_since_known, ev.key)
             if not dry_run:
                 H.record(hist, ev.key, ev.ts, delivered=False, now=now)
                 summary["changed"] = True
