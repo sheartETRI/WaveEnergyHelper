@@ -1,0 +1,6 @@
+# GitHub Actions 스캐너 전용 최소 의존성 — 루트 requirements.txt 와 같은 numpy/pandas 핀(검증 환경 고정).
+# streamlit 은 앱 모듈(display/·data/)이 import 하므로 필요(런타임 없이 bare 모드로 동작).
+requests
+numpy==2.4.4
+pandas==3.0.2
+streamlit==1.58.0
