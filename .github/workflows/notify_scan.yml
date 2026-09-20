@@ -10,7 +10,8 @@ name: notify-scan
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # 15분 주기(UTC). 정각·15·30·45분은 GitHub Actions 고부하 슬롯(문서: 지연·drop 가능)이라 7분 어긋나게 잡는다.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:

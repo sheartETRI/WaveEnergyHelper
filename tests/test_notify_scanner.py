@@ -436,7 +436,7 @@ def test_workflow_contract():
     wf = yaml.safe_load(raw)
     text = "\n".join(l for l in raw.splitlines() if not l.lstrip().startswith("#"))   # 주석 제외
     on = wf.get("on", wf.get(True))
-    assert on["schedule"] == [{"cron": "*/15 * * * *"}] and "workflow_dispatch" in on
+    assert on["schedule"] == [{"cron": "7,22,37,52 * * * *"}] and "workflow_dispatch" in on   # 15분 주기, 정각 회피
     assert on["workflow_dispatch"]["inputs"]["dry_run"]["type"] == "boolean"
     assert wf["permissions"] == {"contents": "write"} and wf["concurrency"]["group"] == "notify-scan"
     assert "${{ secrets.TELEGRAM_TOKEN }}" in text and "${{ secrets.TELEGRAM_CHAT_ID }}" in text
