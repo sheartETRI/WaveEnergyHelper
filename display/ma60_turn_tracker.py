@@ -274,10 +274,13 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
     """알람 탭 별도 섹션. 반환값은 후보 표(차트 연동에 재사용)."""
     import streamlit as st
 
+    from display.ma60_slope import render_slope_block   # 기울기 실측(표시 전용, 판정 없음) — 섹션 상단 블록
+
     frame = track_candidates(df, recent_bars=recent_bars)
     with st.container(border=True):
         st.markdown(f"**{SECTION_TITLE} · {symbol} {interval}**")
         st.caption(FIXED_CAPTION)
+        render_slope_block(df, symbol, interval)
         s = summarize(frame)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"대기 중 {UNVERIFIED}", f"{s['waiting']}건")
