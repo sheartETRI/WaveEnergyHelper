@@ -1,14 +1,19 @@
 """발송 이력 (sent.json) — 중복 차단 · 30일 회전 · 최초 실행 폭탄 방지.
 
-파일 형식: {"version": 1, "sent": {key: {"event_ts": ISO-UTC, "sent_at": ISO-UTC|null, "delivered": bool}}}
-key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key).
+파일 형식: {"version": 1, "sent": {key: {"event_ts": ISO-UTC, "sent_at": ISO-UTC|null, "delivered": bool}},
+             "kinds": {kind: 첫 스캔 ISO-UTC}}
+key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key). "kinds" 는 알림 종류별 첫 배포 실행 기록
+(없는 파일 = {} 로 읽음, 회전 대상 아님).
 
 규칙
 - 발송 성공 → 기록(delivered=true). 발송 실패 → 기록하지 않음(다음 실행 재시도).
-- 최초 실행(이력에 그 **종류**의 발송 성공 기록이 하나도 없음) → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만
-  발송 대상, 나머지는 delivered=false 로 기록만 한다(폭탄 방지). 종류별로 판정하므로 새 알림 종류를 추가해도 기존
-  종류가 이미 발송 중인 이력 위에서 새 종류의 밀린 이벤트가 한꺼번에 나가지 않는다(규칙 자체는 같다). '비어 있음' 을 '발송 성공 0건' 으로 읽는 이유: Secrets 미설정
+- 최초 실행(이력에 발송 성공 기록이 하나도 없음) → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만 발송 대상,
+  나머지는 delivered=false 로 기록만 한다(폭탄 방지). '비어 있음' 을 '발송 성공 0건' 으로 읽는 이유: Secrets 미설정
   상태로 며칠 돌다가 Secrets 를 넣는 순간, 그동안 미발송·미기록으로 남은 이벤트가 한꺼번에 나가는 것을 막기 위해.
+- **신규 알림 종류 도입 시 폭탄 방지(종류별, 위 전역 규칙과 별개)**: 그 종류를 처음 스캔하는 실행(``kinds`` 에 없고 sent 에도
+  그 종류 키가 없음)에서는 그 종류의 이벤트를 **하나도 발송하지 않고** delivered=false 로 기록만 하며, 실행 끝에 ``kinds`` 에
+  종류를 적는다. 다음 실행부터는 이력에 없는 새 이벤트만 발송한다. 종류에 이벤트가 없어도 ``kinds`` 는 적으므로 두 번째
+  실행부터 정상 발송. 기존 종류(``kinds`` 필드 도입 전 이력)는 sent 키의 kind 조각으로 '이미 본 종류' 로 인정한다.
 - 이벤트 봉이 RETENTION_DAYS 보다 오래되면 회전(삭제). 스캔은 SCAN_MAX_AGE_DAYS(< RETENTION_DAYS) 안의 이벤트만
   보므로 회전으로 지운 키가 다시 발송되는 일은 없다.
 """
@@ -35,7 +40,7 @@ def utcnow() -> pd.Timestamp:
 
 
 def empty() -> dict:
-    return {"version": VERSION, "sent": {}}
+    return {"version": VERSION, "sent": {}, "kinds": {}}
 
 
 def load(path: str) -> dict:
@@ -45,14 +50,18 @@ def load(path: str) -> dict:
         data = json.load(fh)
     if not isinstance(data, dict) or not isinstance(data.get("sent"), dict):
         raise ValueError(f"malformed history: {path}")
-    return {"version": VERSION, "sent": dict(data["sent"])}
+    kinds = data.get("kinds", {})
+    if not isinstance(kinds, dict):
+        raise ValueError(f"malformed history (kinds): {path}")
+    return {"version": VERSION, "sent": dict(data["sent"]), "kinds": dict(kinds)}
 
 
 def save(path: str, hist: dict) -> None:
     """원자적 저장(임시 파일 → 교체), 키 정렬 → git diff 가 안정적."""
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    payload = {"version": VERSION, "sent": dict(sorted(hist["sent"].items()))}
+    payload = {"version": VERSION, "sent": dict(sorted(hist["sent"].items())),
+               "kinds": dict(sorted(hist.get("kinds", {}).items()))}
     fd, tmp = tempfile.mkstemp(prefix=".sent-", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
@@ -70,12 +79,23 @@ def key_kind(key: str) -> str:
     return parts[2] if len(parts) >= 4 else ""
 
 
-def nothing_delivered(hist: dict, kind: Optional[str] = None) -> bool:
-    """발송 성공 기록이 하나도 없음 = 최초 실행 모드(최근 봉만 발송). 파일이 없거나 기록만 있는 경우 모두 해당.
+def nothing_delivered(hist: dict) -> bool:
+    """발송 성공 기록이 하나도 없음 = 최초 실행 모드(최근 봉만 발송). 파일이 없거나 기록만 있는 경우 모두 해당."""
+    return not any(v.get("delivered") for v in hist["sent"].values())
 
-    kind 를 주면 그 종류의 키만 본다(종류별 최초 실행). kind=None 은 전체.
-    """
-    return not any(v.get("delivered") for k, v in hist["sent"].items() if kind is None or key_kind(k) == kind)
+
+def kind_seen(hist: dict, kind: str) -> bool:
+    """그 종류를 이미 스캔한 적이 있는가 — ``kinds`` 에 있거나(신규 형식) sent 에 그 종류 키가 하나라도 있으면(기존 이력) 참.
+    거짓이면 이번이 그 종류의 첫 배포 실행 → 발송 없이 기록만."""
+    return kind in hist.get("kinds", {}) or any(key_kind(k) == kind for k in hist["sent"])
+
+
+def mark_kind(hist: dict, kind: str, now: Optional[pd.Timestamp] = None) -> bool:
+    """종류를 '본 것' 으로 기록. 새로 적었으면 True."""
+    if kind in hist.setdefault("kinds", {}):
+        return False
+    hist["kinds"][kind] = _iso(utcnow() if now is None else now)
+    return True
 
 
 def has(hist: dict, key: str) -> bool:
@@ -104,4 +124,5 @@ def rotate(hist: dict, now: Optional[pd.Timestamp] = None, days: int = RETENTION
 
 def counts(hist: dict) -> Dict[str, int]:
     vals = hist["sent"].values()
-    return {"total": len(hist["sent"]), "delivered": sum(1 for v in vals if v.get("delivered"))}
+    return {"total": len(hist["sent"]), "delivered": sum(1 for v in vals if v.get("delivered")),
+            "kinds": len(hist.get("kinds", {}))}

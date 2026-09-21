@@ -267,13 +267,20 @@ def test_messages_carry_unverified_and_no_recommendation_words(events):
 
 
 # ------------------------------------------------------------ 계획(순수 함수): 최초 실행 제한 · 중복 · 회전 창
+def _kinds_seen(hist: dict, now="2026-09-01 00:00") -> dict:
+    """모든 종류를 이미 스캔한 것으로 표시 — 전역 최초 실행 규칙만 따로 검사할 때 쓴다."""
+    for k in EV.KINDS:
+        H.mark_kind(hist, k, now=pd.Timestamp(now))
+    return hist
+
+
 def test_plan_initial_run_sends_only_recent_two_bars():
     now = pd.Timestamp("2026-09-19 12:00")
     evs = [_turn_event("2026-09-19 08:00", last_pos=100, known_pos=100),     # 0봉 전 → 발송
            _turn_event("2026-09-19 04:00", last_pos=100, known_pos=99),      # 1봉 전 → 발송
            _turn_event("2026-09-19 00:00", last_pos=100, known_pos=98),      # 2봉 전 → 기록만
            _turn_event("2026-09-10 00:00", last_pos=100, known_pos=50)]      # 오래됨 → 기록만
-    acts = {e.ts: a for e, a in S.plan(evs, H.empty(), now)}
+    acts = {e.ts: a for e, a in S.plan(evs, _kinds_seen(H.empty()), now)}
     assert acts[pd.Timestamp("2026-09-19 08:00")] == S.ACT_SEND
     assert acts[pd.Timestamp("2026-09-19 04:00")] == S.ACT_SEND
     assert acts[pd.Timestamp("2026-09-19 00:00")] == S.ACT_RECORD_ONLY
@@ -294,24 +301,66 @@ def test_initial_mode_is_no_delivered_entry_not_just_empty_file():
     assert {a for _, a in S.plan(evs, hist, now)} == {S.ACT_SEND}
 
 
-def test_initial_mode_is_per_kind_so_new_kind_does_not_burst_on_live_history():
-    """기존 종류(ma60_turn)가 이미 발송 중인 이력 위에 새 종류(ma60_down)를 추가해도, 새 종류의 밀린 이벤트는
-    최근 2봉분만 발송하고 나머지는 기록만 한다 — 최초 실행 규칙을 종류별로 적용."""
+def test_new_kind_first_run_sends_nothing_even_with_existing_kind_history():
+    """신규 알림 종류 도입 폭탄 방지(종류별, 전역 규칙과 별개): 기존 종류(ma60_turn) 발송 이력이 있는 상태에서 신규 종류
+    (ma60_down)를 처음 스캔하는 실행은 그 종류를 **0건 발송·전량 기록**하고, 그다음 실행부터 새 이벤트만 발송한다."""
     now = pd.Timestamp("2026-09-19 12:00")
     hist = H.empty()
     H.record(hist, "Y|1h|ma60_turn|2026-09-18T04:00:00Z", "2026-09-18 04:00", delivered=True, now=now)
-    assert not H.nothing_delivered(hist) and not H.nothing_delivered(hist, EV.KIND_MA60_TURN)
-    assert H.nothing_delivered(hist, EV.KIND_MA60_DOWN) and H.nothing_delivered(hist, EV.KIND_STRUCTURE_LL)
-    evs = [_down_event("2026-09-19 08:00", known_pos=100), _down_event("2026-09-19 00:00", known_pos=98),
-           _down_event("2026-09-10 00:00", known_pos=50), _turn_event("2026-09-10 00:00", known_pos=50)]
+    H.record(hist, "Y|1h|structure_ll|2026-09-18T04:00:00Z", "2026-09-18 04:00", delivered=True, now=now)
+    assert not H.nothing_delivered(hist)                                     # 전역 최초 실행 모드 아님
+    assert H.kind_seen(hist, EV.KIND_MA60_TURN) and H.kind_seen(hist, EV.KIND_STRUCTURE_LL)   # 기존 형식 이력으로 인정
+    assert not H.kind_seen(hist, EV.KIND_MA60_DOWN)
+    evs = [_down_event("2026-09-19 08:00", known_pos=100),                   # 0봉 전이라도 발송 안 함
+           _down_event("2026-09-19 04:00", known_pos=99),
+           _down_event("2026-09-10 00:00", known_pos=50),
+           _turn_event("2026-09-10 00:00", known_pos=50)]
     acts = {(e.kind, e.ts): a for e, a in S.plan(evs, hist, now)}
-    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 08:00"))] == S.ACT_SEND
-    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 00:00"))] == S.ACT_RECORD_ONLY
-    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-10 00:00"))] == S.ACT_RECORD_ONLY
-    assert acts[(EV.KIND_MA60_TURN, pd.Timestamp("2026-09-10 00:00"))] == S.ACT_SEND       # 기존 종류는 제한 없음
-    H.record(hist, _down_event("2026-09-19 08:00").key, "2026-09-19 08:00", delivered=True, now=now)
-    assert not H.nothing_delivered(hist, EV.KIND_MA60_DOWN)
+    assert all(acts[(EV.KIND_MA60_DOWN, e.ts)] == S.ACT_NEW_KIND for e in evs if e.kind == EV.KIND_MA60_DOWN)
+    assert acts[(EV.KIND_MA60_TURN, pd.Timestamp("2026-09-10 00:00"))] == S.ACT_SEND       # 기존 종류는 영향 없음
+    assert S.ACT_SEND not in [a for (k, _), a in acts.items() if k == EV.KIND_MA60_DOWN]
+    # 다음 실행: 종류를 본 것으로 표시하면 이력에 없는 새 이벤트만 발송, 기록된 것은 중복
+    for e in evs:
+        if e.kind == EV.KIND_MA60_DOWN:
+            H.record(hist, e.key, e.ts, delivered=False, now=now)
+    assert H.mark_kind(hist, EV.KIND_MA60_DOWN, now=now) and not H.mark_kind(hist, EV.KIND_MA60_DOWN, now=now)
+    later = pd.Timestamp("2026-09-19 16:00")
+    nxt = [_down_event("2026-09-19 12:00", known_pos=101, last_pos=101)] + evs[:1]
+    acts2 = {(e.kind, e.ts): a for e, a in S.plan(nxt, hist, later)}
+    assert acts2[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 12:00"))] == S.ACT_SEND
+    assert acts2[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 08:00"))] == S.ACT_DUP
+    # 이력 파일 왕복: kinds 필드 보존, 없던 파일(기존 형식)은 {} 로 읽힘
     assert H.key_kind("BTCUSDT|4h|ma60_down|2026-09-18T12:00:00Z") == "ma60_down"
+
+
+def test_new_kind_first_run_end_to_end_records_then_sends_only_new(tmp_path, bars, events):
+    """실데이터 픽스처: 기존 종류 이력만 있는 상태에서 1회차(하방 종류 첫 스캔) 발송 0건·전량 기록·kinds 기록,
+    2회차(새 하방 전환봉 추가)에는 그 새 이벤트 1건만 발송."""
+    state = str(tmp_path / "sent.json")
+    env = {"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}
+    downs = sorted((e for e in events if e.kind == EV.KIND_MA60_DOWN), key=lambda e: e.ts)
+    assert len(downs) >= 2
+    last = downs[-1]
+    cut = int(bars.index.get_loc(last.ts))                   # 1회차 = 마지막 하방 전환봉 직전까지
+    bars1 = bars.iloc[:cut]
+    seeded = {k: v for k, v in _seeded_sent().items() if H.key_kind(k) != EV.KIND_MA60_DOWN}   # 기존 종류 이력만
+    H.save(state, {"version": 1, "sent": seeded})            # 기존 형식(kinds 없음)
+    s1 = _Sender()
+    now1 = bars1.index[-1] + pd.Timedelta(hours=4)
+    r1 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars1), send=s1, env=env, now=now1)
+    assert not any("하방 전환 발생" in c[2] for c in s1.calls)                 # 하방 종류 발송 0건
+    ev1 = EV.scan_frame(S.build_pipe(bars1), "BTCUSDT", "4h")
+    d1 = [e for e in ev1 if e.kind == EV.KIND_MA60_DOWN and e.ts >= now1 - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)]
+    assert r1["new_kind_record_only"] == len(d1) and r1["new_kinds"] == [EV.KIND_MA60_DOWN]
+    saved = json.load(open(state, encoding="utf-8"))
+    assert saved["kinds"].keys() == {EV.KIND_MA60_DOWN} and all(not saved["sent"][e.key]["delivered"] for e in d1)
+    s2 = _Sender()
+    now2 = _now_after(bars)
+    r2 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=s2, env=env, now=now2)
+    sent_down = [c for c in s2.calls if "하방 전환 발생" in c[2]]
+    assert len(sent_down) == 1 and f"{last.ts + pd.Timedelta(hours=9):%m-%d %H:%M}" in sent_down[0][2]
+    assert r2["new_kinds"] == [] and r2["new_kind_record_only"] == 0
+    assert json.load(open(state, encoding="utf-8"))["sent"][last.key]["delivered"] is True
 
 
 def test_plan_same_key_twice_in_one_run_sends_once():
@@ -320,7 +369,7 @@ def test_plan_same_key_twice_in_one_run_sends_once():
     a = _turn_event("2026-09-19 08:00", known_pos=100)
     b = EV.Event(a.symbol, a.tf, a.kind, a.ts, a.known_pos, a.last_pos, {**a.fields, "bars": 7})
     assert a.key == b.key and a != b
-    acts = [act for _, act in S.plan([a, b], H.empty(), now)]
+    acts = [act for _, act in S.plan([a, b], _kinds_seen(H.empty()), now)]
     assert acts.count(S.ACT_SEND) == 1 and acts.count(S.ACT_DUP) == 1
 
 
@@ -347,7 +396,11 @@ def test_history_rotation_and_scan_window_consistency(tmp_path):
                                                                   "sent_at": None, "delivered": False}
     p = tmp_path / "sent.json"
     H.save(str(p), hist)
-    assert H.load(str(p)) == {"version": 1, "sent": hist["sent"]}
+    assert H.load(str(p)) == {"version": 1, "sent": hist["sent"], "kinds": {}}
+    H.mark_kind(hist, "ma60_down", now=now)
+    H.save(str(p), hist)
+    assert H.load(str(p))["kinds"] == {"ma60_down": "2026-09-20T00:00:00Z"} and H.rotate(hist, now + pd.Timedelta(days=400)) == 1
+    assert hist["kinds"] == {"ma60_down": "2026-09-20T00:00:00Z"}         # 회전은 kinds 를 건드리지 않는다
     assert not list(tmp_path.glob(".sent-*"))          # 임시 파일 정리
     p.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError):
@@ -399,8 +452,10 @@ def test_run_dedups_across_runs_and_persists_history(tmp_path, bars, events):
 
 
 def test_run_initial_history_limits_to_recent_bars_and_records_rest(tmp_path, bars, events):
+    """전역 최초 실행 규칙(발송 성공 0건 → 최근 2봉만). 종류별 첫 스캔 규칙은 kinds 를 미리 채워 분리한다."""
     state = str(tmp_path / "sent.json")
     now = _now_after(bars)
+    H.save(state, _kinds_seen(H.empty()))
     s = _Sender()
     r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars),
               send=s, env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=now)
@@ -450,8 +505,9 @@ def test_dry_run_sends_nothing_and_writes_nothing(tmp_path, bars, events):
     s = _Sender()
     r = S.run(state_path=state, dry_run=True, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=s,
               env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=_now_after(bars))
-    assert s.calls == [] and not os.path.exists(state)
-    assert r["would_send"] + r["record_only"] + r["old"] == len(events) and r["sent"] == 0
+    assert s.calls == [] and not os.path.exists(state)                     # dry-run 은 kinds 도 기록하지 않는다
+    assert r["would_send"] + r["record_only"] + r["new_kind_record_only"] + r["old"] == len(events) and r["sent"] == 0
+    assert r["would_send"] == 0 and set(r["new_kinds"]) == set(EV.KINDS)     # 빈 이력 = 모든 종류의 첫 스캔
 
 
 def test_cell_failure_does_not_stop_other_cells(tmp_path, bars):
