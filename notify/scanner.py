@@ -1,9 +1,10 @@
 """알림 스캐너 실행 모듈 — GitHub Actions 15분 주기(.github/workflows/notify_scan.yml) 또는 수동.
 
     python -m notify.scanner --state notify/sent.json [--dry-run] [--symbols BTCUSDT ETHUSDT] [--tfs 1h 4h 1d]
+                             [--export-ledger ledger.csv]
 
 흐름: 닫힌 봉 fetch(data-api.binance.vision) → 앱과 같은 지표 파이프라인(display.asof.run_indicator_pipeline)
-→ 이벤트 2종(notify.events) → 이력 대조(notify.history) → 텔레그램(notify.telegram) → 이력 저장.
+→ 이벤트(notify.events) → 이력 대조(notify.history) → 텔레그램(notify.telegram) → 전방 ledger(notify.ledger, 6h 포함) → 이력 저장.
 --dry-run: 발송·저장 없이 대상 목록만 로그. Secrets 부재: 발송 없이 로그만 남기고 정상 종료(rc 0).
 종료 코드: 0 정상 / 1 셀 fetch·계산 실패 있음(다른 셀은 처리) / 2 이력 파일 손상.
 """
@@ -28,6 +29,7 @@ except Exception:   # noqa: BLE001
 from display.asof import run_indicator_pipeline  # noqa: E402
 from notify import events as EV  # noqa: E402
 from notify import history as H  # noqa: E402
+from notify import ledger as LG  # noqa: E402
 from notify.history import utcnow  # noqa: E402
 from notify import telegram as TG  # noqa: E402
 from notify import fetch as F  # noqa: E402
@@ -36,6 +38,7 @@ log = logging.getLogger("notify")
 
 SYMBOLS: Tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT")
 TFS: Tuple[str, ...] = ("1h", "4h", "1d")
+LEDGER_TFS: Tuple[str, ...] = LG.LEDGER_TFS          # ("1h", "4h", "6h", "1d") — 6h 는 ledger 전용(알림 없음)
 DEFAULT_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sent.json")
 
 ACT_SEND, ACT_RECORD_ONLY, ACT_DUP, ACT_OLD = "send", "record_only", "skip_dup", "skip_old"
@@ -77,27 +80,34 @@ def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[E
 
 
 def scan_cells(symbols: Sequence[str], tfs: Sequence[str],
-               fetch: Callable[[str, str], pd.DataFrame]) -> Tuple[List[EV.Event], List[str]]:
-    """셀(심볼×TF) 순회. 실패 셀은 건너뛰고 사유를 모은다."""
+               fetch: Callable[[str, str], pd.DataFrame],
+               ledger_tfs: Sequence[str] = ()) -> Tuple[List[EV.Event], List[str], List[dict]]:
+    """셀(심볼×TF) 순회. 실패 셀은 건너뛰고 사유를 모은다. ledger_tfs 에만 있는 TF(6h)는 fetch 후 ledger 행만 뽑는다."""
     evs: List[EV.Event] = []
     failures: List[str] = []
+    ledger_rows: List[dict] = []
+    all_tfs = list(tfs) + [t for t in ledger_tfs if t not in tfs]
     for sym in symbols:
-        for tf in tfs:
+        for tf in all_tfs:
+            alert = tf in tfs
             try:
                 bars = fetch(sym, tf)
                 pipe = build_pipe(bars)
-                cell = EV.scan_frame(pipe, sym, tf)
+                cell = EV.scan_frame(pipe, sym, tf) if alert else []
+                fin = LG.finished_rows(pipe, sym, tf) if tf in ledger_tfs else []
             except Exception as exc:   # noqa: BLE001 — 한 셀 실패가 다른 셀을 막지 않게
                 failures.append(f"{sym} {tf}: {type(exc).__name__}: {str(exc)[:160]}")
                 log.error("cell %s %s failed: %s: %s", sym, tf, type(exc).__name__, str(exc)[:160])
                 continue
-            log.info("cell %s %s: closed bars=%d last=%s UTC events=%d", sym, tf, len(bars),
-                     bars.index[-1], len(cell))
+            log.info("cell %s %s: closed bars=%d last=%s UTC events=%d ledger_finished=%d%s", sym, tf, len(bars),
+                     bars.index[-1], len(cell), len(fin), "" if alert else " (ledger only)")
             evs.extend(cell)
-    return evs, failures
+            ledger_rows.extend(fin)
+    return evs, failures, ledger_rows
 
 
 def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs: Sequence[str] = TFS,
+        ledger_tfs: Sequence[str] = LEDGER_TFS,
         fetch: Optional[Callable[[str, str], pd.DataFrame]] = None,
         send: Optional[Callable[[str, str, str], Tuple[bool, str]]] = None,
         env: Optional[dict] = None, now: Optional[pd.Timestamp] = None) -> Dict[str, object]:
@@ -117,11 +127,14 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
     if new_kinds:
         log.info("first scan for kinds %s — record-only this run, sending from the next run", ",".join(new_kinds))
 
-    evs, failures = scan_cells(symbols, tfs, fetch)
+    ledger_new = H.ledger_init(hist, now=now)            # 첫 실행: since = now (과거 소급 금지). dry-run 은 저장하지 않음.
+    if ledger_new:
+        log.info("ledger started: since=%s — only candidates confirmed after this are recorded", hist["ledger"]["since"])
+    evs, failures, ledger_rows = scan_cells(symbols, tfs, fetch, ledger_tfs=ledger_tfs)
     decisions = plan(evs, hist, now)
     summary = {"events": len(evs), "sent": 0, "send_failed": 0, "record_only": 0, "new_kind_record_only": 0, "dup": 0,
                "old": 0, "would_send": 0, "not_sent_no_secrets": 0, "new_kinds": list(new_kinds), "failures": failures,
-               "changed": rotated > 0}
+               "ledger_added": 0, "ledger_since": hist["ledger"]["since"], "changed": rotated > 0 or ledger_new}
 
     for ev, act in decisions:
         if act == ACT_DUP:
@@ -166,6 +179,15 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
     if not dry_run:
         for k in new_kinds:                  # 이벤트가 없던 종류도 '본 것' 으로 — 다음 실행부터 새 이벤트 발송
             summary["changed"] = H.mark_kind(hist, k, now=now) or summary["changed"]
+    added = H.ledger_append(hist, ledger_rows, now=now) if not dry_run else 0
+    summary["ledger_added"] = added
+    if added:
+        summary["changed"] = True
+        log.info("ledger: +%d rows (total %d) %s", added, len(hist["ledger"]["rows"]), LG.summary(hist["ledger"]["rows"]))
+    elif dry_run:
+        eligible = [r for r in ledger_rows if LG.since_of(hist) is not None
+                    and pd.Timestamp(r["confirm_ts"].rstrip("Z")) >= LG.since_of(hist)]
+        log.info("[dry-run] ledger: finished candidates=%d, eligible(after since)=%d — not recorded", len(ledger_rows), len(eligible))
     if summary["changed"] and not dry_run:
         H.save(state_path, hist)
         log.info("history saved: %s", H.counts(hist))
@@ -179,10 +201,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="발송·저장 없이 대상 목록만 로그")
     p.add_argument("--symbols", nargs="+", default=list(SYMBOLS))
     p.add_argument("--tfs", nargs="+", default=list(TFS))
+    p.add_argument("--ledger-tfs", nargs="+", default=list(LEDGER_TFS), help="전방 ledger 기록 TF(6h 포함, 알림 없음)")
+    p.add_argument("--export-ledger", default=None, help="스캔 없이 이력의 ledger 를 CSV 로 내보내고 종료")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
+    if a.export_ledger:
+        try:
+            hist = H.load(a.state)
+        except ValueError as exc:
+            log.error("%s", exc)
+            return 2
+        with open(a.export_ledger, "w", encoding="utf-8", newline="") as fh:
+            fh.write(LG.to_csv(hist["ledger"]["rows"]))
+        log.info("ledger exported: %d rows since=%s -> %s", len(hist["ledger"]["rows"]), hist["ledger"]["since"], a.export_ledger)
+        return 0
     try:
-        summary = run(state_path=a.state, dry_run=a.dry_run, symbols=a.symbols, tfs=a.tfs)
+        summary = run(state_path=a.state, dry_run=a.dry_run, symbols=a.symbols, tfs=a.tfs, ledger_tfs=a.ledger_tfs)
     except ValueError as exc:      # 이력 파일 손상
         log.error("%s", exc)
         return 2

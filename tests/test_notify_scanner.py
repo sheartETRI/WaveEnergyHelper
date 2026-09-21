@@ -19,7 +19,9 @@ import notify.fetch as F  # noqa: E402
 import notify.history as H  # noqa: E402
 import notify.scanner as S  # noqa: E402
 import notify.telegram as TG  # noqa: E402
+import display.divergence_flag as DV  # noqa: E402
 import display.ma60_down_tracker as MD  # noqa: E402
+import notify.ledger as LG  # noqa: E402
 import display.ma60_turn_tracker as MT  # noqa: E402
 import display.trend_structure as TS  # noqa: E402
 import validation.wave_ma60_turn_probe as probe  # noqa: E402
@@ -43,12 +45,14 @@ def _git_show(spec: str):
 def test_cherrypick_manifest_matches_files_and_source_commit():
     assert set(notify.CHERRYPICK) == {"display/tz_label.py", "display/ma60_turn_tracker.py",
                                       "display/trend_structure.py", "validation/wave_ma60_turn_probe.py",
-                                      "display/ma60_down_tracker.py"}
+                                      "display/ma60_down_tracker.py", "display/divergence_flag.py"}
     missing = []
+    src_of = {"display/ma60_down_tracker.py": notify.CHERRYPICK_SOURCE_COMMIT_DOWN,
+              "display/divergence_flag.py": notify.CHERRYPICK_SOURCE_COMMIT_DIV}
     for rel, sha in notify.CHERRYPICK.items():
         local = _norm(open(os.path.join(ROOT, rel), "rb").read())
         assert hashlib.sha256(local).hexdigest() == sha, f"{rel} 가 매니페스트와 다르다 (내용 무변경 원칙)"
-        src = notify.CHERRYPICK_SOURCE_COMMIT_DOWN if rel == "display/ma60_down_tracker.py" else notify.CHERRYPICK_SOURCE_COMMIT
+        src = src_of.get(rel, notify.CHERRYPICK_SOURCE_COMMIT)
         blob = _git_show(f"{src}:{rel}")
         if blob is None:
             missing.append(rel)
@@ -62,14 +66,15 @@ def test_cherrypick_manifest_matches_files_and_source_commit():
 
 def test_detection_is_imported_not_reimplemented():
     assert EV.MT is MT and EV.MD is MD and EV.TS is TS and TS.probe is probe and MT.probe is probe and MD.probe is probe
+    assert EV.DV is DV and LG.DV is DV and LG.MT is MT and DV.probe is probe
     assert MD.up is MT                                      # 하방 추적은 상승 쪽 모듈(창·경과 규칙)을 import 소비
     src = open(EV.__file__, encoding="utf-8").read().split('"""', 2)[2]
     assert "MT.track_candidates(" in src and "MD.track_candidates(" in src and "TS.analyze(" in src
     for banned in ("stoch_pivot", "compute_series_pivots", "find_swing_lows", "find_swing_highs", "np.roll",
-                   "shift(", "rolling(", "extract_signals(", "\"MA60\"]"):
+                   "shift(", "rolling(", "extract_signals(", "\"MA60\"]", "stoch_db_kind", "pipe[\"low\"]"):
         assert banned not in src, banned
     # 스캐너 패키지 어디에도 검출기·지표 계산 없음
-    for fn in ("scanner.py", "fetch.py", "history.py", "telegram.py"):
+    for fn in ("scanner.py", "fetch.py", "history.py", "telegram.py", "ledger.py"):
         body = open(os.path.join(ROOT, "notify", fn), encoding="utf-8").read()
         for banned in ("stoch_pivot", "compute_series_pivots", "find_swing", "np.roll", "rolling("):
             assert banned not in body, (fn, banned)
@@ -128,6 +133,9 @@ def test_events_equal_tracker_turned_rows_and_structure_ll_rows(pipe, events):
         assert e.last_pos == len(pipe) - 1 and 0 <= e.known_pos <= e.last_pos
         if e.kind == EV.KIND_STRUCTURE_LL:
             assert e.known_pos == int(pipe.index.get_loc(e.ts)) + TS.PIVOT   # 스윙 확정 후행
+        elif e.kind == EV.KIND_STOCH_DB:
+            c = int(pipe.index.get_loc(e.ts))
+            assert c <= e.known_pos <= c + probe.STOCH_LAG                    # 가용 시점(피봇 확정 지연)
         else:
             assert e.known_pos == int(pipe.index.get_loc(e.ts))
 
@@ -144,6 +152,24 @@ def test_down_events_equal_down_tracker_turned_rows(pipe, events):
     # 하방 전환봉과 상승 전환봉은 같은 봉일 수 없다(전환 정의가 서로 배타적)
     up_ts = {e.ts for e in events if e.kind == EV.KIND_MA60_TURN}
     assert not (got & up_ts)
+
+
+def test_stoch_db_events_equal_all_tracker_rows_with_single_definition_divergence(pipe, events):
+    frame = MT.track_candidates(pipe, recent_bars=len(pipe))
+    got = {e.ts: e for e in events if e.kind == EV.KIND_STOCH_DB}
+    assert set(got) == set(pd.to_datetime(frame["확정 시각"])) and len(got) >= 10
+    flags = DV.divergence_flags(MT.tracker_pipe(pipe))
+    for d in frame.to_dict("records"):
+        e = got[pd.Timestamp(d["확정 시각"])]
+        assert e.fields["divergence"] == flags[int(d["_confirm_pos"])] and e.fields["status"] == d["상태"]
+        assert e.fields["already_up"] == (d["확정 시 60MA"] == MT.ALREADY_UP_MARK)
+        assert e.fields["pattern_low"] == float(d["패턴 저점"]) and e.key.split("|")[2] == "stoch_db"
+    assert any(e.fields["divergence"] for e in got.values()) and not all(e.fields["divergence"] for e in got.values())
+    # 60MA 전환 이벤트도 같은 정의의 플래그를 싣는다(후보 확정봉 기준)
+    for e in events:
+        if e.kind == EV.KIND_MA60_TURN:
+            c = int(pipe.index.get_loc(e.fields["confirm_ts"]))
+            assert e.fields["divergence"] == flags[c]
 
 
 def test_event_key_is_symbol_tf_kind_bar_timestamp(events):
@@ -228,13 +254,40 @@ def _ll_event(ts="2026-09-19 00:00", last_pos=100, known_pos=99):
         "base_confirm_ts": pd.Timestamp("2026-09-15 20:00"), "state": TS.STATE_BROKEN})
 
 
-def test_message_format_ma60_turn_matches_delegation_example():
+def _db_event(ts="2026-09-21 04:00", last_pos=100, known_pos=100, **over):
+    f = {"confirm_ts": pd.Timestamp(ts), "status": MT.STATUS_WAITING, "ma_now": "하방", "already_up": False,
+         "divergence": False, "pattern_low": 74967.97, "baseline": 74593.13, "turn_ts": None, "bars": None, "obs_bars": 20}
+    f.update(over)
+    return EV.Event("BTCUSDT", "4h", EV.KIND_STOCH_DB, pd.Timestamp(ts), known_pos, last_pos, f)
+
+
+def test_message_format_ma60_turn_matches_delegation_example_plus_divergence_line():
     msg = EV.format_message(_turn_event())
     assert msg.splitlines() == [
         "[BTCUSDT 4h] 60MA 전환 발생 (미검증)",
         "쌍바닥 확정 09-18 17:00 → 전환 09-18 21:00 (소요 1봉)",      # UTC 08:00/12:00 → KST +9h
         "가격 80,726 · 패턴 저점 74,968 / 기준선 74,593",
+        "다이버전스 없음",                                            # 기존 3줄 유지 + 끝 1줄
     ]
+    e = _turn_event()
+    e2 = EV.Event(e.symbol, e.tf, e.kind, e.ts, e.known_pos, e.last_pos, {**e.fields, "divergence": True})
+    assert EV.format_message(e2).splitlines()[-1] == "다이버전스 있음"
+
+
+def test_message_format_stoch_db_candidate_matches_delegation_example():
+    assert EV.format_message(_db_event()).splitlines() == [
+        "[BTCUSDT 4h] 대파동 쌍바닥 후보 (미검증)",
+        "확정 09-21 13:00 · 60MA 현재 하방 (전환 대기, 창 20봉)",
+        "패턴 저점 74,968 / 기준선 74,593",
+        "참고: 과거 계측상 후보의 약 60%는 60MA 전환 없이 소멸",
+    ]
+    assert EV.format_message(_db_event(divergence=True)).splitlines()[1] == "★ 상승 다이버전스"    # 해당 시에만 2행
+    assert "★" not in EV.format_message(_db_event())
+    assert EV.format_message(_db_event(already_up=True, ma_now="상방")).splitlines()[1] == "확정 09-21 13:00 · 60MA 이미 상방"
+    turned = _db_event(status=MT.STATUS_TURNED, turn_ts=pd.Timestamp("2026-09-21 16:00"), bars=3, ma_now="상방")
+    assert EV.format_message(turned).splitlines()[1] == "확정 09-21 13:00 · 60MA 전환 발생 09-22 01:00 (소요 3봉)"
+    assert EV.format_message(_db_event(status=MT.STATUS_EXPIRED)).splitlines()[1] == "확정 09-21 13:00 · 소멸 (창 20봉 안 60MA 전환 없음)"
+    assert _db_event().key == "BTCUSDT|4h|stoch_db|2026-09-21T04:00:00Z"
 
 
 def test_message_format_ma60_down_is_mirror_and_states_observation_only():
@@ -258,7 +311,7 @@ def test_message_format_structure_ll_kst_and_labels():
 
 
 def test_messages_carry_unverified_and_no_recommendation_words(events):
-    for e in list(events) + [_turn_event(), _down_event(), _ll_event()]:
+    for e in list(events) + [_turn_event(), _down_event(), _ll_event(), _db_event(), _db_event(divergence=True)]:
         msg = EV.format_message(e)
         assert "(미검증)" in msg.splitlines()[0]
         for w in EV.FORBIDDEN_WORDS:
@@ -396,7 +449,7 @@ def test_history_rotation_and_scan_window_consistency(tmp_path):
                                                                   "sent_at": None, "delivered": False}
     p = tmp_path / "sent.json"
     H.save(str(p), hist)
-    assert H.load(str(p)) == {"version": 1, "sent": hist["sent"], "kinds": {}}
+    assert H.load(str(p)) == {"version": 1, "sent": hist["sent"], "kinds": {}, "ledger": {"since": None, "rows": []}}
     H.mark_kind(hist, "ma60_down", now=now)
     H.save(str(p), hist)
     assert H.load(str(p))["kinds"] == {"ma60_down": "2026-09-20T00:00:00Z"} and H.rotate(hist, now + pd.Timedelta(days=400)) == 1
@@ -518,7 +571,8 @@ def test_cell_failure_does_not_stop_other_cells(tmp_path, bars):
 
     r = S.run(state_path=str(tmp_path / "s.json"), dry_run=True, symbols=["ETHUSDT", "BTCUSDT"], tfs=["4h"],
               fetch=fetch, send=_Sender(), env={}, now=_now_after(bars))
-    assert len(r["failures"]) == 1 and "ETHUSDT 4h" in r["failures"][0] and r["events"] > 0
+    assert len(r["failures"]) == 4 and {f.split(":")[0] for f in r["failures"]} == {f"ETHUSDT {t}" for t in LG.LEDGER_TFS}
+    assert r["events"] > 0                                    # BTCUSDT 셀은 정상 처리(알림 4h + ledger 1h/4h/6h/1d)
 
 
 def test_telegram_send_masks_token_and_never_raises():
@@ -553,7 +607,84 @@ def test_telegram_send_masks_token_and_never_raises():
 # ------------------------------------------------------------ 고정 대상 · 워크플로 계약 · 금지 항목
 def test_fixed_scan_targets():
     assert S.SYMBOLS == ("BTCUSDT", "ETHUSDT", "BNBUSDT") and S.TFS == ("1h", "4h", "1d")
-    assert EV.KINDS == ("ma60_turn", "ma60_down", "structure_ll")          # 알림 종류 3개(하방 전환 추가)
+    assert S.LEDGER_TFS == ("1h", "4h", "6h", "1d") and "6h" not in S.TFS      # 6h 는 ledger 전용
+    assert EV.KINDS == ("ma60_turn", "ma60_down", "structure_ll", "stoch_db")   # 알림 종류 4개(쌍바닥 후보 추가)
+
+
+# ------------------------------------------------------------ 전방 ledger (알림과 별개)
+def test_ledger_rows_are_finished_candidates_with_single_definition_divergence(pipe):
+    rows = LG.finished_rows(pipe, "BTCUSDT", "4h")
+    frame = MT.track_candidates(pipe, recent_bars=len(pipe))
+    fin = frame[frame["상태"].isin([MT.STATUS_TURNED, MT.STATUS_EXPIRED])]
+    assert len(rows) == len(fin) >= 10 and {r["result"] for r in rows} == {"turned", "expired"}
+    flags = DV.divergence_flags(MT.tracker_pipe(pipe))
+    by = {r["confirm_ts"]: r for r in rows}
+    for d in fin.to_dict("records"):
+        r = by[pd.Timestamp(d["확정 시각"]).strftime("%Y-%m-%dT%H:%M:%SZ")]
+        assert r["divergence"] == flags[int(d["_confirm_pos"])]
+        if d["상태"] == MT.STATUS_TURNED:
+            assert r["result"] == "turned" and r["bars_to_turn"] == int(d["_bars"]) and r["turn_price"] == float(d["전환 시 가격"])
+        else:
+            assert r["result"] == "expired" and r["bars_to_turn"] is None and r["turn_ts"] is None
+    assert set(rows[0]) == set(LG.FIELDS) - {"recorded_at"}
+    csv_text = LG.to_csv([{**r, "recorded_at": "2026-09-22T00:00:00Z"} for r in rows])
+    assert csv_text.splitlines()[0] == ",".join(LG.FIELDS) and len(csv_text.splitlines()) == len(rows) + 1
+    s = LG.summary(rows)
+    assert s["divergence"]["turned"] + s["divergence"]["expired"] + s["no_divergence"]["turned"] + s["no_divergence"]["expired"] == len(rows)
+
+
+def test_ledger_no_backfill_only_after_since_and_dedup():
+    now = pd.Timestamp("2026-09-22 00:00")
+    hist = H.empty()
+    assert H.ledger_append(hist, [{"symbol": "X", "tf": "1h", "confirm_ts": "2026-09-21T00:00:00Z", "result": "expired"}]) == 0
+    assert H.ledger_init(hist, now=now) and not H.ledger_init(hist, now=now) and hist["ledger"]["since"] == "2026-09-22T00:00:00Z"
+    rows = [{"symbol": "X", "tf": "1h", "confirm_ts": "2026-09-21T23:00:00Z", "result": "expired", "divergence": False},   # since 이전 → 제외
+            {"symbol": "X", "tf": "1h", "confirm_ts": "2026-09-22T00:00:00Z", "result": "turned", "divergence": True},     # since 봉 → 포함
+            {"symbol": "X", "tf": "6h", "confirm_ts": "2026-09-23T06:00:00Z", "result": "expired", "divergence": False}]
+    assert H.ledger_append(hist, rows, now=now + pd.Timedelta(days=2)) == 2
+    assert H.ledger_append(hist, rows, now=now + pd.Timedelta(days=3)) == 0                 # 중복 없음
+    assert [r["confirm_ts"] for r in hist["ledger"]["rows"]] == ["2026-09-22T00:00:00Z", "2026-09-23T06:00:00Z"]
+    assert all(r["recorded_at"] == "2026-09-24T00:00:00Z" for r in hist["ledger"]["rows"])
+    assert H.rotate(hist, now + pd.Timedelta(days=400)) == 0 and len(hist["ledger"]["rows"]) == 2   # 회전 무관
+    assert LG.since_of(hist) == now and LG.since_of(H.empty()) is None
+
+
+def test_run_records_ledger_including_6h_and_never_backfills(tmp_path, bars, events):
+    """실데이터: 첫 실행은 since 만 기록(0행, 과거 소급 없음). 그 뒤 새로 확정·종료된 후보만 추가. 6h 셀도 fetch·기록."""
+    state = str(tmp_path / "sent.json")
+    fetched = []
+
+    def fetch(sym, tf):
+        fetched.append((sym, tf))
+        return bars
+
+    H.save(state, _kinds_seen(H.empty()))
+    now1 = _now_after(bars)
+    r1 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], ledger_tfs=["4h", "6h"],
+               fetch=fetch, send=_Sender(), env={}, now=now1)
+    assert ("BTCUSDT", "6h") in fetched and ("BTCUSDT", "4h") in fetched
+    saved = H.load(state)
+    assert r1["ledger_added"] == 0 and saved["ledger"]["since"] == now1.strftime("%Y-%m-%dT%H:%M:%SZ") and saved["ledger"]["rows"] == []
+    # since 를 과거로 되돌린 상태를 흉내내면(배포 이후 확정된 후보가 존재) 종료 후보가 기록된다 — 6h 도 4h 프레임을 받으므로 같은 행이 tf=6h 로
+    hist = H.load(state)
+    hist["ledger"]["since"] = "2026-01-01T00:00:00Z"
+    H.save(state, hist)
+    r2 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], ledger_tfs=["4h", "6h"],
+               fetch=fetch, send=_Sender(), env={}, now=now1)
+    rows = H.load(state)["ledger"]["rows"]
+    fin = LG.finished_rows(S.build_pipe(bars), "BTCUSDT", "4h")
+    assert r2["ledger_added"] == len(rows) == 2 * len(fin) and {r["tf"] for r in rows} == {"4h", "6h"}
+    r3 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], ledger_tfs=["4h", "6h"],
+               fetch=fetch, send=_Sender(), env={}, now=now1)
+    assert r3["ledger_added"] == 0 and len(H.load(state)["ledger"]["rows"]) == len(rows)    # 재실행 중복 없음
+    # dry-run 은 since 도 ledger 도 쓰지 않는다
+    state2 = str(tmp_path / "s2.json")
+    S.run(state_path=state2, dry_run=True, symbols=["BTCUSDT"], tfs=["4h"], fetch=fetch, send=_Sender(), env={}, now=now1)
+    assert not os.path.exists(state2)
+    # CSV 내보내기 CLI
+    out = str(tmp_path / "ledger.csv")
+    assert S.main(["--state", state, "--export-ledger", out]) == 0
+    assert open(out, encoding="utf-8").read().splitlines()[0] == ",".join(LG.FIELDS)
 
 
 def test_workflow_contract():

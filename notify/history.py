@@ -1,7 +1,8 @@
 """발송 이력 (sent.json) — 중복 차단 · 30일 회전 · 최초 실행 폭탄 방지.
 
 파일 형식: {"version": 1, "sent": {key: {"event_ts": ISO-UTC, "sent_at": ISO-UTC|null, "delivered": bool}},
-             "kinds": {kind: 첫 스캔 ISO-UTC}}
+             "kinds": {kind: 첫 스캔 ISO-UTC},
+             "ledger": {"since": ISO-UTC, "rows": [행…]}}   ← 전방 ledger(notify.ledger). 회전 대상 아님.
 key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key). "kinds" 는 알림 종류별 첫 배포 실행 기록
 (없는 파일 = {} 로 읽음, 회전 대상 아님).
 
@@ -40,7 +41,7 @@ def utcnow() -> pd.Timestamp:
 
 
 def empty() -> dict:
-    return {"version": VERSION, "sent": {}, "kinds": {}}
+    return {"version": VERSION, "sent": {}, "kinds": {}, "ledger": {"since": None, "rows": []}}
 
 
 def load(path: str) -> dict:
@@ -53,15 +54,21 @@ def load(path: str) -> dict:
     kinds = data.get("kinds", {})
     if not isinstance(kinds, dict):
         raise ValueError(f"malformed history (kinds): {path}")
-    return {"version": VERSION, "sent": dict(data["sent"]), "kinds": dict(kinds)}
+    ledger = data.get("ledger") or {"since": None, "rows": []}
+    if not isinstance(ledger, dict) or not isinstance(ledger.get("rows", []), list):
+        raise ValueError(f"malformed history (ledger): {path}")
+    return {"version": VERSION, "sent": dict(data["sent"]), "kinds": dict(kinds),
+            "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))}}
 
 
 def save(path: str, hist: dict) -> None:
     """원자적 저장(임시 파일 → 교체), 키 정렬 → git diff 가 안정적."""
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
+    ledger = hist.get("ledger") or {"since": None, "rows": []}
     payload = {"version": VERSION, "sent": dict(sorted(hist["sent"].items())),
-               "kinds": dict(sorted(hist.get("kinds", {}).items()))}
+               "kinds": dict(sorted(hist.get("kinds", {}).items())),
+               "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))}}
     fd, tmp = tempfile.mkstemp(prefix=".sent-", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
@@ -112,6 +119,40 @@ def record(hist: dict, key: str, event_ts, *, delivered: bool, now: Optional[pd.
                          "delivered": bool(delivered)}
 
 
+def ledger_init(hist: dict, now: Optional[pd.Timestamp] = None) -> bool:
+    """ledger 가 없으면 since = now 로 시작(그 이후 확정된 후보만 기록 — 과거 소급 금지). 새로 만들었으면 True."""
+    led = hist.setdefault("ledger", {"since": None, "rows": []})
+    if led.get("since"):
+        return False
+    led["since"] = _iso(utcnow() if now is None else now)
+    led.setdefault("rows", [])
+    return True
+
+
+def ledger_keys(hist: dict) -> set:
+    return {f"{r['symbol']}|{r['tf']}|{r['confirm_ts']}" for r in hist.get("ledger", {}).get("rows", [])}
+
+
+def ledger_append(hist: dict, rows, now: Optional[pd.Timestamp] = None) -> int:
+    """확정봉 ≥ since 이고 아직 없는 행만 추가. 추가 건수 반환. since 없으면 아무것도 추가하지 않는다."""
+    led = hist.get("ledger") or {}
+    since = led.get("since")
+    if not since:
+        return 0
+    since_ts = pd.Timestamp(since.rstrip("Z"))
+    have = ledger_keys(hist)
+    stamp = _iso(utcnow() if now is None else now)
+    added = 0
+    for r in sorted(rows, key=lambda r: (r["symbol"], r["tf"], r["confirm_ts"])):
+        key = f"{r['symbol']}|{r['tf']}|{r['confirm_ts']}"
+        if key in have or pd.Timestamp(r["confirm_ts"].rstrip("Z")) < since_ts:
+            continue
+        led["rows"].append({**r, "recorded_at": stamp})
+        have.add(key)
+        added += 1
+    return added
+
+
 def rotate(hist: dict, now: Optional[pd.Timestamp] = None, days: int = RETENTION_DAYS) -> int:
     """이벤트 봉이 now − days 보다 오래된 키 삭제. 삭제 건수 반환."""
     now = utcnow() if now is None else pd.Timestamp(now)
@@ -125,4 +166,4 @@ def rotate(hist: dict, now: Optional[pd.Timestamp] = None, days: int = RETENTION
 def counts(hist: dict) -> Dict[str, int]:
     vals = hist["sent"].values()
     return {"total": len(hist["sent"]), "delivered": sum(1 for v in vals if v.get("delivered")),
-            "kinds": len(hist.get("kinds", {}))}
+            "kinds": len(hist.get("kinds", {})), "ledger": len(hist.get("ledger", {}).get("rows", []))}
