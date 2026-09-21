@@ -1,8 +1,43 @@
 {
  "version": 1,
  "sent": {
+  "BNBUSDT|1h|ma60_down|2026-09-09T09:00:00Z": {
+   "event_ts": "2026-09-09T09:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|1h|ma60_turn|2026-09-16T23:00:00Z": {
    "event_ts": "2026-09-16T23:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-03T04:00:00Z": {
+   "event_ts": "2026-09-03T04:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-04T23:00:00Z": {
+   "event_ts": "2026-09-04T23:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-08T00:00:00Z": {
+   "event_ts": "2026-09-08T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-14T10:00:00Z": {
+   "event_ts": "2026-09-14T10:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-15T15:00:00Z": {
+   "event_ts": "2026-09-15T15:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|stoch_db|2026-09-16T16:00:00Z": {
+   "event_ts": "2026-09-16T16:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -31,6 +66,21 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|4h|stoch_db|2026-09-03T00:00:00Z": {
+   "event_ts": "2026-09-03T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|4h|stoch_db|2026-09-12T20:00:00Z": {
+   "event_ts": "2026-09-12T20:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|4h|stoch_db|2026-09-17T16:00:00Z": {
+   "event_ts": "2026-09-17T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BTCUSDT|1d|structure_ll|2026-09-02T00:00:00Z": {
    "event_ts": "2026-09-02T00:00:00Z",
    "sent_at": null,
@@ -45,6 +95,26 @@
    "event_ts": "2026-09-15T00:00:00Z",
    "sent_at": "2026-09-20T10:40:08Z",
    "delivered": true
+  },
+  "BTCUSDT|1h|ma60_down|2026-09-06T02:00:00Z": {
+   "event_ts": "2026-09-06T02:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|ma60_down|2026-09-07T04:00:00Z": {
+   "event_ts": "2026-09-07T04:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|ma60_down|2026-09-07T13:00:00Z": {
+   "event_ts": "2026-09-07T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|ma60_down|2026-09-15T07:00:00Z": {
+   "event_ts": "2026-09-15T07:00:00Z",
+   "sent_at": null,
+   "delivered": false
   },
   "BTCUSDT|1h|ma60_turn|2026-09-03T12:00:00Z": {
    "event_ts": "2026-09-03T12:00:00Z",
@@ -68,6 +138,61 @@
   },
   "BTCUSDT|1h|ma60_turn|2026-09-13T21:00:00Z": {
    "event_ts": "2026-09-13T21:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-02T02:00:00Z": {
+   "event_ts": "2026-09-02T02:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-02T17:00:00Z": {
+   "event_ts": "2026-09-02T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-05T08:00:00Z": {
+   "event_ts": "2026-09-05T08:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-07T00:00:00Z": {
+   "event_ts": "2026-09-07T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-08T00:00:00Z": {
+   "event_ts": "2026-09-08T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-08T17:00:00Z": {
+   "event_ts": "2026-09-08T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-10T20:00:00Z": {
+   "event_ts": "2026-09-10T20:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-11T07:00:00Z": {
+   "event_ts": "2026-09-11T07:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-12T13:00:00Z": {
+   "event_ts": "2026-09-12T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-13T17:00:00Z": {
+   "event_ts": "2026-09-13T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-18T10:00:00Z": {
+   "event_ts": "2026-09-18T10:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -96,6 +221,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BTCUSDT|4h|ma60_down|2026-09-09T12:00:00Z": {
+   "event_ts": "2026-09-09T12:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BTCUSDT|4h|ma60_turn|2026-09-04T16:00:00Z": {
    "event_ts": "2026-09-04T16:00:00Z",
    "sent_at": null,
@@ -106,10 +236,55 @@
    "sent_at": null,
    "delivered": false
   },
+  "BTCUSDT|4h|stoch_db|2026-09-03T20:00:00Z": {
+   "event_ts": "2026-09-03T20:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|4h|stoch_db|2026-09-14T12:00:00Z": {
+   "event_ts": "2026-09-14T12:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|4h|stoch_db|2026-09-18T08:00:00Z": {
+   "event_ts": "2026-09-18T08:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|1d|structure_ll|2026-09-15T00:00:00Z": {
    "event_ts": "2026-09-15T00:00:00Z",
    "sent_at": "2026-09-20T10:40:08Z",
    "delivered": true
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-06T11:00:00Z": {
+   "event_ts": "2026-09-06T11:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-08T05:00:00Z": {
+   "event_ts": "2026-09-08T05:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-10T04:00:00Z": {
+   "event_ts": "2026-09-10T04:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-12T00:00:00Z": {
+   "event_ts": "2026-09-12T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-14T00:00:00Z": {
+   "event_ts": "2026-09-14T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|ma60_down|2026-09-14T22:00:00Z": {
+   "event_ts": "2026-09-14T22:00:00Z",
+   "sent_at": null,
+   "delivered": false
   },
   "ETHUSDT|1h|ma60_turn|2026-09-03T14:00:00Z": {
    "event_ts": "2026-09-03T14:00:00Z",
@@ -136,6 +311,61 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|1h|stoch_db|2026-09-02T03:00:00Z": {
+   "event_ts": "2026-09-02T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-02T14:00:00Z": {
+   "event_ts": "2026-09-02T14:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-02T17:00:00Z": {
+   "event_ts": "2026-09-02T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-03T03:00:00Z": {
+   "event_ts": "2026-09-03T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-05T03:00:00Z": {
+   "event_ts": "2026-09-05T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-08T00:00:00Z": {
+   "event_ts": "2026-09-08T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-08T16:00:00Z": {
+   "event_ts": "2026-09-08T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-10T17:00:00Z": {
+   "event_ts": "2026-09-10T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-13T21:00:00Z": {
+   "event_ts": "2026-09-13T21:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-16T20:00:00Z": {
+   "event_ts": "2026-09-16T20:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-16T23:00:00Z": {
+   "event_ts": "2026-09-16T23:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
    "event_ts": "2026-09-19T21:00:00Z",
    "sent_at": null,
@@ -146,10 +376,33 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|4h|ma60_down|2026-09-09T16:00:00Z": {
+   "event_ts": "2026-09-09T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|4h|ma60_turn|2026-09-04T20:00:00Z": {
    "event_ts": "2026-09-04T20:00:00Z",
    "sent_at": null,
    "delivered": false
+  },
+  "ETHUSDT|4h|stoch_db|2026-09-04T00:00:00Z": {
+   "event_ts": "2026-09-04T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|4h|stoch_db|2026-09-18T12:00:00Z": {
+   "event_ts": "2026-09-18T12:00:00Z",
+   "sent_at": null,
+   "delivered": false
   }
+ },
+ "kinds": {
+  "ma60_down": "2026-09-21T20:31:22Z",
+  "stoch_db": "2026-09-21T20:31:22Z"
+ },
+ "ledger": {
+  "since": "2026-09-21T20:31:22Z",
+  "rows": []
  }
 }
