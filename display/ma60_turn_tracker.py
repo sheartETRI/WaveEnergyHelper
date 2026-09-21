@@ -14,6 +14,9 @@
 
 extract_signals 는 가격 10MA 쌍봉 컬럼(``ma10_dt``)도 요구하므로 앱 프레임에 ``indicators.ma_patterns``
 (기존 검출기) 를 한 번 더 적용한다 — 정의 파일 무수정.
+
+'다이버전스' 열(2026-09-22): 단일 정의(docs/CANDIDATES_POST_2027_03 정의 고정, main 870f025)를 ``display.divergence_flag``
+가 계산하고 여기서는 후보별 값을 열로 옮겨 싣기만 한다(있음/없음). 집계 줄은 있음/없음 코호트별 전환·소멸 건수를 따로 센다.
 """
 from __future__ import annotations
 
@@ -32,6 +35,7 @@ warnings.filters[:] = _warn_filters
 logging.disable(_log_disable)
 
 from display.asof import _coerce_ma_numeric  # noqa: E402
+from display.divergence_flag import DIVERGENCE_COL, NO as DIV_NO, YES as DIV_YES, divergence_flags, label as div_label  # noqa: E402
 from display.tz_label import KST_LABEL, to_kst  # noqa: E402
 from indicators.ma_patterns import add_ma_patterns  # noqa: E402
 
@@ -62,7 +66,7 @@ ALREADY_UP_MARK = "이미 상방"     # 확정(가용) 시점에 MA60 이 이미
 # 표는 현재 표시 중인 심볼·TF 한 셀만 담는다(적재 프레임 1개). 그래도 '경과 1/20' 이 몇 시간인지 표만 보고 알 수 있게
 # 맨 앞에 심볼·TF 열을 두고(TF_COL), 캡션에 1봉 시간을 적는다.
 TF_COL = "심볼·TF"
-COLUMNS = (TF_COL, "상태", "확정 시각", "경과/소요", "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
+COLUMNS = (TF_COL, "상태", "확정 시각", "경과/소요", "60MA 현재", "확정 시 60MA", DIVERGENCE_COL, "전환 시각", "전환 시 가격",
            "패턴 저점", "기준선(×0.995)", "소멸 시각")
 TIME_COLUMNS = ("확정 시각", "전환 시각", "소멸 시각")
 DISPLAY_HEADERS = {c: f"{c} {KST_LABEL}" for c in TIME_COLUMNS}   # 표 헤더 라벨만 KST 표기(컬럼 키 불변)
@@ -152,6 +156,9 @@ def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.Dat
     rows = lifecycle_rows(sig, pipe.index, pipe["close"].to_numpy(dtype=float), recent_bars)
     if not rows:
         return pd.DataFrame(columns=list(COLUMNS))
+    flags = divergence_flags(pipe, sig)                      # 단일 정의 — 확정봉 → 있음/없음
+    for r in rows:
+        r[DIVERGENCE_COL] = div_label(flags.get(int(r["_confirm_pos"])))
     out = pd.DataFrame(rows).sort_values("_known_pos", ascending=False, kind="mergesort")
     return out.reset_index(drop=True)
 
@@ -180,6 +187,25 @@ def summary_line(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> str:
             f"확정 시 이미 상방 {s['already_up']}건 별도")
 
 
+def divergence_summary(frame: pd.DataFrame) -> dict:
+    """있음/없음 코호트별 전환·소멸 건수 — 전방 비교(후보 2·5)의 표본 크기 확인용. 판정 아님."""
+    out = {DIV_YES: {"turned": 0, "expired": 0}, DIV_NO: {"turned": 0, "expired": 0}}
+    if frame is None or frame.empty or DIVERGENCE_COL not in frame.columns:
+        return out
+    for d in frame.to_dict("records"):
+        key = "turned" if d["상태"] == STATUS_TURNED else "expired" if d["상태"] == STATUS_EXPIRED else None
+        if key is not None and d[DIVERGENCE_COL] in out:
+            out[d[DIVERGENCE_COL]][key] += 1
+    return out
+
+
+def divergence_summary_line(frame: pd.DataFrame) -> str:
+    s = divergence_summary(frame)
+    y, n = s[DIV_YES], s[DIV_NO]
+    return (f"{DIVERGENCE_COL} 있음: 전환 {y['turned']} / 소멸 {y['expired']} · 없음: 전환 {n['turned']} / 소멸 {n['expired']} "
+            f"{UNVERIFIED[:-1]}, 표본 적음)")
+
+
 def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str]:
     """텍스트 요약(테스트·검수용): 캡션, 상태별 한 줄, 집계."""
     lines = [SECTION_TITLE, FIXED_CAPTION]
@@ -194,8 +220,10 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
             tail = f"경과 {d[ELAPSED_COL]} · 60MA {d['60MA 현재']}"
         lines.append(f"[{d['상태']}] 확정 {to_kst(d['확정 시각']):%m-%d %H:%M} · {tail} · "
                      f"저점 {d['패턴 저점']:,.8g} · 기준선 {d['기준선(×0.995)']:,.8g}"
-                     + (f" · {ALREADY_UP_MARK}" if d["확정 시 60MA"] == ALREADY_UP_MARK else ""))
+                     + (f" · {ALREADY_UP_MARK}" if d["확정 시 60MA"] == ALREADY_UP_MARK else "")
+                     + (f" · {DIVERGENCE_COL} {d[DIVERGENCE_COL]}" if d.get(DIVERGENCE_COL) else ""))
     lines.append(summary_line(frame, recent_bars))
+    lines.append(divergence_summary_line(frame))
     return lines
 
 
@@ -222,7 +250,8 @@ def tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:
 
 
 # 폭은 자동(None) — 문자열 표라 내용 폭에 맞춰지고, 빈 시각 열이 자리를 차지하지 않는다. 좁혀야 할 열만 지정.
-TABLE_COLUMN_WIDTHS = {TF_COL: "small", "상태": "small", "경과/소요": "small", "60MA 현재": "small", "확정 시 60MA": "small"}
+TABLE_COLUMN_WIDTHS = {TF_COL: "small", "상태": "small", "경과/소요": "small", "60MA 현재": "small", "확정 시 60MA": "small",
+                       DIVERGENCE_COL: "small"}
 
 
 def _fmt_ts(v) -> str:
@@ -258,7 +287,10 @@ def display_frame(frame: pd.DataFrame, symbol: str = "", interval: str = "") -> 
 
     심볼·TF 열은 여기서 채운다(생애주기 계산은 TF 를 모른다 — 표시 전용 정보).
     """
-    out = frame[[c for c in COLUMNS if c != TF_COL]].copy()
+    out = frame.copy()
+    if DIVERGENCE_COL not in out.columns:
+        out[DIVERGENCE_COL] = ""
+    out = out[[c for c in COLUMNS if c != TF_COL]]
     out.insert(0, TF_COL, f"{symbol} {interval}".strip())
     out = out[list(COLUMNS)]
     for c in ("확정 시각", "전환 시각", "소멸 시각"):
@@ -298,9 +330,12 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
                                for c in COLUMNS},
             )
         st.caption(summary_line(frame, recent_bars))
+        st.caption(divergence_summary_line(frame))
         st.caption(f"대기 중 = 대파동(20,10,10) 쌍바닥 확정 후 {OBS_BARS}봉 창이 살아 있는 후보 · "
                    f"경과/소요 = 확정봉 기준 봉 수(대기: 현재까지 경과, 전환 발생: 전환까지 소요, 소멸: 창 종료까지) · "
                    f"창은 후보 가용 시점(피봇 확정 지연 1~2봉 가능) 기준 {OBS_BARS}봉이라 지연 후보는 분모에 '+N봉' 표기 · "
                    f"시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
-                   "확정 시 60MA '이미 상방' 은 전환이 아니므로 창 안의 새 전환만 셈.")
+                   "확정 시 60MA '이미 상방' 은 전환이 아니므로 창 안의 새 전환만 셈 · "
+                   f"{DIVERGENCE_COL} = 스토캐(20,10,10) 둘째 저점 > 첫째 저점(HL) 이면서 두 피봇 봉의 저가는 둘째 < 첫째 "
+                   "(단일 정의, docs/CANDIDATES_POST_2027_03).")
     return frame

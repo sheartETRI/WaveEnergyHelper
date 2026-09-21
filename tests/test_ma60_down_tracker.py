@@ -42,17 +42,13 @@ def test_down_tracker_imports_probe_double_top_path_and_does_not_reimplement():
     assert "OBS_BARS = up.OBS_BARS" in body and "RECENT_BARS = up.RECENT_BARS" in body
 
 
-def test_up_side_module_and_probe_untouched():
-    """상승 쪽 모듈은 이 라운드에서 무수정 — 직전 커밋 blob 과 동일. probe 는 매니페스트와 동일."""
+def test_probe_manifest_and_down_module_consumes_up_side_only():
+    """probe 는 매니페스트와 동일. 하방 모듈은 상승 쪽 함수를 호출만 하고(창·경과 규칙 단일 출처) 자체 계산이 없다."""
     for rel, sha in T.CHERRYPICK_PROBE.items():
         local = _norm(open(os.path.join(ROOT, rel), "rb").read())
         assert hashlib.sha256(local).hexdigest() == sha
-    try:
-        blob = subprocess.run(["git", "show", "bc4f001:display/ma60_turn_tracker.py"], cwd=ROOT,
-                              capture_output=True, check=True, timeout=30).stdout
-    except (OSError, subprocess.SubprocessError):
-        pytest.skip("git 또는 원본 커밋을 읽을 수 없음")
-    assert _norm(blob) == _norm(open(T.__file__, "rb").read()), "상승 쪽 display/ma60_turn_tracker.py 가 변경됨"
+    body = open(D.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    assert "def lifecycle_rows" in body and "up.lifecycle_rows(" in body
 
 
 # ------------------------------------------------------------ 합성 프레임

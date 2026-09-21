@@ -237,7 +237,7 @@ def test_alarm_signal_definitions_untouched_by_tracker():
 def test_display_frame_formats_without_none_or_truncation_risk():
     f = pd.DataFrame([{
         "상태": T.STATUS_EXPIRED, "확정 시각": pd.Timestamp("2026-09-14 12:00"), "경과/소요": "20/20",
-        "60MA 현재": "상방", "확정 시 60MA": "하방", "전환 시각": pd.NaT, "전환 시 가격": np.nan,
+        "60MA 현재": "상방", "확정 시 60MA": "하방", "다이버전스": "없음", "전환 시각": pd.NaT, "전환 시 가격": np.nan,
         "패턴 저점": 76046.58, "기준선(×0.995)": 75666.347, "소멸 시각": pd.Timestamp("2026-09-17 20:00"),
     }])
     d = T.display_frame(f, "BTCUSDT", "4h")
@@ -293,7 +293,7 @@ def test_tf_column_and_bar_unit_caption_make_elapsed_readable():
     """표는 현재 심볼·TF 한 셀만 담으므로 맨 앞 열과 캡션에 TF 를 적는다 — '1/20' 이 4시간짜리 봉임을 표만 보고 알 수 있게."""
     assert T.COLUMNS[0] == T.TF_COL == "심볼·TF"
     f = pd.DataFrame([{"상태": T.STATUS_TURNED, "확정 시각": pd.Timestamp("2026-09-18 08:00"), "경과/소요": "1/20",
-                       "60MA 현재": "상방", "확정 시 60MA": "하방", "전환 시각": pd.Timestamp("2026-09-18 12:00"),
+                       "60MA 현재": "상방", "확정 시 60MA": "하방", "다이버전스": "있음", "전환 시각": pd.Timestamp("2026-09-18 12:00"),
                        "전환 시 가격": 80725.6, "패턴 저점": 74967.97, "기준선(×0.995)": 74593.13, "소멸 시각": pd.NaT}])
     d = T.display_frame(f, "BTCUSDT", "4h")
     assert d.iloc[0].tolist()[:4] == ["BTCUSDT 4h", T.STATUS_TURNED, "2026-09-18 17:00", "1/20"]
