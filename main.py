@@ -24,6 +24,7 @@ from data.processor import build_dataframe, get_fetch_interval, resample_timefra
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
+from display.ma60_down_tracker import render_down_tracker_section
 from display.ma60_turn_tracker import render_tracker_section, tracker_reference_lines
 from display.trend_structure import render_structure_section, structure_markers
 from display.tz_label import KST_LABEL, to_kst
@@ -219,6 +220,9 @@ def main():
         # 60MA 전환 추적 (미검증) — 별도 섹션. 검출은 validation/wave_ma60_turn_probe 를 import 해 소비.
         # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님).
         tracker_frame = render_tracker_section(df, symbol, interval)
+        # 60MA 하방 전환 추적 (미검증) — 상승 쪽의 거울상(대파동 쌍봉 → 20봉 안 60MA 하방 전환). 현물 보유 시 참고용 관측.
+        # 차트 가격선·알람 푸시 연동 없음(표시 전용).
+        render_down_tracker_section(df, symbol, interval)
         # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
         structure_result = render_structure_section(df, symbol, interval)
 
