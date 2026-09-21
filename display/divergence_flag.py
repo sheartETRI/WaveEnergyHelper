@@ -12,11 +12,19 @@
 """
 from __future__ import annotations
 
+import logging
+import warnings
 from typing import Dict, Optional
 
 import pandas as pd
 
-import validation.wave_ma60_turn_probe as probe
+# 계측 스크립트는 import 시 warnings/logging 을 전역으로 끈다(배치 실행용). import 순서와 무관하게 여기서도 되돌린다
+# (ma60_turn_tracker 와 같은 규약 — 이 모듈이 먼저 import 되면 그쪽 복구가 이미 꺼진 상태를 기준으로 삼기 때문).
+_warn_filters = warnings.filters[:]
+_log_disable = logging.root.manager.disable
+import validation.wave_ma60_turn_probe as probe  # noqa: E402
+warnings.filters[:] = _warn_filters
+logging.disable(_log_disable)
 
 DIVERGENCE_COL = "다이버전스"
 YES, NO = "있음", "없음"

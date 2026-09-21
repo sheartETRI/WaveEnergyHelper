@@ -86,6 +86,19 @@ def test_flags_consume_detector_kind_and_probe_pivots_on_pipeline():
     assert DV.divergence_flags(pipe) == flags                                   # sig 생략 시 probe 재호출 결과 동일
 
 
+def test_flag_module_import_restores_logging_and_warnings_regardless_of_order():
+    """probe 는 import 시 logging.disable(CRITICAL)·warnings 무시를 건다 — 이 모듈이 먼저 import 돼도 원상 복구(알림 스캐너 로그가 꺼졌던 회귀)."""
+    import importlib
+    import logging
+    import warnings
+    before_disable, before_filters = logging.root.manager.disable, warnings.filters[:]
+    importlib.reload(DV)
+    assert logging.root.manager.disable == before_disable and warnings.filters[:] == before_filters
+    body = open(DV.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    assert "logging.disable(_log_disable)" in body and "warnings.filters[:] = _warn_filters" in body
+    assert body.index("_log_disable = logging.root.manager.disable") < body.index("import validation.wave_ma60_turn_probe")
+
+
 def test_no_reimplementation_in_flag_module():
     body = open(DV.__file__, encoding="utf-8").read().split('"""', 2)[2]
     for banned in ("compute_stochastic_pivots", "compute_series_pivots", "detect_double_bottom", "np.roll", "shift(",
