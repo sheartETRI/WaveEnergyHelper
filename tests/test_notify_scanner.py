@@ -19,6 +19,7 @@ import notify.fetch as F  # noqa: E402
 import notify.history as H  # noqa: E402
 import notify.scanner as S  # noqa: E402
 import notify.telegram as TG  # noqa: E402
+import display.ma60_down_tracker as MD  # noqa: E402
 import display.ma60_turn_tracker as MT  # noqa: E402
 import display.trend_structure as TS  # noqa: E402
 import validation.wave_ma60_turn_probe as probe  # noqa: E402
@@ -41,22 +42,29 @@ def _git_show(spec: str):
 # ------------------------------------------------------------ 체리픽 동일성 · import 소비
 def test_cherrypick_manifest_matches_files_and_source_commit():
     assert set(notify.CHERRYPICK) == {"display/tz_label.py", "display/ma60_turn_tracker.py",
-                                      "display/trend_structure.py", "validation/wave_ma60_turn_probe.py"}
+                                      "display/trend_structure.py", "validation/wave_ma60_turn_probe.py",
+                                      "display/ma60_down_tracker.py"}
+    missing = []
     for rel, sha in notify.CHERRYPICK.items():
         local = _norm(open(os.path.join(ROOT, rel), "rb").read())
         assert hashlib.sha256(local).hexdigest() == sha, f"{rel} 가 매니페스트와 다르다 (내용 무변경 원칙)"
-        blob = _git_show(f"{notify.CHERRYPICK_SOURCE_COMMIT}:{rel}")
+        src = notify.CHERRYPICK_SOURCE_COMMIT_DOWN if rel == "display/ma60_down_tracker.py" else notify.CHERRYPICK_SOURCE_COMMIT
+        blob = _git_show(f"{src}:{rel}")
         if blob is None:
-            pytest.skip("git 또는 원본 커밋을 읽을 수 없음 — 매니페스트 해시로만 확인")
-        assert _norm(blob) == local, f"{rel} 가 원본 커밋 {notify.CHERRYPICK_SOURCE_COMMIT} 과 diff 있음"
+            missing.append(rel)
+            continue
+        assert _norm(blob) == local, f"{rel} 가 원본 커밋 {src} 과 diff 있음"
+    if missing:
+        pytest.skip(f"git 또는 원본 커밋을 읽을 수 없음 — 매니페스트 해시로만 확인: {missing}")
     # 트래커 자체의 probe 매니페스트와도 일치(양 브랜치 같은 blob)
     assert MT.CHERRYPICK_PROBE["validation/wave_ma60_turn_probe.py"] == notify.CHERRYPICK["validation/wave_ma60_turn_probe.py"]
 
 
 def test_detection_is_imported_not_reimplemented():
-    assert EV.MT is MT and EV.TS is TS and TS.probe is probe and MT.probe is probe
+    assert EV.MT is MT and EV.MD is MD and EV.TS is TS and TS.probe is probe and MT.probe is probe and MD.probe is probe
+    assert MD.up is MT                                      # 하방 추적은 상승 쪽 모듈(창·경과 규칙)을 import 소비
     src = open(EV.__file__, encoding="utf-8").read().split('"""', 2)[2]
-    assert "MT.track_candidates(" in src and "TS.analyze(" in src
+    assert "MT.track_candidates(" in src and "MD.track_candidates(" in src and "TS.analyze(" in src
     for banned in ("stoch_pivot", "compute_series_pivots", "find_swing_lows", "find_swing_highs", "np.roll",
                    "shift(", "rolling(", "extract_signals(", "\"MA60\"]"):
         assert banned not in src, banned
@@ -124,10 +132,31 @@ def test_events_equal_tracker_turned_rows_and_structure_ll_rows(pipe, events):
             assert e.known_pos == int(pipe.index.get_loc(e.ts))
 
 
+def test_down_events_equal_down_tracker_turned_rows(pipe, events):
+    turned = MD.track_candidates(pipe, recent_bars=len(pipe))
+    turned = turned[turned["상태"] == MD.STATUS_TURNED]
+    got = {e.ts for e in events if e.kind == EV.KIND_MA60_DOWN}
+    assert got == set(pd.to_datetime(turned["전환 시각"])) and len(got) >= 1
+    for e in events:
+        if e.kind == EV.KIND_MA60_DOWN:
+            assert e.known_pos == int(pipe.index.get_loc(e.ts)) and e.last_pos == len(pipe) - 1
+            assert e.fields["pattern_high"] > 0 and e.fields["bars"] >= 0
+    # 하방 전환봉과 상승 전환봉은 같은 봉일 수 없다(전환 정의가 서로 배타적)
+    up_ts = {e.ts for e in events if e.kind == EV.KIND_MA60_TURN}
+    assert not (got & up_ts)
+
+
 def test_event_key_is_symbol_tf_kind_bar_timestamp(events):
     e = events[0]
     assert e.key == f"BTCUSDT|4h|{e.kind}|{e.ts:%Y-%m-%dT%H:%M:%S}Z"
-    assert len({x.key for x in events}) == len(events)
+    # 키는 (심볼, TF, 종류, 이벤트 봉). 같은 봉에서 전환한 두 후보(확정 시각이 다른 두 쌍봉/쌍바닥)는 키가 같다 —
+    # 이벤트 목록에는 둘 다 있지만 plan() 이 같은 실행 안에서 1건으로 접는다(test_plan_same_key_twice_in_one_run_sends_once).
+    assert len({(x.key, x.fields.get("confirm_ts")) for x in events}) == len(events)
+    for k in {x.key for x in events}:
+        same = [x for x in events if x.key == k]
+        assert len({x.fields.get("confirm_ts") for x in same}) == len(same) and len({x.ts for x in same}) == 1
+    planned = S.plan(events, {"sent": {}}, now=min(e.ts for e in events) + pd.Timedelta(days=1))   # 회전 창 밖(skip_old) 없이
+    assert len([1 for _, act in planned if act == S.ACT_DUP]) == len(events) - len({x.key for x in events})
 
 
 # ------------------------------------------------------------ 닫힌 봉만
@@ -186,6 +215,12 @@ def _turn_event(ts="2026-09-18 12:00", last_pos=100, known_pos=99):
         "price": 80725.6, "pattern_low": 74967.97, "baseline": 74593.13})
 
 
+def _down_event(ts="2026-09-18 12:00", last_pos=100, known_pos=99):
+    return EV.Event("BTCUSDT", "4h", EV.KIND_MA60_DOWN, pd.Timestamp(ts), known_pos, last_pos, {
+        "confirm_ts": pd.Timestamp("2026-09-18 08:00"), "turn_ts": pd.Timestamp(ts), "bars": 1,
+        "price": 80725.6, "pattern_high": 84967.97})
+
+
 def _ll_event(ts="2026-09-19 00:00", last_pos=100, known_pos=99):
     return EV.Event("ETHUSDT", "1h", EV.KIND_STRUCTURE_LL, pd.Timestamp(ts), known_pos, last_pos, {
         "low_ts": pd.Timestamp(ts), "low": 4321.5, "prev_low": 4400.0, "pct": -1.784,
@@ -202,6 +237,18 @@ def test_message_format_ma60_turn_matches_delegation_example():
     ]
 
 
+def test_message_format_ma60_down_is_mirror_and_states_observation_only():
+    msg = EV.format_message(_down_event())
+    assert msg.splitlines() == [
+        "[BTCUSDT 4h] 60MA 하방 전환 발생 (미검증)",
+        "쌍봉 확정 09-18 17:00 → 하방 전환 09-18 21:00 (소요 1봉)",
+        "가격 80,726 · 패턴 고점 84,968 · 현물 보유 시 참고용 관측 · 하방 전환율 미측정",
+    ]
+    assert "40.7" not in msg and "41.3" not in msg and "기준선" not in msg      # 상승 쪽 수치·롱 손절 참조값 미사용
+    assert _down_event().key == "BTCUSDT|4h|ma60_down|2026-09-18T12:00:00Z"
+    assert _down_event().key != _turn_event().key                                 # 같은 봉이라도 종류가 달라 키가 다르다
+
+
 def test_message_format_structure_ll_kst_and_labels():
     msg = EV.format_message(_ll_event())
     lines = msg.splitlines()
@@ -211,7 +258,7 @@ def test_message_format_structure_ll_kst_and_labels():
 
 
 def test_messages_carry_unverified_and_no_recommendation_words(events):
-    for e in list(events) + [_turn_event(), _ll_event()]:
+    for e in list(events) + [_turn_event(), _down_event(), _ll_event()]:
         msg = EV.format_message(e)
         assert "(미검증)" in msg.splitlines()[0]
         for w in EV.FORBIDDEN_WORDS:
@@ -245,6 +292,26 @@ def test_initial_mode_is_no_delivered_entry_not_just_empty_file():
     H.record(hist, "Y|1h|ma60_turn|2026-09-18T04:00:00Z", "2026-09-18 04:00", delivered=True, now=now)
     assert not H.nothing_delivered(hist)
     assert {a for _, a in S.plan(evs, hist, now)} == {S.ACT_SEND}
+
+
+def test_initial_mode_is_per_kind_so_new_kind_does_not_burst_on_live_history():
+    """기존 종류(ma60_turn)가 이미 발송 중인 이력 위에 새 종류(ma60_down)를 추가해도, 새 종류의 밀린 이벤트는
+    최근 2봉분만 발송하고 나머지는 기록만 한다 — 최초 실행 규칙을 종류별로 적용."""
+    now = pd.Timestamp("2026-09-19 12:00")
+    hist = H.empty()
+    H.record(hist, "Y|1h|ma60_turn|2026-09-18T04:00:00Z", "2026-09-18 04:00", delivered=True, now=now)
+    assert not H.nothing_delivered(hist) and not H.nothing_delivered(hist, EV.KIND_MA60_TURN)
+    assert H.nothing_delivered(hist, EV.KIND_MA60_DOWN) and H.nothing_delivered(hist, EV.KIND_STRUCTURE_LL)
+    evs = [_down_event("2026-09-19 08:00", known_pos=100), _down_event("2026-09-19 00:00", known_pos=98),
+           _down_event("2026-09-10 00:00", known_pos=50), _turn_event("2026-09-10 00:00", known_pos=50)]
+    acts = {(e.kind, e.ts): a for e, a in S.plan(evs, hist, now)}
+    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 08:00"))] == S.ACT_SEND
+    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-19 00:00"))] == S.ACT_RECORD_ONLY
+    assert acts[(EV.KIND_MA60_DOWN, pd.Timestamp("2026-09-10 00:00"))] == S.ACT_RECORD_ONLY
+    assert acts[(EV.KIND_MA60_TURN, pd.Timestamp("2026-09-10 00:00"))] == S.ACT_SEND       # 기존 종류는 제한 없음
+    H.record(hist, _down_event("2026-09-19 08:00").key, "2026-09-19 08:00", delivered=True, now=now)
+    assert not H.nothing_delivered(hist, EV.KIND_MA60_DOWN)
+    assert H.key_kind("BTCUSDT|4h|ma60_down|2026-09-18T12:00:00Z") == "ma60_down"
 
 
 def test_plan_same_key_twice_in_one_run_sends_once():
@@ -305,12 +372,16 @@ def _now_after(bars):
     return bars.index[-1] + pd.Timedelta(hours=4)
 
 
+def _seeded_sent() -> dict:
+    """종류별 무관 키 1개씩 발송 성공 기록 — 종류별 최초 실행 제한을 피하기 위한 씨앗(테스트 전용)."""
+    return {f"X|1h|{k}|2026-08-31T00:00:00Z": {"event_ts": "2026-08-31T00:00:00Z", "sent_at": "2026-08-31T00:00:00Z",
+                                              "delivered": True} for k in EV.KINDS}
+
+
 def test_run_dedups_across_runs_and_persists_history(tmp_path, bars, events):
     state = str(tmp_path / "sent.json")
     env = {"TELEGRAM_TOKEN": "t0k", "TELEGRAM_CHAT_ID": "42"}
-    hist = H.empty()                                       # 최초 실행 제한을 피하려고 무관 키 1개를 심는다
-    H.record(hist, "X|1h|ma60_turn|2026-08-31T00:00:00Z", "2026-08-31 00:00", delivered=True, now=_now_after(bars))
-    H.save(state, hist)
+    H.save(state, {"version": 1, "sent": _seeded_sent()})   # 최초 실행 제한을 피하려고 종류별 무관 키를 심는다
     now = _now_after(bars)
     in_window = [e for e in events if e.ts >= now - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)]
     assert in_window, "픽스처 안에 창 안 이벤트가 있어야 한다"
@@ -344,13 +415,12 @@ def test_run_initial_history_limits_to_recent_bars_and_records_rest(tmp_path, ba
 def test_send_failure_is_not_recorded_and_retried_next_run(tmp_path, bars, events):
     state = str(tmp_path / "sent.json")
     now = _now_after(bars)
-    H.save(state, {"version": 1, "sent": {"X|1h|ma60_turn|2026-08-31T00:00:00Z":
-                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": "2026-08-31T00:00:00Z", "delivered": True}}})
+    H.save(state, {"version": 1, "sent": _seeded_sent()})
     env = {"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}
     bad = _Sender(ok=False)
     r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=bad, env=env, now=now)
     assert r["send_failed"] == len(bad.calls) > 0 and r["sent"] == 0
-    assert len(json.load(open(state, encoding="utf-8"))["sent"]) == 1      # 실패분 미기록
+    assert len(json.load(open(state, encoding="utf-8"))["sent"]) == len(EV.KINDS)      # 실패분 미기록
     good = _Sender()
     r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=good, env=env, now=now)
     assert r["sent"] == len(bad.calls) == len(good.calls)                   # 다음 실행에서 재시도
@@ -358,8 +428,7 @@ def test_send_failure_is_not_recorded_and_retried_next_run(tmp_path, bars, event
 
 def test_secrets_absent_logs_only_and_exits_zero(tmp_path, bars, monkeypatch):
     state = str(tmp_path / "sent.json")
-    H.save(state, {"version": 1, "sent": {"X|1h|ma60_turn|2026-08-31T00:00:00Z":
-                                          {"event_ts": "2026-08-31T00:00:00Z", "sent_at": "2026-08-31T00:00:00Z", "delivered": True}}})
+    H.save(state, {"version": 1, "sent": _seeded_sent()})
     assert TG.credentials({}) is None and TG.credentials({"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": " "}) is None
     assert TG.credentials({"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}) == ("t", "c")
     for k in (TG.ENV_TOKEN, TG.ENV_CHAT_ID):
@@ -373,7 +442,7 @@ def test_secrets_absent_logs_only_and_exits_zero(tmp_path, bars, monkeypatch):
     monkeypatch.setattr(S, "utcnow", lambda: _now_after(bars))
     rc = S.main(["--state", state, "--symbols", "BTCUSDT", "--tfs", "4h"])
     assert rc == 0
-    assert len(json.load(open(state, encoding="utf-8"))["sent"]) == 1      # 미발송분 미기록
+    assert len(json.load(open(state, encoding="utf-8"))["sent"]) == len(EV.KINDS)      # 미발송분 미기록
 
 
 def test_dry_run_sends_nothing_and_writes_nothing(tmp_path, bars, events):
@@ -428,6 +497,7 @@ def test_telegram_send_masks_token_and_never_raises():
 # ------------------------------------------------------------ 고정 대상 · 워크플로 계약 · 금지 항목
 def test_fixed_scan_targets():
     assert S.SYMBOLS == ("BTCUSDT", "ETHUSDT", "BNBUSDT") and S.TFS == ("1h", "4h", "1d")
+    assert EV.KINDS == ("ma60_turn", "ma60_down", "structure_ll")          # 알림 종류 3개(하방 전환 추가)
 
 
 def test_workflow_contract():

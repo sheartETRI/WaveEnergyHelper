@@ -5,8 +5,9 @@ key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key).
 
 규칙
 - 발송 성공 → 기록(delivered=true). 발송 실패 → 기록하지 않음(다음 실행 재시도).
-- 최초 실행(이력에 발송 성공 기록이 하나도 없음) → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만 발송 대상,
-  나머지는 delivered=false 로 기록만 한다(폭탄 방지). '비어 있음' 을 '발송 성공 0건' 으로 읽는 이유: Secrets 미설정
+- 최초 실행(이력에 그 **종류**의 발송 성공 기록이 하나도 없음) → 최근 INITIAL_RECENT_BARS 봉 이내에 확정된 이벤트만
+  발송 대상, 나머지는 delivered=false 로 기록만 한다(폭탄 방지). 종류별로 판정하므로 새 알림 종류를 추가해도 기존
+  종류가 이미 발송 중인 이력 위에서 새 종류의 밀린 이벤트가 한꺼번에 나가지 않는다(규칙 자체는 같다). '비어 있음' 을 '발송 성공 0건' 으로 읽는 이유: Secrets 미설정
   상태로 며칠 돌다가 Secrets 를 넣는 순간, 그동안 미발송·미기록으로 남은 이벤트가 한꺼번에 나가는 것을 막기 위해.
 - 이벤트 봉이 RETENTION_DAYS 보다 오래되면 회전(삭제). 스캔은 SCAN_MAX_AGE_DAYS(< RETENTION_DAYS) 안의 이벤트만
   보므로 회전으로 지운 키가 다시 발송되는 일은 없다.
@@ -63,9 +64,18 @@ def is_empty(hist: dict) -> bool:
     return not hist["sent"]
 
 
-def nothing_delivered(hist: dict) -> bool:
-    """발송 성공 기록이 하나도 없음 = 최초 실행 모드(최근 봉만 발송). 파일이 없거나 기록만 있는 경우 모두 해당."""
-    return not any(v.get("delivered") for v in hist["sent"].values())
+def key_kind(key: str) -> str:
+    """키 "SYMBOL|tf|kind|ts" 의 kind 조각."""
+    parts = key.split("|")
+    return parts[2] if len(parts) >= 4 else ""
+
+
+def nothing_delivered(hist: dict, kind: Optional[str] = None) -> bool:
+    """발송 성공 기록이 하나도 없음 = 최초 실행 모드(최근 봉만 발송). 파일이 없거나 기록만 있는 경우 모두 해당.
+
+    kind 를 주면 그 종류의 키만 본다(종류별 최초 실행). kind=None 은 전체.
+    """
+    return not any(v.get("delivered") for k, v in hist["sent"].items() if kind is None or key_kind(k) == kind)
 
 
 def has(hist: dict, key: str) -> bool:

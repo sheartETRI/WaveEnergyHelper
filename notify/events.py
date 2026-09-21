@@ -1,7 +1,9 @@
-"""알림 이벤트 2종 — 검출 모듈 출력만 소비 (재구현 없음).
+"""알림 이벤트 3종 — 검출 모듈 출력만 소비 (재구현 없음).
 
 - ``ma60_turn``   : 대파동 쌍바닥 확정 후 20봉 창 안 60MA 하방→상방 전환. ``display.ma60_turn_tracker.track_candidates``
                     의 '전환 발생' 행 그대로(창·전환 규칙은 probe.simulate 와 동일, 그 모듈의 테스트가 단언).
+- ``ma60_down``   : 대파동 쌍봉 확정 후 20봉 창 안 60MA 상방→하방 전환(상승 쪽의 거울상). ``display.ma60_down_tracker.track_candidates``
+                    의 '전환 발생' 행 그대로. 현물 보유 시 참고용 관측 — 숏·매도 신호가 아니며 하방 전환율은 측정된 바 없음.
 - ``structure_ll``: 기준 저점 이후 추적 중인 고점·저점 연쇄에서 저점 LL. ``display.trend_structure.analyze`` 의
                     chain 행 중 cls == LL 그대로(기준점 = 최신 대파동 쌍바닥 후보, 스윙 = 기존 swing 검출기).
 
@@ -18,17 +20,21 @@ from typing import List, Optional
 
 import pandas as pd
 
+from display import ma60_down_tracker as MD
 from display import ma60_turn_tracker as MT
 from display import trend_structure as TS
 from display.tz_label import to_kst
 
 KIND_MA60_TURN = "ma60_turn"
+KIND_MA60_DOWN = "ma60_down"
 KIND_STRUCTURE_LL = "structure_ll"
-KINDS = (KIND_MA60_TURN, KIND_STRUCTURE_LL)
+KINDS = (KIND_MA60_TURN, KIND_MA60_DOWN, KIND_STRUCTURE_LL)
 
 UNVERIFIED = MT.UNVERIFIED          # "(미검증)"
-TITLE = {KIND_MA60_TURN: "60MA 전환 발생", KIND_STRUCTURE_LL: "구조 훼손 — 저점 LL 발생"}
-FORBIDDEN_WORDS = ("매수", "진입", "매도")     # 권고 표현 금지 — 테스트가 메시지에서 부재를 단언
+TITLE = {KIND_MA60_TURN: "60MA 전환 발생", KIND_MA60_DOWN: "60MA 하방 전환 발생",
+         KIND_STRUCTURE_LL: "구조 훼손 — 저점 LL 발생"}
+FORBIDDEN_WORDS = ("매수", "진입", "매도", "숏", "청산")     # 권고 표현 금지 — 테스트가 메시지에서 부재를 단언
+DOWN_NOTE = "현물 보유 시 참고용 관측 · 하방 전환율 미측정"
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,26 @@ def ma60_turn_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
     return out
 
 
+# ------------------------------------------------------------------ 60MA 하방 전환 (거울상)
+def ma60_down_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
+    """ma60_down_tracker.track_candidates 의 '전환 발생' 행 → 이벤트. 창·전환 정의는 그 모듈(→ 상승 쪽 + probe) 소관."""
+    n = len(pipe)
+    frame = MD.track_candidates(pipe, recent_bars=n)
+    out: List[Event] = []
+    if frame.empty:
+        return out
+    for d in frame[frame["상태"] == MD.STATUS_TURNED].to_dict("records"):
+        t_pos = int(pipe.index.get_loc(d["전환 시각"]))
+        out.append(Event(
+            symbol=symbol, tf=tf, kind=KIND_MA60_DOWN, ts=pd.Timestamp(d["전환 시각"]),
+            known_pos=t_pos, last_pos=n - 1,
+            fields={"confirm_ts": pd.Timestamp(d["확정 시각"]), "turn_ts": pd.Timestamp(d["전환 시각"]),
+                    "bars": int(d["_bars"]), "price": float(d["전환 시 가격"]),
+                    "pattern_high": float(d[MD.HIGH_COL])},
+        ))
+    return out
+
+
 # ------------------------------------------------------------------ 구조 훼손 (LL)
 def structure_ll_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
     """trend_structure.analyze 의 연쇄에서 LL 저점 → 이벤트. 직전 저점은 연쇄 안의 앞 저점(없으면 기준 저점)."""
@@ -115,7 +141,7 @@ def structure_ll_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]
 
 
 def scan_frame(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
-    return ma60_turn_events(pipe, symbol, tf) + structure_ll_events(pipe, symbol, tf)
+    return ma60_turn_events(pipe, symbol, tf) + ma60_down_events(pipe, symbol, tf) + structure_ll_events(pipe, symbol, tf)
 
 
 # ------------------------------------------------------------------ 메시지
@@ -128,6 +154,12 @@ def format_message(ev: Event) -> str:
             head,
             f"쌍바닥 확정 {_kst(f['confirm_ts'])} → 전환 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)",
             f"가격 {_px(f['price'])} · 패턴 저점 {_px(f['pattern_low'])} / 기준선 {_px(f['baseline'])}",
+        ])
+    if ev.kind == KIND_MA60_DOWN:
+        return "\n".join([
+            head,
+            f"쌍봉 확정 {_kst(f['confirm_ts'])} → 하방 전환 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)",
+            f"가격 {_px(f['price'])} · 패턴 고점 {_px(f['pattern_high'])} · {DOWN_NOTE}",
         ])
     if ev.kind == KIND_STRUCTURE_LL:
         return "\n".join([

@@ -51,9 +51,10 @@ def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[E
 
     skip_old: 이벤트 봉이 SCAN_MAX_AGE_DAYS 보다 오래됨(회전 창 밖) · skip_dup: 이력에 있음 또는 같은 실행 안에 같은 키가
     이미 있음(두 쌍바닥 후보가 같은 봉에서 전환하면 키가 같다 — 한 키에 알림 1건) ·
-    record_only: 최초 실행 모드(발송 성공 기록 없음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지 않음 · send: 발송 대상.
+    record_only: 그 종류의 최초 실행 모드(그 종류의 발송 성공 기록 없음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지
+    않음 · send: 발송 대상.
     """
-    initial = H.nothing_delivered(hist)
+    initial_kinds = {k for k in EV.KINDS if H.nothing_delivered(hist, k)}
     cutoff = pd.Timestamp(now) - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)
     out: List[Tuple[EV.Event, str]] = []
     seen: set = set()
@@ -62,7 +63,7 @@ def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[E
             out.append((ev, ACT_OLD))
         elif H.has(hist, ev.key) or ev.key in seen:
             out.append((ev, ACT_DUP))
-        elif initial and ev.bars_since_known >= H.INITIAL_RECENT_BARS:
+        elif ev.kind in initial_kinds and ev.bars_since_known >= H.INITIAL_RECENT_BARS:
             out.append((ev, ACT_RECORD_ONLY))
         else:
             out.append((ev, ACT_SEND))
@@ -101,11 +102,12 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
     now = utcnow() if now is None else pd.Timestamp(now)
     hist = H.load(state_path)
     rotated = H.rotate(hist, now)
-    initial = H.nothing_delivered(hist)      # 회전 후 기준 — plan() 과 같은 판정
+    initial_kinds = [k for k in EV.KINDS if H.nothing_delivered(hist, k)]      # 회전 후 기준 — plan() 과 같은 판정
     creds = TG.credentials(env)
     log.info("start now=%s UTC dry_run=%s state=%s history=%s rotated=%d secrets=%s",
              now.strftime("%Y-%m-%d %H:%M"), dry_run, state_path,
-             ("%s — initial mode: recent %d bars only" % (H.counts(hist), H.INITIAL_RECENT_BARS)) if initial else H.counts(hist),
+             ("%s — initial mode for %s: recent %d bars only" % (H.counts(hist), ",".join(initial_kinds), H.INITIAL_RECENT_BARS))
+             if initial_kinds else H.counts(hist),
              rotated, "set" if creds else "absent (no send)")
 
     evs, failures = scan_cells(symbols, tfs, fetch)
