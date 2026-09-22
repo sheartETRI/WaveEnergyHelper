@@ -196,6 +196,26 @@ def test_run_once_loader_error_is_isolated(frame, tmp_path):
     assert stats["errors"] and stats["errors"][0].startswith("BAD 1h") and stats["pushed"] == len(sent) > 0
 
 
+def test_loop_grid_wakes_at_offset_after_the_hour():
+    """--loop 300 --offset 60: 다음 실행은 epoch 300초 격자 + 60초 (매시 :01, :06, …)."""
+    hour = 1_800_000 * 2          # 임의의 정각(epoch, 3600 의 배수)
+    assert P.seconds_until_next_slot(hour, 300, 60) == 60                # 정각 → :01
+    assert P.seconds_until_next_slot(hour + 60, 300, 60) == 300          # :01 실행 직후 → :06
+    assert P.seconds_until_next_slot(hour + 61, 300, 60) == 299
+    assert P.seconds_until_next_slot(hour + 359, 300, 60) == 1
+    assert P.seconds_until_next_slot(hour + 359.5, 300, 60) == 1.0       # 최소 1초
+    assert P.seconds_until_next_slot(hour + 3599, 300, 60) == 61         # 다음 정각 :01
+    assert P.seconds_until_next_slot(hour, 3, 0) >= 1                    # period 하한 5초
+    assert P.parse_args(["--loop", "300"]).offset == 60
+
+
+def test_systemd_unit_runs_loop_with_offset():
+    with open(os.path.join(ROOT, "deploy", "push_alarms.service"), encoding="utf-8") as fh:
+        unit = fh.read()
+    assert "scripts/push_alarms.py --loop 300 --offset 60" in unit and "Restart=always" in unit
+    assert "WorkingDirectory=" in unit and "PYTHONUTF8=1" in unit
+
+
 def test_cli_parse_defaults_from_config():
     from config.settings import PUSH_PARAMS, PUSH_WATCHLIST
     args = P.parse_args([])

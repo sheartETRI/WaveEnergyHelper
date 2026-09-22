@@ -6,7 +6,7 @@
 
     python scripts/push_alarms.py --test            # 토큰 확인용 테스트 푸시 1건
     python scripts/push_alarms.py                   # 1회 순회(작업 스케줄러용) — 기본
-    python scripts/push_alarms.py --loop 60         # 60초마다 반복
+    python scripts/push_alarms.py --loop 300        # 300초 격자로 반복(:01, :06, … — 봉 마감 직후, deploy/push_alarms.service)
     python scripts/push_alarms.py --dry-run         # 보낼 내용만 출력(전송·이력 기록 없음)
 
 규칙
@@ -217,10 +217,24 @@ def run_once(
     return stats
 
 
+# ---------------------------------------------------------------- 반복 격자
+def seconds_until_next_slot(now_epoch: float, period: int, offset: int) -> float:
+    """다음 실행까지 초 — 실행 시각은 epoch 기준 period 격자 + offset (period 300·offset 60 → 매시 :01, :06, …).
+
+    봉은 정각에 닫히므로 정각이 아니라 offset 초 뒤에 깨어나야 마감 직후 봉을 닫힌 봉으로 잡는다.
+    """
+    period = max(int(period), 5)
+    base = now_epoch - offset
+    next_slot = (base // period + 1) * period + offset
+    return max(next_slot - now_epoch, 1.0)
+
+
 # ---------------------------------------------------------------- CLI
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="알람 Pushbullet 푸시 폴러 (WaveEnergyHelper)")
-    p.add_argument("--loop", type=int, metavar="SEC", help="이 초마다 반복(기본: 1회 순회 후 종료)")
+    p.add_argument("--loop", type=int, metavar="SEC", help="이 초 격자로 반복(기본: 1회 순회 후 종료)")
+    p.add_argument("--offset", type=int, default=60, metavar="SEC",
+                   help="--loop 격자의 정각 대비 오프셋 초(기본 60 — 봉 마감 직후 :01 에 실행)")
     p.add_argument("--test", action="store_true", help="테스트 푸시 1건 보내고 종료")
     p.add_argument("--dry-run", action="store_true", help="전송·이력 기록 없이 보낼 내용만 출력")
     p.add_argument("--symbols", nargs="+", help=f"감시 심볼 (기본 {PUSH_WATCHLIST['symbols']})")
@@ -265,7 +279,7 @@ def main(argv=None) -> int:
         if not args.loop:
             return 0 if not stats["failed"] and not stats["errors"] else 1   # 스케줄러가 실패를 알 수 있게
         try:
-            time.sleep(max(int(args.loop), 5))
+            time.sleep(seconds_until_next_slot(time.time(), args.loop, args.offset))
         except KeyboardInterrupt:
             logger.info("중단")
             return 0
