@@ -6,7 +6,8 @@
 - JS 는 CDN 이 아니라 저장소에 벤더링한다: ``charts/vendor/lightweight-charts.standalone.js``
   (버전은 VENDOR_VERSION 과 파일 헤더 주석에 명기). iframe 은 저장소 파일을 못 읽으므로
   HTML 문자열에 인라인한다.
-- ``charts/plotly_builder.py`` 는 수정하지 않는다 — 색·굵기·표시 창·마커 스타일 토큰만 import 해 승계한다.
+- ``charts/plotly_builder.py`` 를 import 하지 않는다 — 색·표시 창·마커 스타일 토큰은 ``charts/theme.py``
+  (단일 공급원, 값은 plotly_builder 에서 그대로 옮긴 것)에서 가져온다. 기본 경로(main)는 plotly 없이 기동한다.
 
 2단계 범위(LW v5 panes — 스택 차트가 아니라 단일 차트의 pane):
 - pane 0 가격(캔들 + 이평 + 거래량 하단 오버레이 + 구조 기준선 + 게이트 캡션)
@@ -29,17 +30,18 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from analysis.alarm_signals import macd_event_positions
-from charts.plotly_builder import (
-    _MACD_EVENT_STYLE,
+from charts.theme import (
     COLOR_BEAR,
     COLOR_BULL,
+    MACD_EVENT_STYLE as _MACD_EVENT_STYLE,
+    MACD_HIST_COLORS,
     RECENT_WINDOW,
     STOCH_GUIDES,
     TV_BACKGROUND,
     TV_GRID,
     TV_TEXT,
+    ZONE_FILL_COLORS,
 )
-from charts.theme import MACD_HIST_COLORS, ZONE_FILL_COLORS
 from display.tz_label import KST_LABEL, to_kst
 from config.settings import (
     MA_COLORS,

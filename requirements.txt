@@ -1,6 +1,5 @@
+# WaveEnergyHelper 데모(main.py, LW 차트 엔진) 기동에 필요한 최소 의존.
+# Plotly·mplfinance 등 레거시·연구 스크립트 전용 의존은 requirements-legacy.txt 참조.
 requests
 pandas
 streamlit
-plotly
-mplfinance
-streamlit-lightweight-charts

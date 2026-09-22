@@ -4,13 +4,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import streamlit as st
 
-from analysis.alarm_signals import (
-    KIND_MACD_DEAD,
-    KIND_MACD_GOLDEN,
-    KIND_MACD_ZERO_DOWN,
-    KIND_MACD_ZERO_UP,
-    macd_event_positions,
-)
+from analysis.alarm_signals import macd_event_positions
 from config.settings import (
     MA_COLORS,
     MA_LINE_WIDTHS,
@@ -22,17 +16,21 @@ from config.settings import (
 )
 
 
-COLOR_BULL = "#ff0000"
-COLOR_BEAR = "#0000ff"
-TV_BACKGROUND = "#ffffff"
-TV_TEXT = "#191c24"
-TV_GRID = "rgba(42, 46, 57, 0.12)"
-RECENT_WINDOW = 150
+# 색·창·높이 토큰은 charts/theme.py 가 단일 공급원 (LW 빌더와 공유). 이름은 하위 호환으로 재노출.
+from charts.theme import (  # noqa: E402
+    CHART_HEIGHT_OPTIONS,
+    COLOR_BEAR,
+    COLOR_BULL,
+    DEFAULT_CHART_HEIGHT,
+    MACD_EVENT_STYLE as _MACD_EVENT_STYLE,
+    RECENT_WINDOW,
+    STOCH_GUIDES,
+    TV_BACKGROUND,
+    TV_GRID,
+    TV_TEXT,
+)
 
 # --- 세로 조작성 설정 (설정 계층만, 데이터·지표 무관) ---
-# 차트 전체 높이(px): Streamlit 은 뷰포트 높이를 읽지 못하므로 사이드바 선택식.
-CHART_HEIGHT_OPTIONS = (600, 800, 1000, 1200)
-DEFAULT_CHART_HEIGHT = 1000
 # 표시 모드 2종 — 패널 비중 세트만 다르다. 꺼진 패널 흡수·최소 px·간격 규칙은 두 모드 공통.
 #   기본형   : 가격 0.50 / 거래량 0.06 / 스토캐 0.18 / MACD 0.14 / RSI 0.12  (하위 3패널 합 0.44)
 #   지표 중심: 가격 0.34 / 거래량 0.05 / 스토캐 0.26 / MACD 0.19 / RSI 0.16  (하위 3패널 합 0.61)
@@ -63,8 +61,6 @@ CHART_CONTROLS_CAPTION = (
     "더블클릭 = 초기 범위로  ·  드래그 = 이동"
 )
 PLOTLY_CONFIG = {"scrollZoom": True, "doubleClick": "reset", "displaylogo": False}
-# 스토캐 참조선: 레이어당 20/80 두 줄만.
-STOCH_GUIDES = (20, 80)
 STOCH_DISPLAY_LAYERS = [
     {"panel_title": "Large wave", "suffix": "(20,10,10)"},
     {"panel_title": "Mid wave", "suffix": "(10,5,5)"},
@@ -394,15 +390,7 @@ def add_macd_panel(fig, df, row_index, show_marker_text=False):
     add_macd_event_markers(fig, df, row_index, show_text=show_marker_text)
 
 
-# MACD 알람 이벤트 마커 — 스토캐 DB/DT(원, 초록/빨강)·TB/TT(마름모) 관례를 그대로 잇는다.
-# (라벨, 마커 모양, 색, 텍스트 위치). x 는 확정 봉(교차 봉 +1, 알람 발화 시점) — 교차 봉에
-# 찍으면 사후에 마커가 생기는 표시가 된다. y 는 확정 봉의 macd 값.
-_MACD_EVENT_STYLE = {
-    KIND_MACD_GOLDEN: ("GC", "circle", "#0B8F45", "top center"),
-    KIND_MACD_DEAD: ("DC", "circle", "#C62828", "bottom center"),
-    KIND_MACD_ZERO_UP: ("0↑", "diamond", "#1565C0", "top center"),
-    KIND_MACD_ZERO_DOWN: ("0↓", "diamond", "#AD1457", "bottom center"),
-}
+# MACD 알람 이벤트 마커 스타일은 charts/theme.MACD_EVENT_STYLE (위에서 _MACD_EVENT_STYLE 로 재노출).
 
 
 def add_macd_event_markers(fig, df, row_index, show_text=False):

@@ -1,0 +1,9 @@
+# 레거시·연구 경로 전용 의존 — 데모(main.py)는 이 파일 없이 기동한다.
+#   pip install -r requirements.txt -r requirements-legacy.txt
+
+# charts/plotly_builder.py (이전 차트 엔진, display/panel_registry 지연 import)·legacy_main.py
+plotly
+# plot_btcusdt_ma.py, validation/g1a_render.py (정적 차트 이미지)
+mplfinance
+# 미사용 — LW 엔진은 서드파티 래퍼 대신 charts/vendor/lightweight-charts.standalone.js 를 직접 임베드한다.
+# streamlit-lightweight-charts

@@ -4,12 +4,17 @@
   1. main.load_frame 이 쓰는 지표 조합으로 차트 figure가 컬럼 누락 없이 만들어진다.
   2. 같은 프레임에서 알람 패널의 순수 build_* 가 텍스트를 낸다.
   3. main.py가 import 가능하고 사이드바 레이어 선택 맵이 STOCH_LAYERS와 일치한다.
+
+Plotly figure 를 만드는 테스트는 레거시 엔진(charts/plotly_builder) 검사다 — main 은 더 이상 plotly 를
+import 하지 않으므로 plotly 미설치 환경에서는 skip 된다(requirements-legacy.txt).
 """
+import importlib.util
 import os
 import sys
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -29,6 +34,11 @@ from indicators.stochastic import add_stochastic_slow_layers
 
 # MA 240까지 쓰므로 워밍업을 넉넉히 둔다(차트 RECENT_WINDOW=150).
 BARS = 700
+
+# 레거시 Plotly 엔진 전용 테스트 — 데모 의존(requirements.txt)에 plotly 가 없으므로 미설치면 skip.
+requires_plotly = pytest.mark.skipif(
+    importlib.util.find_spec("plotly") is None, reason="plotly 미설치 — 레거시 엔진(plotly_builder) 테스트",
+)
 
 
 def _pipeline_frame():
@@ -68,6 +78,7 @@ def _figure(df, **kwargs):
     return _create_synced_chart_figure(df, "BTCUSDT", "1h", **base)
 
 
+@requires_plotly
 def test_chart_figure_builds_with_slim_flags():
     """main.py가 넘기는 플래그 조합으로 figure가 만들어진다(MACD 패널 켬/끔 모두)."""
     df = _pipeline_frame()
@@ -78,6 +89,7 @@ def test_chart_figure_builds_with_slim_flags():
             assert len(fig.data) > 0, f"{view_mode}: 트레이스가 비었다"
 
 
+@requires_plotly
 def test_macd_panel_carries_alarm_event_markers():
     """MACD 패널에 알람 이벤트 마커(GC/DC/0↑/0↓)가 알람 목록과 같은 봉에 찍힌다."""
     from analysis.alarm_signals import MACD_KINDS, macd_event_positions
@@ -104,12 +116,13 @@ def test_macd_panel_carries_alarm_event_markers():
     assert not any(t.name in ("GC", "DC", "0↑", "0↓") for t in fig_off.data)
 
 
+@requires_plotly
 def test_stoch_view_mode_values_are_honored():
-    """사이드바가 넘기는 문자열이 plotly_builder의 분기값과 실제로 일치한다.
+    """plotly_builder 의 스토캐 표시 분기값("Stacked"/"Separated")이 행 구성을 실제로 바꾼다.
 
     철자가 틀리면(예: "Separate") 조용히 Stacked로 떨어지므로, 행 구성이 달라지는지로 확인.
+    (사이드바 '스토캐 표시' 라디오는 Plotly 전용이라 main 에서 제거됐다 — main 과의 결합 검사 없음.)
     """
-    import main
     from charts.plotly_builder import _get_synced_chart_rows
 
     stacked = _get_synced_chart_rows(True, "Stacked", False, True)
@@ -120,14 +133,8 @@ def test_stoch_view_mode_values_are_honored():
     assert "stoch_layer" in kinds_separated and "stoch_stacked" not in kinds_separated
     assert len(separated) > len(stacked)
 
-    # main.py 사이드바의 선택지가 그 두 값과 정확히 같아야 한다.
-    source = (os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    with open(os.path.join(source, "main.py"), encoding="utf-8") as fh:
-        body = fh.read()
-    assert '"Stacked", "Separated"' in body, "사이드바 선택지가 분기값과 어긋났다"
-    assert main is not None
 
-
+@requires_plotly
 def test_chart_figure_builds_with_panels_off():
     """스토캐·RSI 패널을 모두 끈 경우에도 캔들만으로 figure가 만들어진다."""
     df = _pipeline_frame()
@@ -206,6 +213,7 @@ def test_macd_panel_default_off_only_for_15m():
     assert "value=macd_panel_default(interval)" in body
 
 
+@requires_plotly
 def test_chart_vertical_controls_settings():
     """세로 조작성 설정 계층 — 모든 y축 fixedrange=False, rangeslider 꺼짐, dragmode pan,
     높이는 선택값 그대로(600/800/1000/1200, 기본 1000), 가격 행 도메인은 기본 모드 비중 이상,
@@ -241,6 +249,7 @@ def test_chart_vertical_controls_settings():
     assert _row_heights([{"kind": "price"}]) == [1.0]
 
 
+@requires_plotly
 def test_chart_panel_shares_and_min_height():
     """패널 비중(기본형): 5개 기준 0.50/0.06/0.18/0.14/0.12, 꺼진 패널은 가격 흡수, 간격 0.04,
     하위 패널(가격·거래량 제외) 실제 px ≥ 80 (미달이면 전체 높이 상향) — 두 모드 공통."""
@@ -271,6 +280,7 @@ def test_chart_panel_shares_and_min_height():
         assert _effective_chart_height(five, heights, 1000) == 1000
 
 
+@requires_plotly
 def test_chart_titles_removed_and_y_fitted():
     """서브플롯 제목 annotation 없음, 가격·거래량·MACD y 는 표시 창(최근 150봉) 데이터에 밀착,
     uirevision 은 심볼|TF, 거래량 눈금 3개 이하·SI 포맷·0 시작, 스토캐 참조선 20/80 만,
@@ -323,16 +333,18 @@ def test_chart_titles_removed_and_y_fitted():
 
 
 def test_main_wires_chart_height_and_controls():
-    """main.py: wide 레이아웃, 차트 높이 셀렉트(600/800/1000, 기본 800), render_chart 에 chart_height 전달,
-    render_chart 는 캡션·config 를 붙인다."""
+    """main.py: wide 레이아웃, 차트 높이 셀렉트(charts.theme 의 CHART_HEIGHT_OPTIONS), render_lw_chart 에
+    chart_height 전달. Plotly 전용 컨트롤(표시 모드·스토캐 표시·차트 엔진 라디오)은 없다."""
     source = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(source, "main.py"), encoding="utf-8") as fh:
         body = fh.read()
     assert 'layout="wide"' in body
+    assert "from charts.theme import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT" in body
     assert "CHART_HEIGHT_OPTIONS" in body and "chart_height=cfg[\"chart_height\"]" in body
-    # 표시 모드 라디오: LAYOUT_MODES 순서(기본 = 지표 중심), 라벨은 LAYOUT_MODE_LABELS, render_chart 에 전달.
-    assert '"표시 모드", options=list(LAYOUT_MODES)' in body
-    assert "LAYOUT_MODE_LABELS[mode]" in body and "layout_mode=cfg[\"layout_mode\"]" in body
+    assert '"표시 모드"' not in body and "LAYOUT_MODE" not in body
+    assert '"스토캐 표시"' not in body and '"Separated"' not in body
+    assert '"차트 엔진"' not in body and "CHART_ENGINES" not in body
+    # 플롯 전용 캡션·config 는 레거시 빌더 안에 그대로 남는다(파일 검사만 — plotly import 불필요).
     with open(os.path.join(source, "charts", "plotly_builder.py"), encoding="utf-8") as fh:
         chart_src = fh.read()
     assert 'st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)' in chart_src
@@ -360,6 +372,7 @@ if __name__ == "__main__":
 
 
 # ------------------------------------------------------------ 표시 모드 2종 (비중 재배분 + 높이 옵션 확장)
+@requires_plotly
 def test_layout_modes_and_shares():
     """지표 중심(기본) 0.34/0.05/0.26/0.19/0.16 · 기본형 0.50/0.06/0.18/0.14/0.12,
     Separated 는 스토캐 비중을 3층이 나눔, 꺼진 패널은 두 모드 모두 가격이 흡수."""
@@ -390,6 +403,7 @@ def test_layout_modes_and_shares():
         assert abs(heights[0] - (1.0 - table["volume"] - table["stoch_stacked"])) < 1e-9
 
 
+@requires_plotly
 def test_indicator_mode_subpanel_pixels():
     """지표 중심 + 1000: 하위 패널 실측 px — 스토캐 ≥ 200 · MACD ≥ 145 · RSI ≥ 120
     (공식: (전체−마진 60) × 비중 × (1 − 0.04×4) → 약 205 / 150 / 126). 모든 높이에서 지표 중심 > 기본형."""
@@ -423,6 +437,7 @@ def _subpanel_marker_traces(fig):
             if getattr(t, "yaxis", "y") != "y" and "markers" in (getattr(t, "mode", None) or "")]
 
 
+@requires_plotly
 def test_subpanel_marker_text_follows_layout_mode():
     """하위 패널 마커 텍스트: 지표 중심 = markers+text (스토캐·RSI·MACD 모두), 기본형 = markers 만.
     가격 패널은 모드와 무관."""
@@ -451,6 +466,7 @@ def test_subpanel_marker_text_follows_layout_mode():
     assert all(t.mode == "markers+text" for t in _subpanel_marker_traces(fig_s))
 
 
+@requires_plotly
 def test_stoch_stack_guides_keep_clearance_in_indicator_mode():
     """스토캐 3층 스택(y 0~320): 층 분리선~참조선 25단위, 참조선 20~80 60단위, 층 간격 10단위.
     지표 중심 + 1000 에서 분리선~참조선 ≥ 12px 이므로 참조선끼리 겹치지 않는다(투명도 조정 불필요)."""
