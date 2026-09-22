@@ -2,6 +2,10 @@
 
 # --- Binance API Settings ---
 BINANCE_BASE_URL = "https://api.binance.com/api/v3/klines"
+# api.binance.com 이 451/403(지역 차단 — Streamlit Cloud 등 미국 리전)을 주면 같은 요청을 이 주소로 재시도한다.
+# data-api.binance.vision 은 바이낸스가 공개 시장 데이터(klines 등)용으로 제공하는 동일 스키마 엔드포인트.
+BINANCE_FALLBACK_URL = "https://data-api.binance.vision/api/v3/klines"
+BINANCE_FALLBACK_STATUS = (451, 403)
 SUPPORTED_SYMBOLS = [
     "BTCUSDT",
     "ETHUSDT",

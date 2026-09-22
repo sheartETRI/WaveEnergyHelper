@@ -5,7 +5,7 @@ import time
 import requests
 import streamlit as st
 
-from config.settings import BINANCE_BASE_URL
+from config.settings import BINANCE_BASE_URL, BINANCE_FALLBACK_STATUS, BINANCE_FALLBACK_URL
 
 logger = logging.getLogger(__name__)
 
@@ -52,19 +52,95 @@ def clear_klines_cache() -> None:
     fetch_klines_paginated.clear()
 
 
+# ---------------------------------------------------------------------------
+# 데이터 주소 자동 대체 (Streamlit Cloud 배포 대응)
+# api.binance.com 이 451/403 을 주면 같은 요청을 data-api.binance.vision 으로 재시도하고, 한 번 대체되면
+# 프로세스 동안은 대체 주소를 바로 쓴다(매 요청마다 차단 주소를 먼저 두드리지 않는다). 상태는 프로세스 전역
+# (st.cache_data 와 같은 범위). 지표·검출 로직 무접촉 — 요청 URL 만 바뀌고 응답 스키마는 동일하다.
+# ---------------------------------------------------------------------------
+_DATA_URL = {"url": BINANCE_BASE_URL, "reason": None}
+# 마지막 실패 사유 (symbol, interval) → "HTTP 451 https://..." 등. 화면 오류 메시지에 원인을 싣기 위함.
+_LAST_ERROR: dict = {}
+
+
+def active_data_url() -> str:
+    """현재 사용 중인 klines 요청 주소(대체됐으면 대체 주소)."""
+    return _DATA_URL["url"]
+
+
+def fallback_reason():
+    """대체 주소로 전환된 사유('api.binance.com HTTP 451'). 전환되지 않았으면 None."""
+    return _DATA_URL["reason"]
+
+
+def reset_data_url() -> None:
+    """원래 주소로 되돌린다(테스트·수동 복구용). 실패 사유 기록도 비운다."""
+    _DATA_URL["url"] = BINANCE_BASE_URL
+    _DATA_URL["reason"] = None
+    _LAST_ERROR.clear()
+
+
+def last_fetch_error(symbol: str, interval: str):
+    """마지막 fetch 실패 사유 문자열(HTTP 상태 코드·시도한 주소 포함). 성공했거나 시도한 적 없으면 None."""
+    return _LAST_ERROR.get((symbol, interval))
+
+
+def _host(url: str) -> str:
+    return url.split("://", 1)[-1].split("/", 1)[0]
+
+
+def data_source_line() -> str:
+    """사이드바 한 줄 — '데이터 주소 <host>' (+ 대체됐으면 사유)."""
+    line = f"데이터 주소 {_host(active_data_url())}"
+    reason = fallback_reason()
+    return f"{line} (대체 — {reason})" if reason else line
+
+
+def _request_klines(params: dict):
+    """현재 주소로 GET. 원래 주소가 451/403 이면 대체 주소로 전환해 같은 요청을 1회 재시도한다.
+
+    반환: (response, url) — response 는 raise_for_status 를 아직 부르지 않은 상태.
+    """
+    url = active_data_url()
+    response = requests.get(url, params=params, timeout=10)
+    status = getattr(response, "status_code", None)
+    if url == BINANCE_BASE_URL and status in BINANCE_FALLBACK_STATUS:
+        reason = f"{_host(url)} HTTP {status}"
+        logger.warning("binance %s → fallback %s (same request retried)", reason, BINANCE_FALLBACK_URL)
+        _DATA_URL["url"] = BINANCE_FALLBACK_URL
+        _DATA_URL["reason"] = reason
+        url = BINANCE_FALLBACK_URL
+        response = requests.get(url, params=params, timeout=10)
+    return response, url
+
+
+def _describe_error(exc: Exception, url: str) -> str:
+    """오류 메시지용 — 'HTTP <code> <url>' 또는 '<ExceptionType> <url>'."""
+    resp = getattr(exc, "response", None)
+    code = getattr(resp, "status_code", None)
+    if code is not None:
+        return f"HTTP {code} {url}"
+    return f"{type(exc).__name__} {url}"
+
+
 @st.cache_data(ttl=600)
 def fetch_klines(symbol: str, interval: str, limit: int):
     """Fetches raw OHLCV data from the Binance public API."""
     params = {"symbol": symbol, "interval": interval, "limit": limit}
+    url = active_data_url()
     try:
-        response = requests.get(BINANCE_BASE_URL, params=params, timeout=10)
+        response, url = _request_klines(params)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, list) or not data:
+            _LAST_ERROR[(symbol, interval)] = f"빈/비정상 응답 {url}"
             return None
         _LAST_FETCH_AT[(symbol, interval)] = time.time()
+        _LAST_ERROR.pop((symbol, interval), None)
         return data
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — 실패는 None, 사유는 last_fetch_error 로 노출
+        _LAST_ERROR[(symbol, interval)] = _describe_error(exc, url)
+        logger.warning("fetch_klines failed for %s %s: %s", symbol, interval, _LAST_ERROR[(symbol, interval)])
         return None
 
 
@@ -73,7 +149,7 @@ def _fetch_klines_page(symbol: str, interval: str, limit: int, end_time=None):
     params = {"symbol": symbol, "interval": interval, "limit": limit}
     if end_time is not None:
         params["endTime"] = int(end_time)
-    response = requests.get(BINANCE_BASE_URL, params=params, timeout=10)
+    response, _ = _request_klines(params)
     response.raise_for_status()
     data = response.json()
     if not data:

@@ -16,7 +16,9 @@ import streamlit as st
 from charts.lw_builder import render_lw_chart
 from charts.theme import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT
 from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
-from data.binance import clear_klines_cache, fetch_klines, get_auto_limit, last_fetch_at
+from data.binance import (
+    clear_klines_cache, data_source_line, fetch_klines, get_auto_limit, last_fetch_at, last_fetch_error,
+)
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
@@ -103,6 +105,12 @@ def data_freshness_caption(loaded_at: Optional[float], last_bar) -> str:
     return f"마지막 로드 {loaded} · 마지막 봉 {bar} {KST_LABEL}"
 
 
+def load_error_message(symbol: str, interval: str, reason: Optional[str]) -> str:
+    """적재 실패 오류 한 줄 — 원인(HTTP 상태 코드·시도한 주소)이 있으면 덧붙인다."""
+    base = f"{symbol} {interval} 데이터를 불러오지 못했습니다."
+    return f"{base} 원인: {reason}" if reason else base
+
+
 def render_refresh_button() -> "st.delta_generator.DeltaGenerator":
     """사이드바 상단: 새로고침 버튼 + 신선도 캡션 자리(적재 뒤 main 이 채움) + 상태 초기화 고지."""
     if st.sidebar.button(REFRESH_BUTTON_LABEL, help="OHLCV 캐시를 비우고 최신 봉까지 다시 받습니다."):
@@ -157,6 +165,7 @@ def render_sidebar() -> dict:
     )
 
     render_code_version()   # 사이드바 맨 아래: 기동 HEAD · 기동 시각 · 경로
+    data_url_slot = st.sidebar.empty()   # 그 아래 한 줄: 현재 데이터 주소(적재 뒤 main 이 채움 — 대체 전환 반영)
 
     return {
         "symbol": symbol,
@@ -169,6 +178,7 @@ def render_sidebar() -> dict:
         "show_rsi": show_rsi,
         "chart_height": chart_height,
         "freshness_slot": freshness_slot,
+        "data_url_slot": data_url_slot,
     }
 
 
@@ -180,8 +190,9 @@ def main():
     with st.spinner(f"{symbol} {interval} 적재 중..."):
         df = load_frame(symbol, interval, with_macd=cfg["show_macd"])
 
+    cfg["data_url_slot"].caption(data_source_line())
     if df is None or df.empty:
-        st.error(f"{symbol} {interval} 데이터를 불러오지 못했습니다.")
+        st.error(load_error_message(symbol, interval, last_fetch_error(symbol, get_fetch_interval(interval))))
         return
     cfg["freshness_slot"].caption(
         data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
