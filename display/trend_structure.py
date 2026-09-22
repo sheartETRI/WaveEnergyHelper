@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from analysis.wave_structure_confirmation import PIVOT, _confirmed, find_swing_highs, find_swing_lows
+from charts.lw_builder import STRUCTURE_MARKER_SHAPE, TURN_MARKER_SHAPE
 from display import ma60_turn_tracker as MT
 from display.tz_label import KST_LABEL, to_kst
 
@@ -238,7 +239,11 @@ def build_lines(result: Optional[dict]) -> List[str]:
 
 
 def structure_markers(result: Optional[dict]) -> List[dict]:
-    """가격 pane 마커 — 고점은 봉 위, 저점은 봉 아래, 분류 텍스트. 밀집(MARKER_TEXT_MAX 초과)이면 텍스트 생략."""
+    """가격 pane 마커 — 고점은 봉 위, 저점은 봉 아래, 분류 텍스트. 밀집(MARKER_TEXT_MAX 초과)이면 텍스트 생략.
+
+    shape 는 charts.lw_builder.STRUCTURE_MARKER_SHAPE(HH·HL arrowUp / LH·LL square / EQ circle), 60MA 전환은
+    TURN_MARKER_SHAPE(circle) — 표시 스타일만, 판정 무접촉.
+    """
     if not result or not result["chain"]:
         return []
     dense = len(result["chain"]) > MARKER_TEXT_MAX
@@ -246,11 +251,12 @@ def structure_markers(result: Optional[dict]) -> List[dict]:
     for r in result["chain"]:
         is_high = r["kind"] == KIND_HIGH
         out.append({"ts": r["ts"], "position": "aboveBar" if is_high else "belowBar",
-                    "color": MARKER_COLORS.get(r["cls"], MARKER_COLORS[CLS_EQ]), "shape": "circle",
+                    "color": MARKER_COLORS.get(r["cls"], MARKER_COLORS[CLS_EQ]),
+                    "shape": STRUCTURE_MARKER_SHAPE.get(r["cls"], STRUCTURE_MARKER_SHAPE[CLS_EQ]),
                     "text": "" if dense else r["cls"]})
     t = result.get("turn") or {}
     if t.get("pos") is not None:
-        out.append({"ts": t["ts"], "position": "belowBar", "color": MARKER_COLORS[KIND_TURN], "shape": "square",
+        out.append({"ts": t["ts"], "position": "belowBar", "color": MARKER_COLORS[KIND_TURN], "shape": TURN_MARKER_SHAPE,
                     "text": "" if dense else "60MA"})
     return out
 

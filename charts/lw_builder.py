@@ -120,6 +120,12 @@ STOCH_MARKER_STYLE = {   # kind → (text, shape, color, position)
     "tt": ("TT", "square", "#AD1457", "belowBar"),
 }
 _LW_SHAPE = {"circle": "circle", "diamond": "square", "square": "square"}
+
+# 추세 구조 마커(가격 pane, display/trend_structure 가 소비) — 분류별 shape. 색·위치(고점 위/저점 아래)는 기존과 동일.
+# 유지(HH·HL)=arrowUp, 경고(LH)·훼손(LL)=square, EQ=circle. 60MA 전환은 LL(파랑 사각)과 겹치지 않게 circle.
+STRUCTURE_MARKER_SHAPE = {"HH": "arrowUp", "HL": "arrowUp", "LH": "square", "LL": "square", "EQ": "circle"}
+TURN_MARKER_SHAPE = "circle"
+STRUCTURE_LEGEND_CAPTION = "▲ HH·HL 유지 ■ LH 경고 ■ LL 훼손"
 _LW_POSITION = {"top center": "aboveBar", "bottom center": "belowBar"}
 
 
@@ -908,3 +914,5 @@ def render_lw_chart(
     )
     components.html(html, height=int(chart_height), scrolling=False)
     st.caption(LW_CONTROLS_CAPTION)
+    if structure_markers:
+        st.caption(STRUCTURE_LEGEND_CAPTION)   # 구조 마커 범례 — 마커가 있을 때만
