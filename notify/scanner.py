@@ -14,7 +14,7 @@ import argparse
 import logging
 import os
 import sys
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -43,6 +43,12 @@ DEFAULT_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sent.j
 
 ACT_SEND, ACT_RECORD_ONLY, ACT_DUP, ACT_OLD = "send", "record_only", "skip_dup", "skip_old"
 ACT_NEW_KIND = "record_only_new_kind"      # 그 종류의 첫 배포 실행 — 발송 없이 기록만
+ACT_DISABLED = "record_only_disabled_kind" # 발송이 꺼진 종류 — 검출·이력 기록은 그대로, 발송만 하지 않음
+
+# 발송 제외 종류(설정). 검출(notify.events)·화면 표시·ledger 는 그대로 두고 **발송만** 끈다. 이벤트는 이력에 delivered=False 로
+# 기록되므로 나중에 여기서 빼서 되살려도 과거 건이 한꺼번에 나가지 않는다(그 시점 이후 새 이벤트만 발송).
+# 2026-09-23 김박사 지시: "구조 훼손(LL)" 발송 제외. 되살리려면 이 집합에서 제거.
+SEND_DISABLED_KINDS: FrozenSet[str] = frozenset({EV.KIND_STRUCTURE_LL})
 
 
 def build_pipe(bars: pd.DataFrame) -> pd.DataFrame:
@@ -50,15 +56,18 @@ def build_pipe(bars: pd.DataFrame) -> pd.DataFrame:
     return run_indicator_pipeline(bars, include_dispersion=False)
 
 
-def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[EV.Event, str]]:
+def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp,
+         disabled_kinds: Optional[Iterable[str]] = None) -> List[Tuple[EV.Event, str]]:
     """이벤트별 조치 결정 — 순수 함수.
 
     skip_old: 이벤트 봉이 SCAN_MAX_AGE_DAYS 보다 오래됨(회전 창 밖) · skip_dup: 이력에 있음 또는 같은 실행 안에 같은 키가
     이미 있음(두 쌍바닥 후보가 같은 봉에서 전환하면 키가 같다 — 한 키에 알림 1건) ·
+    record_only_disabled_kind: 발송이 꺼진 종류(SEND_DISABLED_KINDS 설정 — 기록만, 발송 없음) ·
     record_only_new_kind: 그 종류를 처음 스캔하는 실행(신규 알림 종류 도입 폭탄 방지 — 그 종류는 이번 실행에서 발송 0건, 전량 기록) ·
     record_only: 최초 실행 모드(발송 성공 기록 없음)인데 최근 INITIAL_RECENT_BARS 봉 안에 확정되지 않음 · send: 발송 대상.
-    종류별 규칙이 전역 규칙보다 먼저 적용된다(둘은 별개).
+    종류별 규칙이 전역 규칙보다 먼저 적용된다(둘은 별개). disabled_kinds 기본값은 호출 시점의 모듈 설정.
     """
+    disabled = SEND_DISABLED_KINDS if disabled_kinds is None else frozenset(disabled_kinds)
     initial = H.nothing_delivered(hist)
     new_kinds = {k for k in EV.KINDS if not H.kind_seen(hist, k)}
     cutoff = pd.Timestamp(now) - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)
@@ -69,6 +78,8 @@ def plan(evs: Sequence[EV.Event], hist: dict, now: pd.Timestamp) -> List[Tuple[E
             out.append((ev, ACT_OLD))
         elif H.has(hist, ev.key) or ev.key in seen:
             out.append((ev, ACT_DUP))
+        elif ev.kind in disabled:
+            out.append((ev, ACT_DISABLED))
         elif ev.kind in new_kinds:
             out.append((ev, ACT_NEW_KIND))
         elif initial and ev.bars_since_known >= H.INITIAL_RECENT_BARS:
@@ -110,11 +121,13 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
         ledger_tfs: Sequence[str] = LEDGER_TFS,
         fetch: Optional[Callable[[str, str], pd.DataFrame]] = None,
         send: Optional[Callable[[str, str, str], Tuple[bool, str]]] = None,
-        env: Optional[dict] = None, now: Optional[pd.Timestamp] = None) -> Dict[str, object]:
+        env: Optional[dict] = None, now: Optional[pd.Timestamp] = None,
+        disabled_kinds: Optional[Iterable[str]] = None) -> Dict[str, object]:
     # 기본값은 호출 시점에 해석(모듈 속성) — 정의 시점 바인딩이면 테스트 대역이 실제 fetch/발송을 막지 못한다
     fetch = F.fetch_closed_bars if fetch is None else fetch
     send = TG.send_message if send is None else send
     now = utcnow() if now is None else pd.Timestamp(now)
+    disabled = SEND_DISABLED_KINDS if disabled_kinds is None else frozenset(disabled_kinds)
     hist = H.load(state_path)
     rotated = H.rotate(hist, now)
     initial = H.nothing_delivered(hist)      # 회전 후 기준 — plan() 과 같은 판정
@@ -126,13 +139,16 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
              rotated, "set" if creds else "absent (no send)")
     if new_kinds:
         log.info("first scan for kinds %s — record-only this run, sending from the next run", ",".join(new_kinds))
+    if disabled:
+        log.info("sending disabled for kinds %s (SEND_DISABLED_KINDS) — detected and recorded, not sent", ",".join(sorted(disabled)))
 
     ledger_new = H.ledger_init(hist, now=now)            # 첫 실행: since = now (과거 소급 금지). dry-run 은 저장하지 않음.
     if ledger_new:
         log.info("ledger started: since=%s — only candidates confirmed after this are recorded", hist["ledger"]["since"])
     evs, failures, ledger_rows = scan_cells(symbols, tfs, fetch, ledger_tfs=ledger_tfs)
-    decisions = plan(evs, hist, now)
-    summary = {"events": len(evs), "sent": 0, "send_failed": 0, "record_only": 0, "new_kind_record_only": 0, "dup": 0,
+    decisions = plan(evs, hist, now, disabled_kinds=disabled)
+    summary = {"events": len(evs), "sent": 0, "send_failed": 0, "record_only": 0, "new_kind_record_only": 0,
+               "disabled_record_only": 0, "disabled_kinds": sorted(disabled), "dup": 0,
                "old": 0, "would_send": 0, "not_sent_no_secrets": 0, "new_kinds": list(new_kinds), "failures": failures,
                "ledger_added": 0, "ledger_since": hist["ledger"]["since"], "changed": rotated > 0 or ledger_new}
 
@@ -142,6 +158,13 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
             continue
         if act == ACT_OLD:
             summary["old"] += 1
+            continue
+        if act == ACT_DISABLED:
+            summary["disabled_record_only"] += 1
+            log.info("record-only (sending disabled for kind %s): %s", ev.kind, ev.key)
+            if not dry_run:
+                H.record(hist, ev.key, ev.ts, delivered=False, now=now)
+                summary["changed"] = True
             continue
         if act == ACT_NEW_KIND:
             summary["new_kind_record_only"] += 1

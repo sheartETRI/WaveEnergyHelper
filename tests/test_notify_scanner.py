@@ -424,6 +424,45 @@ def test_new_kind_first_run_end_to_end_records_then_sends_only_new(tmp_path, bar
     assert json.load(open(state, encoding="utf-8"))["sent"][last.key]["delivered"] is True
 
 
+def test_structure_ll_sending_disabled_by_setting_but_detected_and_recorded():
+    """구조 훼손(LL) 은 설정(SEND_DISABLED_KINDS)으로 발송만 끈다 — 검출·이벤트·이력 기록은 그대로. 되살리면 그 뒤 새 이벤트만 나간다."""
+    assert S.SEND_DISABLED_KINDS == frozenset({EV.KIND_STRUCTURE_LL})
+    assert EV.KIND_STRUCTURE_LL in EV.KINDS                                   # 검출 종류 목록에서 빼지 않았다
+    now = pd.Timestamp("2026-09-19 12:00")
+    hist = _kinds_seen(H.empty())
+    hist["sent"]["X|1h|ma60_turn|2026-09-01T00:00:00Z"] = {"event_ts": "2026-09-01T00:00:00Z", "sent_at": "2026-09-01T00:10:00Z", "delivered": True}
+    ll, turn = _ll_event(ts="2026-09-19 00:00", last_pos=100, known_pos=99), _turn_event(ts="2026-09-19 08:00")
+    acts = {e.kind: a for e, a in S.plan([ll, turn], hist, now)}
+    assert acts[EV.KIND_STRUCTURE_LL] == S.ACT_DISABLED and acts[EV.KIND_MA60_TURN] == S.ACT_SEND
+    # 설정을 비우면(되살림) 같은 이벤트가 발송 대상 — 코드 경로는 남아 있다
+    assert {a for _, a in S.plan([ll], hist, now, disabled_kinds=())} == {S.ACT_SEND}
+    # 순서: old·dup 이 먼저(꺼진 종류라도 이력에 있으면 dup), 그다음 disabled
+    hist["sent"][ll.key] = {"event_ts": "2026-09-19T00:00:00Z", "sent_at": None, "delivered": False}
+    assert S.plan([ll], hist, now)[0][1] == S.ACT_DUP
+
+
+def test_run_disabled_kind_records_without_sending_and_reenable_sends_only_new(tmp_path, bars, events):
+    """실데이터: 꺼진 종류(LL)는 발송 0·전량 기록(delivered=False). 설정을 되살린 다음 실행은 이미 기록된 LL 을 재발송하지 않는다."""
+    state = str(tmp_path / "sent.json")
+    H.save(state, _kinds_seen(H.empty()))
+    sender = _Sender()
+    now = _now_after(bars)
+    ll_all = [e for e in events if e.kind == EV.KIND_STRUCTURE_LL]
+    assert ll_all
+    r1 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=sender,
+               env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=now)
+    assert r1["disabled_kinds"] == [EV.KIND_STRUCTURE_LL]
+    in_window = [e for e in ll_all if e.ts >= now - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)]
+    assert r1["disabled_record_only"] == len({e.key for e in in_window}) and r1["events"] == len(events)   # 검출은 그대로
+    saved = H.load(state)
+    assert all(saved["sent"][e.key]["delivered"] is False for e in in_window)           # 기록만
+    assert not any("구조 훼손" in t for _, _, t in sender.calls)                                  # 발송 0
+    # 되살림(설정 비움): 이미 기록된 LL 은 dup, 새 LL 만 발송 대상 — 여기서는 새 건이 없으므로 0건
+    r2 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=sender,
+               env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=now, disabled_kinds=())
+    assert r2["disabled_record_only"] == 0 and not any("구조 훼손" in t for _, _, t in sender.calls)
+
+
 def test_plan_same_key_twice_in_one_run_sends_once():
     """두 쌍바닥 후보가 같은 봉에서 전환 → 키 동일 → 한 실행 안에서도 1건만 (Actions 첫 실행 로그에서 관찰된 사례)."""
     now = pd.Timestamp("2026-09-19 12:00")
@@ -501,14 +540,14 @@ def test_run_dedups_across_runs_and_persists_history(tmp_path, bars, events):
     assert in_window, "픽스처 안에 창 안 이벤트가 있어야 한다"
     s1 = _Sender()
     r1 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars),
-               send=s1, env=env, now=now)
+               send=s1, env=env, now=now, disabled_kinds=())          # 발송 일반 경로 — 종류별 발송 설정과 분리
     assert r1["sent"] == len(in_window) == len(s1.calls) and r1["old"] == len(events) - len(in_window)
     saved = json.load(open(state, encoding="utf-8"))
     assert all(e.key in saved["sent"] and saved["sent"][e.key]["delivered"] for e in in_window)
     assert all("t0k" not in c[2] for c in s1.calls)
     s2 = _Sender()
     r2 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars),
-               send=s2, env=env, now=now)
+               send=s2, env=env, now=now, disabled_kinds=())
     assert r2["sent"] == 0 and r2["dup"] == len(in_window) and s2.calls == []
 
 
@@ -519,7 +558,7 @@ def test_run_initial_history_limits_to_recent_bars_and_records_rest(tmp_path, ba
     H.save(state, _kinds_seen(H.empty()))
     s = _Sender()
     r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars),
-              send=s, env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=now)
+              send=s, env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=now, disabled_kinds=())
     in_window = [e for e in events if e.ts >= now - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)]
     recent = [e for e in in_window if e.bars_since_known < H.INITIAL_RECENT_BARS]
     assert r["sent"] == len(recent) == len(s.calls) and r["record_only"] == len(in_window) - len(recent)
@@ -534,11 +573,13 @@ def test_send_failure_is_not_recorded_and_retried_next_run(tmp_path, bars, event
     H.save(state, {"version": 1, "sent": _seeded_sent()})
     env = {"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}
     bad = _Sender(ok=False)
-    r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=bad, env=env, now=now)
+    r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=bad, env=env, now=now,
+              disabled_kinds=())
     assert r["send_failed"] == len(bad.calls) > 0 and r["sent"] == 0
     assert len(json.load(open(state, encoding="utf-8"))["sent"]) == len(EV.KINDS)      # 실패분 미기록
     good = _Sender()
-    r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=good, env=env, now=now)
+    r = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=good, env=env, now=now,
+              disabled_kinds=())
     assert r["sent"] == len(bad.calls) == len(good.calls)                   # 다음 실행에서 재시도
 
 
@@ -556,6 +597,7 @@ def test_secrets_absent_logs_only_and_exits_zero(tmp_path, bars, monkeypatch):
     monkeypatch.setattr(S.F, "fetch_closed_bars", _fetch_of(bars))
     monkeypatch.setattr(S.TG, "send_message", boom)
     monkeypatch.setattr(S, "utcnow", lambda: _now_after(bars))
+    monkeypatch.setattr(S, "SEND_DISABLED_KINDS", frozenset())     # 발송 일반 경로만 — 꺼진 종류의 기록은 별도 테스트
     rc = S.main(["--state", state, "--symbols", "BTCUSDT", "--tfs", "4h"])
     assert rc == 0
     assert len(json.load(open(state, encoding="utf-8"))["sent"]) == len(EV.KINDS)      # 미발송분 미기록
@@ -567,7 +609,7 @@ def test_dry_run_sends_nothing_and_writes_nothing(tmp_path, bars, events):
     r = S.run(state_path=state, dry_run=True, symbols=["BTCUSDT"], tfs=["4h"], fetch=_fetch_of(bars), send=s,
               env={"TELEGRAM_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}, now=_now_after(bars))
     assert s.calls == [] and not os.path.exists(state)                     # dry-run 은 kinds 도 기록하지 않는다
-    assert r["would_send"] + r["record_only"] + r["new_kind_record_only"] + r["old"] == len(events) and r["sent"] == 0
+    assert r["would_send"] + r["record_only"] + r["new_kind_record_only"] + r["disabled_record_only"] + r["old"] == len(events) and r["sent"] == 0
     assert r["would_send"] == 0 and set(r["new_kinds"]) == set(EV.KINDS)     # 빈 이력 = 모든 종류의 첫 스캔
 
 

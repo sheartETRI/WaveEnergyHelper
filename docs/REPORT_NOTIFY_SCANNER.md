@@ -108,3 +108,12 @@ vision 엔드포인트·`data/binance.py` 무접촉, 이벤트 = 두 모듈 출�
 회전·스캔 창, 셀 실패 격리, 토큰 마스킹, 워크플로 계약, RSI/MACD/5m 부재.
 전체 스위트(notify-scan 워크트리): **699 통과 / 1 스킵 / 2 실패** — 실패 2건은 기존 `test_wave_ruleset_robustness`
 (numpy 2 / pandas 3 회귀, 무관). 스위트가 바꾼 `validation/wave_mm_shadow.csv`·`wave_final_synthesis.png` 는 checkout 으로 원복.
+
+
+## 발송 제외 설정 (2026-09-23)
+
+`notify/scanner.py` 의 `SEND_DISABLED_KINDS = frozenset({"structure_ll"})` — "구조 훼손(LL)" 종류는 **발송만** 끈다(김박사 지시).
+검출(`notify.events` 의 `KINDS` 그대로)·화면 표시(signal-alarm 알람 탭)·ledger 는 그대로 유지되고, 이벤트는 이력(`sent.json`)에
+`delivered=False` 로 기록된다(조치 `record_only_disabled_kind`, 요약 `disabled_record_only`). 되살리려면 집합에서 제거 — 이미 기록된
+과거 건은 dup 으로 걸러져 그 시점 이후 새 이벤트만 발송된다(신규 종류 규칙과 같은 원리). 판정 순서: old → dup → **disabled** → 새 종류 →
+전역 최초 실행 → send. 워크플로 파일·Secrets 무접촉.
