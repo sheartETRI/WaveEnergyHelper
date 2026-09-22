@@ -222,9 +222,11 @@ def _now_after(pipe):
     return pd.Timestamp(pipe.index[-1]) + pd.Timedelta(hours=1)
 
 
-def _kinds_seen(hist):
+def _kinds_seen(hist, now=None):
     for k in EV.KINDS:
         H.mark_kind(hist, k, now=pd.Timestamp("2020-01-01"))
+    if now is not None:
+        P.mark_daily_summary(hist, now)        # 일일 요약은 별도 테스트(test_push_daily_summary) — 여기서는 그날 이미 보낸 상태
     return hist
 
 
@@ -234,6 +236,9 @@ def test_run_first_deploy_sends_nothing_records_all_then_only_new_events(synth, 
     events = EV.scan_frame(synth, "BTCUSDT", "1h")
     in_window = {e.key for e in events if e.ts >= now - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)}
     assert in_window and {e.kind for e in events} >= {EV.KIND_MA60_TURN, EV.KIND_MA60_DOWN, EV.KIND_STOCH_DB}
+    hist0 = H.empty()
+    P.mark_daily_summary(hist0, now)          # 일일 요약은 별도 테스트 — 알림 발송 건수만 본다
+    H.save(state, hist0)
     pusher = _Pusher()
     r1 = P.run(state_path=state, dry_run=False, token="tok", symbols=("BTCUSDT",), intervals=("1h",),
                fetch_frame=_fetch_of(synth), pusher=pusher, now=now)
@@ -272,8 +277,8 @@ def test_run_first_deploy_sends_nothing_records_all_then_only_new_events(synth, 
 
 def test_run_global_initial_mode_limits_to_recent_two_bars(synth, tmp_path):
     state = str(tmp_path / "s.json")
-    H.save(state, _kinds_seen(H.empty()))                                     # 종류별 규칙은 미리 충족 → 전역 규칙만
     now = _now_after(synth)
+    H.save(state, _kinds_seen(H.empty(), now))                                # 종류별 규칙은 미리 충족 → 전역 규칙만
     pusher = _Pusher()
     r = P.run(state_path=state, dry_run=False, token="tok", symbols=("BTCUSDT",), intervals=("1h",),
               fetch_frame=_fetch_of(synth), pusher=pusher, now=now, disabled_kinds=())
@@ -287,10 +292,10 @@ def test_run_global_initial_mode_limits_to_recent_two_bars(synth, tmp_path):
 
 def test_run_disabled_kind_recorded_not_sent_and_dry_run_writes_nothing(synth, tmp_path):
     state = str(tmp_path / "s.json")
-    hist = _kinds_seen(H.empty())
-    H.record(hist, "SEED|1h|ma60_turn|2026-01-01T00:00:00Z", "2026-01-01 00:00", delivered=True, now=_now_after(synth))
-    H.save(state, hist)
     now = _now_after(synth)
+    hist = _kinds_seen(H.empty(), now)
+    H.record(hist, "SEED|1h|ma60_turn|2026-01-01T00:00:00Z", "2026-01-01 00:00", delivered=True, now=now)
+    H.save(state, hist)
     events = EV.scan_frame(synth, "BTCUSDT", "1h")
     ll = [e for e in events if e.kind == EV.KIND_STRUCTURE_LL and e.ts >= now - pd.Timedelta(days=H.SCAN_MAX_AGE_DAYS)]
     pusher = _Pusher()
@@ -310,10 +315,10 @@ def test_run_disabled_kind_recorded_not_sent_and_dry_run_writes_nothing(synth, t
 
 def test_run_send_failure_not_recorded_and_retried(synth, tmp_path):
     state = str(tmp_path / "s.json")
-    hist = _kinds_seen(H.empty())
-    H.record(hist, "SEED|1h|ma60_turn|2026-01-01T00:00:00Z", "2026-01-01 00:00", delivered=True, now=_now_after(synth))
-    H.save(state, hist)
     now = _now_after(synth)
+    hist = _kinds_seen(H.empty(), now)
+    H.record(hist, "SEED|1h|ma60_turn|2026-01-01T00:00:00Z", "2026-01-01 00:00", delivered=True, now=now)
+    H.save(state, hist)
     bad = _Pusher(ok=False)
     r = P.run(state_path=state, dry_run=False, token="tok", symbols=("BTCUSDT",), intervals=("1h",),
               fetch_frame=_fetch_of(synth), pusher=bad, now=now, disabled_kinds=())
@@ -327,10 +332,10 @@ def test_run_send_failure_not_recorded_and_retried(synth, tmp_path):
 
 def test_run_records_ledger_both_directions_after_since_and_export_csv(synth, tmp_path):
     state = str(tmp_path / "s.json")
-    hist = _kinds_seen(H.empty())
+    now = _now_after(synth)
+    hist = _kinds_seen(H.empty(), now)
     H.ledger_init(hist, now=pd.Timestamp("2020-01-01"))                     # since 를 과거로 → 종료 후보가 기록된다
     H.save(state, hist)
-    now = _now_after(synth)
     r = P.run(state_path=state, dry_run=False, token="tok", symbols=("BTCUSDT",), intervals=("1h",),
               fetch_frame=_fetch_of(synth), pusher=_Pusher(), now=now)
     fin = LG.finished_rows(synth, "BTCUSDT", "1h") + LG.finished_rows_down(synth, "BTCUSDT", "1h")

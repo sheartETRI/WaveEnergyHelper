@@ -24,6 +24,10 @@
     예전 형식 파일(last_bar 필드)은 pushbullet_state.legacy.json 으로 옮기고 새로 시작한다(예전 경로가 계속 쓴다).
   · 폭탄 방지 2단(notify.plan): 전역(발송 성공 이력 없음 → 최근 2봉만) + 종류별(처음 스캔하는 종류는 0건 발송·전량 기록).
   · ledger(notify.ledger): 상승·하방 후보 생애주기(direction 필드)를 이력 파일 "ledger" 에 기록 — 서버 로컬, 브랜치 푸시 없음.
+  · 일일 요약(daily_summary): 매일 09:00 KST(00:00 UTC) 이후 그날 첫 순회에서 1회 — 이력 "daily" 에 UTC 날짜 키로 기록해 같은 날
+    두 번 안 가고, 서버가 늦게 켜져도 그날 첫 순회에 나간다. 발송 조건·검출 무접촉(순회가 이미 만든 이벤트·추적 표만 읽는다).
+    첫 줄 = 오늘 상태 한 문장(우선순위 기계적: ① 지난 24h 60MA 상방·하방 전환 → ② 대기 중 후보(★ 우선, 경과 짧은 순) → ③ 특이 사항 없음).
+    "볼 TF" 는 사건이 있는 TF 를 가리킬 뿐이라 사건 종류를 항상 병기하고 평가어를 쓰지 않는다.
 """
 from __future__ import annotations
 
@@ -46,10 +50,12 @@ import streamlit.logger  # noqa: E402
 streamlit.logger.set_log_level("error")   # 런타임 없이 cache_data 를 쓰면 나오는 경고(ScriptRunContext·캐시) 억제
 
 from analysis.alarm_signals import SEV_CONFIRMED, AlarmSignal, scan_alarm_signals  # noqa: E402
-from config.settings import CUSTOM_INTERVALS, PUSH_PARAMS, PUSH_WATCHLIST  # noqa: E402
+from config.settings import CUSTOM_INTERVAL_BASE, CUSTOM_INTERVALS, PUSH_PARAMS, PUSH_WATCHLIST  # noqa: E402
 from data.binance import clear_klines_cache, fetch_klines, get_auto_limit  # noqa: E402
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe  # noqa: E402
+import display.ma60_turn_tracker as MT  # noqa: E402
 from display.alarm_panel import format_signal_line  # noqa: E402
+from display.divergence_flag import DIVERGENCE_COL, YES as DIV_YES  # noqa: E402
 from display.tz_label import KST_LABEL, to_kst  # noqa: E402
 from indicators.moving_averages import add_moving_averages  # noqa: E402
 from indicators.stochastic import add_stochastic_slow_layers  # noqa: E402
@@ -189,12 +195,32 @@ def load_history(state_path: str) -> dict:
 
 
 # ---------------------------------------------------------------- 순회
+def cell_snapshot(pipe: pd.DataFrame, symbol: str, tf: str) -> dict:
+    """일일 요약용 셀 상태 — 추적 표(상승 쪽 track_candidates, 최근 120봉)의 '대기 중' 행과 MA60 방향. 판정 없음.
+
+    waiting: [{"elapsed": "7/20", "bars": 7, "divergence": bool}], ma60_dir: "↑"(MA60 상승) / "↓"(하락) / "→"(같음·미산출).
+    """
+    ma = pd.to_numeric(pipe["MA60"], errors="coerce") if "MA60" in pipe.columns else pd.Series(dtype=float)
+    ma60_dir = "→"
+    if len(ma) >= 2 and pd.notna(ma.iloc[-1]) and pd.notna(ma.iloc[-2]):
+        ma60_dir = "↑" if ma.iloc[-1] > ma.iloc[-2] else "↓" if ma.iloc[-1] < ma.iloc[-2] else "→"
+    waiting: List[dict] = []
+    frame = MT.track_candidates(pipe)
+    if not frame.empty:
+        for d in frame[frame["상태"] == MT.STATUS_WAITING].to_dict("records"):
+            bars = d.get("_bars")
+            waiting.append({"elapsed": str(d[MT.ELAPSED_COL]), "bars": int(bars) if bars is not None and not pd.isna(bars) else 0,
+                            "divergence": d.get(DIVERGENCE_COL) == DIV_YES})
+    return {"symbol": symbol, "tf": tf, "ma60_dir": ma60_dir, "waiting": waiting}
+
+
 def scan_cells(symbols: Sequence[str], intervals: Sequence[str], fetch_frame: Callable[[str, str], Optional[pd.DataFrame]],
-               ledger_intervals: Sequence[str] = ()) -> Tuple[List[EV.Event], List[str], List[dict]]:
-    """셀(심볼×TF) 순회. 실패 셀은 건너뛰고 사유를 모은다. 반환 (이벤트, 실패 사유, ledger 종료 행)."""
+               ledger_intervals: Sequence[str] = ()) -> Tuple[List[EV.Event], List[str], List[dict], List[dict]]:
+    """셀(심볼×TF) 순회. 실패 셀은 건너뛰고 사유를 모은다. 반환 (이벤트, 실패 사유, ledger 종료 행, 셀 스냅샷)."""
     evs: List[EV.Event] = []
     failures: List[str] = []
     ledger_rows: List[dict] = []
+    snapshots: List[dict] = []
     for sym in symbols:
         for tf in intervals:
             try:
@@ -203,6 +229,7 @@ def scan_cells(symbols: Sequence[str], intervals: Sequence[str], fetch_frame: Ca
                     raise RuntimeError("데이터 없음")
                 cell = EV.scan_frame(pipe, sym, tf)
                 fin = (LG.finished_rows(pipe, sym, tf) + LG.finished_rows_down(pipe, sym, tf)) if tf in ledger_intervals else []
+                snap = cell_snapshot(pipe, sym, tf)
             except Exception as exc:                  # 대상 하나가 실패해도 나머지는 계속
                 logger.error("cell %s %s failed: %s", sym, tf, exc)
                 failures.append(f"{sym} {tf}: {exc}")
@@ -211,7 +238,122 @@ def scan_cells(symbols: Sequence[str], intervals: Sequence[str], fetch_frame: Ca
                         sym, tf, len(pipe), pipe.index[-1], len(cell), len(fin))
             evs.extend(cell)
             ledger_rows.extend(fin)
-    return evs, failures, ledger_rows
+            snapshots.append(snap)
+    return evs, failures, ledger_rows, snapshots
+
+
+# ---------------------------------------------------------------- 일일 요약 (09:00 KST 이후 그날 첫 순회 1회)
+SUMMARY_TITLE = "일일 요약"
+SUMMARY_NONE = "특이 사항 없음"
+SUMMARY_LOOKBACK = pd.Timedelta(hours=24)
+_TURN_LABEL = {EV.KIND_MA60_TURN: "60MA 상방 전환", EV.KIND_MA60_DOWN: "60MA 하방 전환"}
+_DIV_LABEL = {EV.KIND_MA60_TURN: ("다이버전스 있음", "다이버전스 없음"),
+              EV.KIND_MA60_DOWN: ("하락 다이버전스 있음", "하락 다이버전스 없음")}
+
+
+def tf_seconds(tf: str) -> float:
+    """TF 길이(초) — '긴 TF부터' 정렬용. 커스텀(2d)은 베이스 × 배수."""
+    base = CUSTOM_INTERVAL_BASE.get(tf)
+    if base:
+        return interval_delta(base).total_seconds() * int(tf[:-1])
+    return interval_delta(tf).total_seconds()
+
+
+def daily_key(now: pd.Timestamp) -> str:
+    """요약 날짜 키 = UTC 날짜(00:00 UTC = 09:00 KST 경계)."""
+    return pd.Timestamp(now).strftime("%Y-%m-%d")
+
+
+def daily_summary_due(hist: dict, now: pd.Timestamp) -> bool:
+    """그날(UTC) 아직 안 보냈으면 True — 00:00 UTC 이후 첫 순회에 1회, 늦게 켜져도 그날 첫 순회에 1회, 같은 날 두 번 없음."""
+    return (hist.get("daily") or {}).get("last_date") != daily_key(now)
+
+
+def mark_daily_summary(hist: dict, now: pd.Timestamp) -> None:
+    hist["daily"] = {"last_date": daily_key(now), "sent_at": pd.Timestamp(now).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def _when_label(ts: pd.Timestamp, now: pd.Timestamp) -> str:
+    """이벤트 봉 시각(UTC) → '오늘 HH:MM' / '어제 HH:MM' / 'MM-DD HH:MM' (KST)."""
+    k, n = to_kst(ts), to_kst(now)
+    if k.date() == n.date():
+        return f"오늘 {k:%H:%M}"
+    if (n.normalize() - k.normalize()).days == 1:
+        return f"어제 {k:%H:%M}"
+    return f"{k:%m-%d %H:%M}"
+
+
+def sent_counts_last_24h(hist: dict, now: pd.Timestamp) -> Dict[str, int]:
+    """지난 24h 실제 발송(delivered=True) 건수 — 종류별. 이력 키의 kind 조각으로 센다."""
+    out = {k: 0 for k in EV.KINDS}
+    cutoff = pd.Timestamp(now) - SUMMARY_LOOKBACK
+    for key, v in hist.get("sent", {}).items():
+        if not v.get("delivered") or not v.get("sent_at"):
+            continue
+        if pd.Timestamp(v["sent_at"].rstrip("Z")) >= cutoff:
+            kind = H.key_kind(key)
+            if kind in out:
+                out[kind] += 1
+    return out
+
+
+def headline(events: Sequence[EV.Event], snapshots: Sequence[dict], now: pd.Timestamp) -> str:
+    """첫 줄 — 우선순위(기계적): ① 지난 24h 60MA 상방·하방 전환 → ② 대기 중 후보(★ 우선, 경과 짧은 순) → ③ 특이 사항 없음.
+    여러 TF 면 긴 TF부터 나열하고 TF 마다 사건 종류를 병기한다."""
+    cutoff = pd.Timestamp(now) - SUMMARY_LOOKBACK
+    turns = [e for e in events if e.kind in _TURN_LABEL and cutoff <= e.ts <= pd.Timestamp(now)]
+    if turns:
+        by_tf: Dict[str, EV.Event] = {}
+        for e in turns:                                      # TF 당 최신 전환 1건
+            if e.tf not in by_tf or e.ts > by_tf[e.tf].ts:
+                by_tf[e.tf] = e
+        tfs = sorted(by_tf, key=tf_seconds, reverse=True)
+        parts = []
+        for tf in tfs:
+            e = by_tf[tf]
+            div = _DIV_LABEL[e.kind][0 if e.fields.get("divergence") else 1]
+            parts.append(f"{tf}: {_TURN_LABEL[e.kind]} ({_when_label(e.ts, now)}, {div})" if len(tfs) > 1
+                         else f"{_TURN_LABEL[e.kind]} ({_when_label(e.ts, now)}, {div})")
+        return f"볼 TF: {', '.join(tfs)} — {' · '.join(parts)}"
+    waiting = [(s["tf"], w) for s in snapshots for w in s["waiting"]]
+    if waiting:
+        best: Dict[str, dict] = {}
+        for tf, w in waiting:                                # TF 당 ★ 우선, 없으면 경과 짧은 것
+            cur = best.get(tf)
+            if cur is None or (w["divergence"], -w["bars"]) > (cur["divergence"], -cur["bars"]):
+                best[tf] = w
+        tfs = sorted(best, key=tf_seconds, reverse=True)
+        parts = [f"{tf} {best[tf]['elapsed']}{' ★' if best[tf]['divergence'] else ''}" for tf in tfs] if len(tfs) > 1 else \
+                [f"경과 {best[tfs[0]]['elapsed']}" + (", 다이버전스 있음" if best[tfs[0]]["divergence"] else "")]
+        return f"볼 TF: {', '.join(tfs)} — 후보 대기 중 ({' · '.join(parts)})"
+    return SUMMARY_NONE
+
+
+def build_daily_summary(events: Sequence[EV.Event], snapshots: Sequence[dict], hist: dict, now: pd.Timestamp,
+                        n_cells: int, failures: Sequence[str]) -> str:
+    """요약 본문(줄바꿈 구분). 첫 줄 상태 문장 + 상세 4줄. 평가어 없음."""
+    c = sent_counts_last_24h(hist, now)
+    waiting_parts = []
+    for s in sorted(snapshots, key=lambda x: tf_seconds(x["tf"])):
+        for w in sorted(s["waiting"], key=lambda w: (not w["divergence"], w["bars"])):
+            waiting_parts.append(f"{s['tf']}({w['elapsed']}{', ★' if w['divergence'] else ''})")
+    ma_parts = " ".join(f"{s['tf']}{s['ma60_dir']}" for s in sorted(snapshots, key=lambda x: tf_seconds(x["tf"])))
+    ok = n_cells - len(failures)
+    status = "스캐너 정상" if not failures else f"스캐너 오류 {len(failures)}셀"
+    return "\n".join([
+        headline(events, snapshots, now),
+        f"지난 24h 발송: 후보 {c[EV.KIND_STOCH_DB]} · 상방 {c[EV.KIND_MA60_TURN]} · 하방 {c[EV.KIND_MA60_DOWN]}",
+        f"대기 중: {' · '.join(waiting_parts) if waiting_parts else '없음'}",
+        f"60MA: {ma_parts or '—'}",
+        f"{status} · 마지막 순회 {to_kst(now):%H:%M} · {ok}셀 OK",
+    ])
+
+
+def daily_summary_title(now: pd.Timestamp) -> str:
+    return f"{TITLE_PREFIX}{SUMMARY_TITLE} {to_kst(now):%m-%d} {UNVERIFIED}"
+
+
+UNVERIFIED = EV.UNVERIFIED
 
 
 def split_title(text: str) -> Tuple[str, str]:
@@ -247,14 +389,14 @@ def run(*, state_path: str, dry_run: bool, token: Optional[str],
     ledger_new = H.ledger_init(hist, now=now)            # 첫 실행: since = now (과거 소급 금지). dry-run 은 저장하지 않음.
     if ledger_new:
         logger.info("ledger started: since=%s — only candidates confirmed after this are recorded", hist["ledger"]["since"])
-    evs, failures, ledger_rows = scan_cells(symbols, intervals, fetch_frame, ledger_intervals=ledger_intervals)
+    evs, failures, ledger_rows, snapshots = scan_cells(symbols, intervals, fetch_frame, ledger_intervals=ledger_intervals)
     decisions = PL.plan(evs, hist, now, disabled_kinds=disabled)
     summary: Dict[str, object] = {
         "events": len(evs), "sent": 0, "send_failed": 0, "record_only": 0, "new_kind_record_only": 0,
         "disabled_record_only": 0, "disabled_kinds": sorted(disabled), "dup": 0, "old": 0, "would_send": 0,
         "not_sent_no_token": 0, "new_kinds": list(new_kinds), "failures": failures,
         "ledger_added": 0, "ledger_since": hist["ledger"]["since"], "changed": rotated > 0 or ledger_new,
-        "by_kind": {},
+        "by_kind": {}, "daily_summary": None, "daily_summary_sent": False,
     }
     by_kind: Dict[str, Dict[str, int]] = summary["by_kind"]  # type: ignore[assignment]
 
@@ -308,10 +450,28 @@ def run(*, state_path: str, dry_run: bool, token: Optional[str],
         since = LG.since_of(hist)
         eligible = [r for r in ledger_rows if since is not None and pd.Timestamp(r["confirm_ts"].rstrip("Z")) >= since]
         logger.info("[dry-run] ledger: finished candidates=%d, eligible(after since)=%d — not recorded", len(ledger_rows), len(eligible))
+    # 일일 요약 — 발송 뒤에 만들어 오늘 발송분까지 센다. dry-run 은 항상 샘플 1건을 출력(기록·전송 없음).
+    n_cells = len(symbols) * len(intervals)
+    if dry_run or daily_summary_due(hist, now):
+        text = build_daily_summary(evs, snapshots, hist, now, n_cells, failures)
+        summary["daily_summary"] = text
+        title = daily_summary_title(now)
+        if dry_run:
+            logger.info("[dry-run] daily summary sample (%s)\n%s\n%s", "due" if daily_summary_due(hist, now) else "already sent today",
+                        title, text)
+        elif not token:
+            logger.info("token absent — daily summary not sent: %s", title)
+        elif pusher(token, title, text):
+            mark_daily_summary(hist, now)
+            summary["daily_summary_sent"] = True
+            summary["changed"] = True
+            logger.info("daily summary sent (%s)\n%s", daily_key(now), text)
+        else:
+            logger.warning("daily summary send failed — retry next cycle today")
     if summary["changed"] and not dry_run:
         H.save(state_path, hist)
         logger.info("history saved: %s", H.counts(hist))
-    logger.info("done %s", {k: v for k, v in summary.items() if k not in ("failures", "by_kind")})
+    logger.info("done %s", {k: v for k, v in summary.items() if k not in ("failures", "by_kind", "daily_summary")})
     logger.info("by kind %s", by_kind)
     return summary
 

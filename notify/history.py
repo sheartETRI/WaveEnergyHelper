@@ -2,7 +2,8 @@
 
 파일 형식: {"version": 1, "sent": {key: {"event_ts": ISO-UTC, "sent_at": ISO-UTC|null, "delivered": bool}},
              "kinds": {kind: 첫 스캔 ISO-UTC},
-             "ledger": {"since": ISO-UTC, "rows": [행…]}}   ← 전방 ledger(notify.ledger). 회전 대상 아님.
+             "ledger": {"since": ISO-UTC, "rows": [행…]},   ← 전방 ledger(notify.ledger). 회전 대상 아님.
+             "daily": {"last_date": "YYYY-MM-DD"(UTC), "sent_at": ISO-UTC}}   ← 일일 요약 발송 기록(push_alarms, signal-alarm 전용 필드)
 key = "SYMBOL|tf|kind|YYYY-MM-DDTHH:MM:SSZ" (notify.events.event_key). "kinds" 는 알림 종류별 첫 배포 실행 기록
 (없는 파일 = {} 로 읽음, 회전 대상 아님).
 
@@ -41,7 +42,7 @@ def utcnow() -> pd.Timestamp:
 
 
 def empty() -> dict:
-    return {"version": VERSION, "sent": {}, "kinds": {}, "ledger": {"since": None, "rows": []}}
+    return {"version": VERSION, "sent": {}, "kinds": {}, "ledger": {"since": None, "rows": []}, "daily": {}}
 
 
 def load(path: str) -> dict:
@@ -57,8 +58,11 @@ def load(path: str) -> dict:
     ledger = data.get("ledger") or {"since": None, "rows": []}
     if not isinstance(ledger, dict) or not isinstance(ledger.get("rows", []), list):
         raise ValueError(f"malformed history (ledger): {path}")
+    daily = data.get("daily") or {}
+    if not isinstance(daily, dict):
+        raise ValueError(f"malformed history (daily): {path}")
     return {"version": VERSION, "sent": dict(data["sent"]), "kinds": dict(kinds),
-            "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))}}
+            "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))}, "daily": dict(daily)}
 
 
 def save(path: str, hist: dict) -> None:
@@ -68,7 +72,8 @@ def save(path: str, hist: dict) -> None:
     ledger = hist.get("ledger") or {"since": None, "rows": []}
     payload = {"version": VERSION, "sent": dict(sorted(hist["sent"].items())),
                "kinds": dict(sorted(hist.get("kinds", {}).items())),
-               "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))}}
+               "ledger": {"since": ledger.get("since"), "rows": list(ledger.get("rows", []))},
+               "daily": dict(hist.get("daily") or {})}
     fd, tmp = tempfile.mkstemp(prefix=".sent-", suffix=".json", dir=d)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=1)
