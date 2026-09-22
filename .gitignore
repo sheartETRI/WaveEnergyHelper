@@ -1,5 +1,9 @@
 .env
 .env.*
+# Pushbullet 토큰·전송 이력 (scripts/push_alarms.py) — 절대 커밋하지 않는다
+token.txt
+pushbullet_state.json
+pushbullet_state.json.tmp
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -75,6 +75,29 @@ STOCH_PIVOT_PARAMS = {
     "min_gap": 4,
     "min_delta": 4.0,
 }
+# 스토캐 쌍바닥/쌍봉 정의 파라미터 (김박사 정의, 2026-09-22 — indicators/stochastic.py 모듈 주석 참조).
+#   쌍봉: 과매수권(K ≥ overbought)에 들어간 첫 봉우리가 과매수권을 벗어난 뒤 두 번째 봉우리를 만들되,
+#         두 번째 봉우리의 폭이 첫 번째보다 짧아야 한다. 쌍바닥은 대칭(K ≤ oversold).
+#   width_drop: 봉우리 폭(정점 전후 대칭 폭)을 재는 높이 — 정점에서 이 값만큼 내려온 높이 위에 머문 봉 수.
+#   김박사 조정 대상. 피봇(STOCH_PIVOT_PARAMS)은 쌍바닥/쌍봉 검출에 더는 쓰이지 않고 쓰리바닥·기록용으로만 남는다.
+STOCH_DOUBLE_PARAMS = {
+    "overbought": 80.0,
+    "oversold": 20.0,
+    "width_drop": 10.0,
+}
+
+# --- 알람 Pushbullet 푸시 (scripts/push_alarms.py) — 김박사 조정 대상 ---
+# 감시 목록: 심볼 × TF 전부 순회. TF 는 Binance 네이티브 간격만(커스텀 2d·4d·2w 는 닫힌 봉 판정 미지원).
+PUSH_WATCHLIST = {
+    "symbols": ["BTCUSDT"],
+    "intervals": ["1h", "2h", "4h", "6h", "1d"],
+}
+PUSH_PARAMS = {
+    "include_candidates": False,          # 후보(미확정) 신호 전송 여부 — 기본 확정만
+    "lookback_bars": 3,                   # 전송 이력이 없는 첫 실행에서 볼 최근 닫힌 봉 수(과거 알람 폭주 방지)
+    "token_file": "token.txt",            # 저장소 홈, Pushbullet Access Token 한 줄 (.gitignore)
+    "state_file": "pushbullet_state.json",  # 전송 이력(중복 방지·따라잡기), 저장소 홈 (.gitignore)
+}
 
 # --- MACD Settings ---
 MACD_PARAMS = {

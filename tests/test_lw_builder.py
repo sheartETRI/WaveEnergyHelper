@@ -4,8 +4,10 @@
 - gate_context 필수 인자, 기준선 없음 폴백, 기준선 2개 라벨
 - 벤더 파일 존재·버전 헤더, 동작 요건 옵션(autoScale·휠·팬·autoSize), 색 토큰 승계
 - 렌더 스모크: components.html 문자열 생성·높이 전달, 2단계 캡션
-- main 배선: 차트 엔진 라디오(기본 LW, Plotly 회귀 경로), plotly_builder 는 lw_builder 를 모른다
+- main 배선: LW 단일 엔진(plotly_builder 미 import, plotly 미설치로도 기동), plotly_builder 는 lw_builder 를 모른다
+- 토큰 공급원: 색·표시 창·마커 스타일은 charts/theme (LW·Plotly 공유), lw_builder 는 plotly_builder 를 import 하지 않는다
 """
+import subprocess
 import hashlib
 import json
 import os
@@ -20,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from charts import lw_builder as LW  # noqa: E402
-from charts.plotly_builder import COLOR_BEAR, COLOR_BULL, RECENT_WINDOW  # noqa: E402
+from charts.theme import COLOR_BEAR, COLOR_BULL, RECENT_WINDOW  # noqa: E402
 from config.settings import MA_COLORS, MA_LINE_WIDTHS  # noqa: E402
 
 
@@ -221,15 +223,16 @@ def test_render_skips_empty_frame(monkeypatch):
 
 
 # ------------------------------------------------------------ 배선 · Plotly 무영향
-def test_main_wires_engine_radio_default_lw():
+def test_main_wires_lw_only_engine():
+    """main 은 LW 단일 엔진: plotly_builder·render_chart·엔진 라디오가 없고 render_lw_chart 만 호출한다."""
     with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as fh:
         body = fh.read()
-    assert 'CHART_ENGINES = ("LW", "Plotly")' in body            # Plotly 는 회귀 경로로 유지
-    assert 'DEFAULT_CHART_ENGINE = "LW"' in body                     # 2단계 완료 시점 전환
-    assert '"차트 엔진", options=list(CHART_ENGINES)' in body
-    assert "render_lw_chart(" in body and "gate_context=" in body or "gate_context_for(" in body
+    assert "plotly_builder" not in body.replace("charts/plotly_builder.py", "")   # 주석의 파일 언급만 허용
+    assert "render_chart(" not in body and "CHART_ENGINES" not in body and '"차트 엔진"' not in body
+    assert "from charts.lw_builder import render_lw_chart" in body
+    assert "render_lw_chart(" in body and "gate_context_for(" in body
     import main as M
-    assert M.DEFAULT_CHART_ENGINE == "LW" and set(M.CHART_ENGINES) == {"LW", "Plotly"}
+    assert not hasattr(M, "CHART_ENGINES") and not hasattr(M, "render_chart")
     # gate_context_for 는 display.lw_gate_context.gate_label 에 위임한다 (네트워크 없이 확인)
     M.gate_label = lambda symbol, interval: f"[{symbol}/{interval}]"
     assert M.gate_context_for("BTCUSDT", "1h") == "[BTCUSDT/1h]"
@@ -240,7 +243,53 @@ def test_plotly_builder_is_untouched_by_lw_layer():
     with open(os.path.join(ROOT, "charts", "plotly_builder.py"), encoding="utf-8") as fh:
         src = fh.read()
     assert "lw_builder" not in src and "lightweight-charts.standalone" not in src
-    assert "streamlit_lightweight_charts" not in open(LW.__file__, encoding="utf-8").read()
+    lw_src = open(LW.__file__, encoding="utf-8").read()
+    assert "streamlit_lightweight_charts" not in lw_src
+    # LW 는 plotly_builder 를 import 하지 않는다 — 토큰은 charts.theme 단일 공급원.
+    assert "from charts.plotly_builder" not in lw_src and "import charts.plotly_builder" not in lw_src
+    assert "from charts.theme import" in lw_src
+
+
+def test_theme_is_single_source_of_shared_tokens():
+    """theme 토큰 값은 plotly_builder 에서 옮긴 그대로이고, 두 빌더 모두 같은 객체를 본다."""
+    from charts import theme as T
+    assert (T.COLOR_BULL, T.COLOR_BEAR) == ("#ff0000", "#0000ff")
+    assert (T.TV_BACKGROUND, T.TV_TEXT, T.TV_GRID) == ("#ffffff", "#191c24", "rgba(42, 46, 57, 0.12)")
+    assert T.RECENT_WINDOW == 150 and T.STOCH_GUIDES == (20, 80)
+    assert T.CHART_HEIGHT_OPTIONS == (600, 800, 1000, 1200) and T.DEFAULT_CHART_HEIGHT == 1000
+    assert {v[0] for v in T.MACD_EVENT_STYLE.values()} == {"GC", "DC", "0↑", "0↓"}
+    assert LW._MACD_EVENT_STYLE is T.MACD_EVENT_STYLE and LW.RECENT_WINDOW == T.RECENT_WINDOW
+
+
+def test_plotly_builder_reexports_theme_tokens():
+    """레거시 빌더는 같은 이름을 theme 에서 재노출한다(하위 호환). plotly 미설치면 skip."""
+    pytest.importorskip("plotly", reason="plotly 미설치 — 레거시 빌더(plotly_builder) 재노출 검사 생략")
+    from charts import plotly_builder as P
+    from charts import theme as T
+    assert P._MACD_EVENT_STYLE is T.MACD_EVENT_STYLE and P.COLOR_BULL == T.COLOR_BULL
+    assert P.CHART_HEIGHT_OPTIONS == T.CHART_HEIGHT_OPTIONS and P.STOCH_GUIDES == T.STOCH_GUIDES
+
+
+def test_main_imports_without_plotly_installed():
+    """데모 기동 경로(main → lw_builder → theme)는 plotly·mplfinance 없이 import 된다.
+
+    별도 프로세스에서 두 패키지의 import 를 막고 main 을 들여온다(현재 프로세스의 streamlit 은
+    plotly 가 설치돼 있으면 스스로 가져오므로 sys.modules 검사로는 판별할 수 없다).
+    """
+    code = (
+        "import sys, importlib.abc\n"
+        f"sys.path.insert(0, {ROOT!r})\n"
+        "class Block(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, name, path, target=None):\n"
+        "        if name.split('.')[0] in ('plotly', 'mplfinance'):\n"
+        "            raise ImportError('blocked: ' + name)\n"
+        "sys.meta_path.insert(0, Block())\n"
+        "import main\n"
+        "assert 'charts.plotly_builder' not in sys.modules and 'plotly' not in sys.modules\n"
+        "print('OK')\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=180)
+    assert proc.returncode == 0 and "OK" in proc.stdout, proc.stderr[-2000:]
 
 
 # ============================================================ 2단계: pane 구성 직렬화

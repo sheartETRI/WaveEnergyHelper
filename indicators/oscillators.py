@@ -4,8 +4,8 @@ import streamlit as st
 from config.settings import MACD_PARAMS, RSI_PARAMS, RSI_PIVOT_PARAMS
 from indicators.stochastic import (
     compute_stochastic_pivots,
-    detect_double_bottom_patterns,
-    detect_double_top_patterns,
+    detect_pivot_double_bottom_patterns,
+    detect_pivot_double_top_patterns,
 )
 
 @st.cache_data(ttl=600)
@@ -30,8 +30,11 @@ def add_macd(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def detect_rsi_bottom_patterns(df: pd.DataFrame) -> pd.DataFrame:
-    """Detects RSI double bottoms using higher pivot lows and neckline breaks."""
-    return detect_double_bottom_patterns(
+    """Detects RSI double bottoms using higher pivot lows and neckline breaks.
+
+    RSI 는 이전 피봇·넥라인 정의를 그대로 쓴다(스토캐 쌍바닥/쌍봉의 폭 비교 정의는 RSI 에 적용하지 않음).
+    """
+    return detect_pivot_double_bottom_patterns(
         df,
         "rsi",
         "rsi_pivot_low",
@@ -42,8 +45,8 @@ def detect_rsi_bottom_patterns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def detect_rsi_top_patterns(df: pd.DataFrame) -> pd.DataFrame:
-    """Detects RSI double tops using lower pivot highs and neckline breaks."""
-    return detect_double_top_patterns(
+    """Detects RSI double tops using lower pivot highs and neckline breaks (이전 피봇 정의 유지)."""
+    return detect_pivot_double_top_patterns(
         df,
         "rsi",
         "rsi_pivot_high",

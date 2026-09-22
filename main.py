@@ -14,10 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from charts.lw_builder import render_lw_chart
-from charts.plotly_builder import (
-    CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT, DEFAULT_LAYOUT_MODE, LAYOUT_MODE_LABELS, LAYOUT_MODES,
-    render_chart,
-)
+from charts.theme import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT
 from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
 from data.binance import clear_klines_cache, fetch_klines, get_auto_limit, last_fetch_at
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
@@ -42,9 +39,9 @@ DEFAULT_INTERVAL = "1h"
 # 정의·동작이 같다(정의 차등 없음). 토글은 MACD 계산·알람·차트 패널을 함께 켜고 끈다.
 MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 
-# 차트 엔진: 2단계 완료 시점에 기본을 LW 로 전환(위임 §6, 손맛 검수 통과). Plotly 는 회귀 경로로 유지.
-CHART_ENGINES = ("LW", "Plotly")
-DEFAULT_CHART_ENGINE = "LW"
+# 차트 엔진: LW(lightweight-charts) 단일. 2단계(위임 §6)에서 기본을 LW 로 전환한 뒤 회귀 확인용으로
+# 남겨 두던 Plotly 라디오·표시 모드·스토캐 표시 컨트롤을 걷어냈다 — main 은 plotly 패키지 없이 기동한다.
+# charts/plotly_builder.py 는 파일로 남아 있으며(레거시·연구 패널 경로) main 에서는 import 하지 않는다.
 
 # 본문 탭 — 첫 탭이 기본(차트). 알람 패널은 두 번째 탭으로 이동(표시 계층 재배치만, 정의 무접촉).
 MAIN_TABS = ("차트", "알람")
@@ -134,7 +131,7 @@ def render_sidebar() -> dict:
     )
     include_candidates = st.sidebar.checkbox(
         "후보 신호 포함", value=True,
-        help="두 번째 피봇까지 성립했으나 넥라인 돌파 전인 미확정 패턴",
+        help="두 번째 극점이 형성 중이고 폭 조건은 현재 충족하나 이탈 확정 전인 미확정 패턴",
     )
     layer_names = st.sidebar.multiselect(
         "스토캐 레이어", options=list(_LAYER_CHOICES), default=list(_LAYER_CHOICES),
@@ -142,31 +139,17 @@ def render_sidebar() -> dict:
 
     st.sidebar.divider()
     st.sidebar.header("차트")
-    chart_engine = st.sidebar.radio(
-        "차트 엔진", options=list(CHART_ENGINES), index=list(CHART_ENGINES).index(DEFAULT_CHART_ENGINE),
-        horizontal=True,
-        help="LW=lightweight-charts(기본): 가격·스토캐 3중·MACD·RSI pane, 알람 마커, 게이트 라벨·구조 기준선, "
-             "패널 경계 드래그·세로 줌. Plotly=이전 엔진(회귀 확인용). 표시 모드는 Plotly 에만 적용.",
+    st.sidebar.caption(
+        "lightweight-charts: 가격·스토캐 3중·MACD·RSI pane, 알람 마커, 게이트 라벨·구조 기준선, "
+        "패널 경계 드래그·세로 줌."
     )
     show_stoch = st.sidebar.checkbox("스토캐 패널", value=True)
-    # 값은 plotly_builder가 분기하는 문자열 그대로여야 한다("Separated" 철자 주의).
-    stoch_view = st.sidebar.radio(
-        "스토캐 표시", options=["Stacked", "Separated"], index=0, horizontal=True,
-        disabled=not show_stoch,
-        help="Stacked=3층 한 패널, Separated=레이어별 패널 분리",
-    )
     # key 없이 value 만 바꾸면 TF 전환 시 새 위젯으로 잡혀 기본값이 TF 별로 적용된다.
     show_macd = st.sidebar.checkbox(
         "MACD 패널", value=macd_panel_default(interval),
         help="MACD 계산·크로스/0선 알람·차트 패널을 함께 켜고 끕니다. 15m 은 기본 꺼짐(켜면 동일 동작).",
     )
     show_rsi = st.sidebar.checkbox("RSI 패널", value=True)
-    # 표시 모드: 패널 비중 세트(지표 중심 = 하위 3패널 합 0.61, 기본형 = 0.44)와 하위 패널 라벨 표시.
-    layout_mode = st.sidebar.radio(
-        "표시 모드", options=list(LAYOUT_MODES), index=list(LAYOUT_MODES).index(DEFAULT_LAYOUT_MODE),
-        format_func=lambda mode: LAYOUT_MODE_LABELS[mode], horizontal=True,
-        help="지표 중심=가격 0.34·스토캐 0.26·MACD 0.19·RSI 0.16, 하위 패널 라벨 표시. 기본형=가격 0.50, 라벨 숨김.",
-    )
     chart_height = st.sidebar.selectbox(
         "차트 높이 (px)", options=list(CHART_HEIGHT_OPTIONS),
         index=list(CHART_HEIGHT_OPTIONS).index(DEFAULT_CHART_HEIGHT),
@@ -178,15 +161,12 @@ def render_sidebar() -> dict:
     return {
         "symbol": symbol,
         "interval": interval,
-        "chart_engine": chart_engine,
         "history_bars": history_bars,
         "include_candidates": include_candidates,
         "layers": [_LAYER_CHOICES[name] for name in layer_names],
         "show_stoch": show_stoch,
-        "stoch_view": stoch_view,
         "show_macd": show_macd,
         "show_rsi": show_rsi,
-        "layout_mode": layout_mode,
         "chart_height": chart_height,
         "freshness_slot": freshness_slot,
     }
@@ -227,28 +207,14 @@ def main():
         structure_result = render_structure_section(df, symbol, interval)
 
     with tab_chart:
-        if cfg["chart_engine"] == "LW":
-            # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
-            # (미검출·퇴화 시 None → "기준선 없음" 폴백).
-            render_lw_chart(
-                df, symbol, interval, gate_context_for(symbol, interval),
-                chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
-                show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
-                tracker_lines=tracker_reference_lines(tracker_frame),
-                structure_markers=structure_markers(structure_result),
-            )
-            return
-
-        render_chart(
-            df, symbol, interval,
-            show_stochastic=cfg["show_stoch"],
-            stochastic_view_mode=cfg["stoch_view"],
-            show_stoch_fill=cfg["show_stoch"],
-            show_macd=cfg["show_macd"],
-            show_rsi=cfg["show_rsi"],
-            show_rsi_fill=cfg["show_rsi"],
-            chart_height=cfg["chart_height"],
-            layout_mode=cfg["layout_mode"],
+        # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
+        # (미검출·퇴화 시 None → "기준선 없음" 폴백).
+        render_lw_chart(
+            df, symbol, interval, gate_context_for(symbol, interval),
+            chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
+            show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
+            tracker_lines=tracker_reference_lines(tracker_frame),
+            structure_markers=structure_markers(structure_result),
         )
 
 if __name__ == "__main__":

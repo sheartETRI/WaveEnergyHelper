@@ -5,7 +5,8 @@ indicators.oscillators.add_rsi, indicators.oscillators.add_macd 가 이미 기�
 읽어, 알람으로 띄울 수 있는 시점 이벤트 목록으로 변환하는 얇은 레이어다(검출기 무수정).
 
 다루는 여덟 가지:
-  · 스토캐 쌍바닥  stoch_db_{suffix}        (넥라인 돌파 확정 봉에만 값)
+  · 스토캐 쌍바닥  stoch_db_{suffix}        (확정 봉에만 값 — 침체권 이탈 후 두 번째 바닥의 폭이 첫 바닥보다
+                                             짧고, 그 바닥이 침체선 위로 이탈하는 봉. indicators/stochastic 주석)
   · 스토캐 쌍봉    stoch_dt_{suffix}        (동, 반전 공간 대칭)
   · RSI 과매도     rsi_oversold_flag        (구역 진입 교차 봉)
   · RSI 과매수     rsi_overbought_flag      (동)
@@ -51,7 +52,7 @@ KIND_MACD_ZERO_UP = "macd_zero_up"
 KIND_MACD_ZERO_DOWN = "macd_zero_down"
 MACD_KINDS = (KIND_MACD_GOLDEN, KIND_MACD_DEAD, KIND_MACD_ZERO_UP, KIND_MACD_ZERO_DOWN)
 
-# severity: confirmed = 넥라인 돌파/구역 진입 확정, candidate = 두 번째 피봇까지 성립(돌파 전).
+# severity: confirmed = 이탈/구역 진입 확정, candidate = 두 번째 극점 형성 중(폭 조건 현재 충족, 이탈 전).
 SEV_CONFIRMED = "confirmed"
 SEV_CANDIDATE = "candidate"
 

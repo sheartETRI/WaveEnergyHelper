@@ -130,7 +130,7 @@ def format_signal_line(signal: AlarmSignal) -> str:
     if signal.detail:
         parts.append(signal.detail)
     if signal.severity != SEV_CONFIRMED:
-        parts.append("미확정(넥라인 돌파 전)")
+        parts.append("미확정(이탈 확정 전)")
     return " · ".join(parts)
 
 

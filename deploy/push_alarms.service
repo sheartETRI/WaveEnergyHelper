@@ -1,0 +1,28 @@
+# WaveEnergyHelper 알람 Pushbullet 푸시 폴러 — systemd 서비스 (항상 켜 둔 리눅스 서버용)
+#
+# 설치 (경로·사용자는 서버에 맞게 수정):
+#   sudo cp deploy/push_alarms.service /etc/systemd/system/weh-push.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now weh-push
+# 확인: systemctl status weh-push  ·  journalctl -u weh-push -f  ·  logs/push_alarms.log
+#
+# --loop 300 --offset 60: 매시 :01, :06, :11, … 에 순회(봉이 정각에 닫히므로 1분 뒤에 받아야 마감 봉이 닫힌 봉으로 잡힌다).
+# token.txt · pushbullet_state.json 은 저장소 홈에서 읽고 쓴다(.gitignore).
+
+[Unit]
+Description=WaveEnergyHelper alarm push (Pushbullet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER
+WorkingDirectory=/home/USER/WaveEnergyHelper
+Environment=PYTHONUTF8=1
+Environment=LANG=C.UTF-8
+ExecStart=/home/USER/venv/bin/python scripts/push_alarms.py --loop 300 --offset 60 --log logs/push_alarms.log
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
