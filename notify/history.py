@@ -129,8 +129,14 @@ def ledger_init(hist: dict, now: Optional[pd.Timestamp] = None) -> bool:
     return True
 
 
+def _ledger_key(r: dict) -> str:
+    """상승 행(기존) = symbol|tf|confirm_ts 그대로, 하방 행(direction == "down") = 뒤에 '|down'. notify.ledger.row_key 와 동일 규칙."""
+    base = f"{r['symbol']}|{r['tf']}|{r['confirm_ts']}"
+    return f"{base}|down" if r.get("direction") == "down" else base
+
+
 def ledger_keys(hist: dict) -> set:
-    return {f"{r['symbol']}|{r['tf']}|{r['confirm_ts']}" for r in hist.get("ledger", {}).get("rows", [])}
+    return {_ledger_key(r) for r in hist.get("ledger", {}).get("rows", [])}
 
 
 def ledger_append(hist: dict, rows, now: Optional[pd.Timestamp] = None) -> int:
@@ -143,8 +149,8 @@ def ledger_append(hist: dict, rows, now: Optional[pd.Timestamp] = None) -> int:
     have = ledger_keys(hist)
     stamp = _iso(utcnow() if now is None else now)
     added = 0
-    for r in sorted(rows, key=lambda r: (r["symbol"], r["tf"], r["confirm_ts"])):
-        key = f"{r['symbol']}|{r['tf']}|{r['confirm_ts']}"
+    for r in sorted(rows, key=lambda r: (r["symbol"], r["tf"], r["confirm_ts"], r.get("direction") or "")):
+        key = _ledger_key(r)
         if key in have or pd.Timestamp(r["confirm_ts"].rstrip("Z")) < since_ts:
             continue
         led["rows"].append({**r, "recorded_at": stamp})

@@ -14,14 +14,15 @@ import 소비만 한다. 복사본은 CHERRYPICK 매니페스트(sha256, LF 정�
 from __future__ import annotations
 
 # signal-alarm 9bb606c 에서 내용 무변경 복사. probe 는 main 26dfe9c 원본(양 브랜치 동일 blob).
-# ma60_down_tracker 는 signal-alarm 68454ff, divergence_flag 는 signal-alarm 6e4a6d5 에서 내용 무변경 복사.
+# ma60_down_tracker 는 signal-alarm a2b7812(하락 다이버전스 열·차트 고점선 추가판), divergence_flag 는 signal-alarm 6e4a6d5 에서
+# 내용 무변경 복사. 하방 모듈의 차트 헬퍼는 charts 를 지연 import 하므로 charts 가 없는 main 에서도 import 된다.
 # (main 의 ma60_turn_tracker 는 9bb606c 판 그대로 — '다이버전스' 열은 signal-alarm 표시 전용이며 스캐너는 divergence_flag 를 직접 쓴다.)
 CHERRYPICK_SOURCE_COMMIT = "9bb606c"
-CHERRYPICK_SOURCE_COMMIT_DOWN = "68454ff"
+CHERRYPICK_SOURCE_COMMIT_DOWN = "a2b7812"
 CHERRYPICK_SOURCE_COMMIT_DIV = "6e4a6d5"
 CHERRYPICK = {
     "display/divergence_flag.py": "30be19bfac1ba600596c0203220b82aac9e2b016bb16fb72b82872b176f4da8b",
-    "display/ma60_down_tracker.py": "5a3f32d9a44ba615a16d8ba8cf1455b708debd674f842bdfdf2b5d2acd7ff098",
+    "display/ma60_down_tracker.py": "13d02dc0f4fc95a7a0663a9d705ee44909e4e30785b38a6c6b460ab3615305a3",
     "display/tz_label.py": "c117278221d732dfe0c65174d5b54dde9e72e38c8fcd1763c0f59d76b753ee50",
     "display/ma60_turn_tracker.py": "295e11ff421e2ee5608713f482ff391e13ff2d2d74d0964afb4d8e9a6b6a5def",
     "display/trend_structure.py": "88a516dca67c8028f220da7d3958f76968b42403231ab74b6cce829d7c97763d",

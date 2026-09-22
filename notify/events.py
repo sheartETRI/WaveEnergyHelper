@@ -3,7 +3,8 @@
 - ``ma60_turn``   : 대파동 쌍바닥 확정 후 20봉 창 안 60MA 하방→상방 전환. ``display.ma60_turn_tracker.track_candidates``
                     의 '전환 발생' 행 그대로(창·전환 규칙은 probe.simulate 와 동일, 그 모듈의 테스트가 단언).
 - ``ma60_down``   : 대파동 쌍봉 확정 후 20봉 창 안 60MA 상방→하방 전환(상승 쪽의 거울상). ``display.ma60_down_tracker.track_candidates``
-                    의 '전환 발생' 행 그대로. 현물 보유 시 참고용 관측 — 숏·매도 신호가 아니며 하방 전환율은 측정된 바 없음.
+                    의 '전환 발생' 행 그대로(하락 다이버전스 열 = 그 모듈의 거울상 정의 ``bearish_divergence_flags`` 라벨).
+                    현물 보유 시 참고용 관측 — 숏·매도 신호가 아니며 하방 전환율은 측정된 바 없음.
 - ``stoch_db``    : 대파동(20,10,10) 쌍바닥 확정 후보(닫힌 봉 기준). ``track_candidates`` 의 후보 행 전부(상태 무관 — 발송 시점의
                     60MA 상태를 본문에 적음). 다이버전스는 ``display.divergence_flag`` 단일 정의(main 870f025).
 - ``structure_ll``: 기준 저점 이후 추적 중인 고점·저점 연쇄에서 저점 LL. ``display.trend_structure.analyze`` 의
@@ -41,7 +42,8 @@ DIVERGENCE_LINE = {True: "다이버전스 있음", False: "다이버전스 없�
 STAR_DIVERGENCE = "★ 상승 다이버전스"                                          # 쌍바닥 후보 알림 2행(해당 시에만)
 DB_FOOTNOTE = "참고: 과거 계측상 후보의 약 60%는 60MA 전환 없이 소멸"
 FORBIDDEN_WORDS = ("매수", "진입", "매도", "숏", "청산")     # 권고 표현 금지 — 테스트가 메시지에서 부재를 단언
-DOWN_NOTE = "현물 보유 시 참고용 관측 · 하방 전환율 미측정"
+DOWN_NOTE = "참고: 현물 보유 시 관측용"                                          # 하방 전환 알림 끝 줄(위임 예시)
+DOWN_DIVERGENCE_LINE = {True: "하락 다이버전스 있음", False: "하락 다이버전스 없음"}   # 하방 전환 알림 3행 끝
 
 
 @dataclass(frozen=True)
@@ -142,7 +144,8 @@ def ma60_down_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
             known_pos=t_pos, last_pos=n - 1,
             fields={"confirm_ts": pd.Timestamp(d["확정 시각"]), "turn_ts": pd.Timestamp(d["전환 시각"]),
                     "bars": int(d["_bars"]), "price": float(d["전환 시 가격"]),
-                    "pattern_high": float(d[MD.HIGH_COL])},
+                    "pattern_high": float(d[MD.HIGH_COL]),
+                    "divergence": d.get(MD.DOWN_DIVERGENCE_COL) == DV.YES},     # 거울상 정의 라벨(그 모듈 소관)
         ))
     return out
 
@@ -211,8 +214,9 @@ def format_message(ev: Event) -> str:
     if ev.kind == KIND_MA60_DOWN:
         return "\n".join([
             head,
-            f"쌍봉 확정 {_kst(f['confirm_ts'])} → 하방 전환 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)",
-            f"가격 {_px(f['price'])} · 패턴 고점 {_px(f['pattern_high'])} · {DOWN_NOTE}",
+            f"쌍봉 확정 {_kst(f['confirm_ts'])} → 전환 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)",
+            f"가격 {_px(f['price'])} · 패턴 고점 {_px(f['pattern_high'])} · {DOWN_DIVERGENCE_LINE[bool(f.get('divergence', False))]}",
+            DOWN_NOTE,
         ])
     if ev.kind == KIND_STRUCTURE_LL:
         return "\n".join([

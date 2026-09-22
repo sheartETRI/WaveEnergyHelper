@@ -94,7 +94,7 @@ def scan_cells(symbols: Sequence[str], tfs: Sequence[str],
                 bars = fetch(sym, tf)
                 pipe = build_pipe(bars)
                 cell = EV.scan_frame(pipe, sym, tf) if alert else []
-                fin = LG.finished_rows(pipe, sym, tf) if tf in ledger_tfs else []
+                fin = (LG.finished_rows(pipe, sym, tf) + LG.finished_rows_down(pipe, sym, tf)) if tf in ledger_tfs else []
             except Exception as exc:   # noqa: BLE001 — 한 셀 실패가 다른 셀을 막지 않게
                 failures.append(f"{sym} {tf}: {type(exc).__name__}: {str(exc)[:160]}")
                 log.error("cell %s %s failed: %s: %s", sym, tf, type(exc).__name__, str(exc)[:160])
@@ -183,7 +183,8 @@ def run(*, state_path: str, dry_run: bool, symbols: Sequence[str] = SYMBOLS, tfs
     summary["ledger_added"] = added
     if added:
         summary["changed"] = True
-        log.info("ledger: +%d rows (total %d) %s", added, len(hist["ledger"]["rows"]), LG.summary(hist["ledger"]["rows"]))
+        log.info("ledger: +%d rows (total %d) up=%s down=%s", added, len(hist["ledger"]["rows"]),
+                 LG.summary(hist["ledger"]["rows"]), LG.summary(hist["ledger"]["rows"], direction=LG.DIRECTION_DOWN))
     elif dry_run:
         eligible = [r for r in ledger_rows if LG.since_of(hist) is not None
                     and pd.Timestamp(r["confirm_ts"].rstrip("Z")) >= LG.since_of(hist)]

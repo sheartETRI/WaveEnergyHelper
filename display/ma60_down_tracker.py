@@ -15,6 +15,11 @@
   '하방', 전환 정의·유효 구간 규칙이 그대로 승계됨 — 표시 계층에 기울기 계산 없음).
 - 창 길이·경과/소요·as-of 규칙: 상승 쪽 ``lifecycle_rows`` 를 거울상 sig 로 **그대로 호출**한다(창 [k, k+20], 경과는
   표에 보이는 확정봉 기준). 결과 행의 방향 라벨만 되돌린다(거울 공간 '상방' → 실제 '하방').
+- 하락 다이버전스 열: 상승 다이버전스 단일 정의(``display.divergence_flag``, main 870f025)의 **거울상** — (1) 스토캐 고점:
+  두 번째 봉우리 < 첫 번째 = 기존 검출기의 ``stoch_dt_kind_{LARGE}`` == "LH"(확정봉에 기록, 쌍바닥 "HL" 의 반전 라벨) 소비,
+  (2) 가격 고점: 두 피봇 봉의 **고가** 비교, 두 번째 > 첫 번째(p1·p2 는 위 cands 그대로). 둘 다 만족하면 "있음".
+  새 파라미터 없음. 정의 파일·상승 쪽 함수 무접촉.
+- 차트: 대기 중 후보의 패턴 고점을 상승 쪽 기준선 방식(가격선 사전, ``down_tracker_reference_lines``)으로 구분 색 1선만 그린다.
 상승 쪽 로직·정의는 일절 건드리지 않는다(import 만). 기준선(×0.995)은 롱 손절 참조값이라 거울상(×1.005)을 두지 않는다
 — 현물 보유 관측에는 해당 없음(위임 §2 열 목록에도 없음).
 """
@@ -26,6 +31,7 @@ import numpy as np
 import pandas as pd
 
 import display.ma60_turn_tracker as up   # 상승 쪽 표시 모듈 — probe·창·경과 규칙의 단일 출처(무수정)
+from display.divergence_flag import NO as DIV_NO, YES as DIV_YES, label as div_label   # 라벨만 승계(정의 함수는 거울상)
 from display.tz_label import KST_LABEL, to_kst
 
 probe = up.probe                          # validation.wave_ma60_turn_probe (체리픽 매니페스트는 up.CHERRYPICK_PROBE)
@@ -49,11 +55,15 @@ _DIR_MIRROR = {"상방": "하방", "하방": "상방", "—": "—", up.ALREADY_
 TF_COL = up.TF_COL
 ELAPSED_COL = up.ELAPSED_COL
 HIGH_COL = "패턴 고점"
-COLUMNS = (TF_COL, "상태", "확정 시각", ELAPSED_COL, "60MA 현재", "확정 시 60MA", "전환 시각", "전환 시 가격",
-           HIGH_COL, "소멸 시각")
+DOWN_DIVERGENCE_COL = "하락 다이버전스"      # 상승 쪽 '다이버전스' 열의 거울상 — 값은 같은 라벨(있음/없음)
+COLUMNS = (TF_COL, "상태", "확정 시각", ELAPSED_COL, "60MA 현재", "확정 시 60MA", DOWN_DIVERGENCE_COL, "전환 시각",
+           "전환 시 가격", HIGH_COL, "소멸 시각")
 TIME_COLUMNS = up.TIME_COLUMNS
 DISPLAY_HEADERS = up.DISPLAY_HEADERS
-TABLE_COLUMN_WIDTHS = {k: v for k, v in up.TABLE_COLUMN_WIDTHS.items() if k in COLUMNS}
+TABLE_COLUMN_WIDTHS = {**{k: v for k, v in up.TABLE_COLUMN_WIDTHS.items() if k in COLUMNS}, DOWN_DIVERGENCE_COL: "small"}
+
+KIND_LH = "LH"                                    # 쌍봉 검출기 kind: 두 번째 봉우리 < 첫 번째 (쌍바닥 "HL" 의 반전 라벨)
+KIND_COL = f"stoch_dt_kind_{probe.LARGE}"
 
 
 # ------------------------------------------------------------------ 계산
@@ -94,6 +104,23 @@ def extract_mirror_signals(pipe: pd.DataFrame) -> dict:
     return {"cands": cands, "ma60_up": sig["ma60_up"], "ma60_turn": sig["ma60_turn"], "ma60_valid": sig["ma60_valid"]}
 
 
+def bearish_divergence_flags(pipe: pd.DataFrame, sig: dict) -> dict:
+    """확정봉 위치 → 하락 다이버전스 여부 — ``divergence_flag.divergence_flags`` 의 거울상(저가→고가, HL→LH, < → >).
+
+    sig 는 ``extract_mirror_signals`` 출력(cands 의 p1·p2·confirm_pos 그대로). 재구현 없음: 스토캐 고점 비교는 검출기 kind
+    컬럼, 피봇 위치는 cands.
+    """
+    kind = pipe[KIND_COL].to_numpy(dtype=object) if KIND_COL in pipe.columns else None
+    high = pd.to_numeric(pipe["high"], errors="coerce").to_numpy(dtype=float)
+    out = {}
+    for cd in sig["cands"]:
+        c, p1, p2 = int(cd["confirm_pos"]), int(cd["p1"]), int(cd["p2"])
+        stoch_lh = kind is not None and kind[c] == KIND_LH
+        price_hh = bool(high[p2] > high[p1])
+        out[c] = bool(stoch_lh and price_hh)
+    return out
+
+
 def unmirror_row(rec: dict) -> dict:
     """거울 공간 행 → 실제 방향 라벨. 값(시각·가격·경과)은 그대로."""
     out = dict(rec)
@@ -121,6 +148,9 @@ def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.Dat
     rows = lifecycle_rows(sig, pipe.index, pipe["close"].to_numpy(dtype=float), recent_bars)
     if not rows:
         return pd.DataFrame(columns=list(COLUMNS))
+    flags = bearish_divergence_flags(pipe, sig)               # 거울상 정의 — 확정봉 → 있음/없음
+    for r in rows:
+        r[DOWN_DIVERGENCE_COL] = div_label(flags.get(int(r["_confirm_pos"])))
     out = pd.DataFrame(rows).sort_values("_known_pos", ascending=False, kind="mergesort")
     return out.reset_index(drop=True)
 
@@ -149,6 +179,25 @@ def summary_line(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> str:
             f"확정 시 이미 하방 {s['already_down']}건 별도")
 
 
+def divergence_summary(frame: pd.DataFrame) -> dict:
+    """있음/없음 코호트별 하방 전환·소멸 건수 — 상승 쪽 ``divergence_summary`` 와 같은 형식. 판정 아님."""
+    out = {DIV_YES: {"turned": 0, "expired": 0}, DIV_NO: {"turned": 0, "expired": 0}}
+    if frame is None or frame.empty or DOWN_DIVERGENCE_COL not in frame.columns:
+        return out
+    for d in frame.to_dict("records"):
+        key = "turned" if d["상태"] == STATUS_TURNED else "expired" if d["상태"] == STATUS_EXPIRED else None
+        if key is not None and d[DOWN_DIVERGENCE_COL] in out:
+            out[d[DOWN_DIVERGENCE_COL]][key] += 1
+    return out
+
+
+def divergence_summary_line(frame: pd.DataFrame) -> str:
+    s = divergence_summary(frame)
+    y, n = s[DIV_YES], s[DIV_NO]
+    return (f"{DOWN_DIVERGENCE_COL} 있음: 하방 전환 {y['turned']} / 소멸 {y['expired']} · "
+            f"없음: 하방 전환 {n['turned']} / 소멸 {n['expired']} {UNVERIFIED[:-1]}, 표본 적음)")
+
+
 def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str]:
     """텍스트 요약(테스트·검수용): 캡션, 상태별 한 줄, 집계."""
     lines = [SECTION_TITLE, FIXED_CAPTION]
@@ -162,14 +211,35 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
         else:
             tail = f"경과 {d[ELAPSED_COL]} · 60MA {d['60MA 현재']}"
         lines.append(f"[{d['상태']}] 확정 {to_kst(d['확정 시각']):%m-%d %H:%M} · {tail} · 고점 {d[HIGH_COL]:,.8g}"
-                     + (f" · {ALREADY_DOWN_MARK}" if d["확정 시 60MA"] == ALREADY_DOWN_MARK else ""))
+                     + (f" · {ALREADY_DOWN_MARK}" if d["확정 시 60MA"] == ALREADY_DOWN_MARK else "")
+                     + (f" · {DOWN_DIVERGENCE_COL} {d[DOWN_DIVERGENCE_COL]}" if d.get(DOWN_DIVERGENCE_COL) else ""))
     lines.append(summary_line(frame, recent_bars))
+    lines.append(divergence_summary_line(frame))
     return lines
+
+
+# ------------------------------------------------------------------ 차트 연동 (대기 중 후보의 패턴 고점만)
+TRACKER_HIGH_COLOR = "#E64A19"    # 상승 쪽 추적선(보라 #7E57C2 · 청록 #26A69A)·구조 기준선(갈색·적색)과 구분되는 주황 계열
+TRACKER_HIGH_LABEL = f"하방 추적 후보 패턴 고점 {UNVERIFIED}"
+
+
+def down_tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:
+    """대기 중 후보의 패턴 고점 — LW 가격 pane 가격선 사전(상승 쪽 ``tracker_reference_lines`` 와 같은 형식, 1선/후보).
+    기준선(×1.005)은 두지 않으므로 고점선 하나뿐이다. 없으면 빈 목록."""
+    from charts.lw_builder import LW_LINE_STYLE_DOTTED   # 지연 import — 차트 모듈이 없는 배포(main notify)에서도 이 모듈은 import 가능
+
+    if frame is None or frame.empty:
+        return []
+    return [{"price": float(d[HIGH_COL]), "color": TRACKER_HIGH_COLOR, "style": LW_LINE_STYLE_DOTTED,
+             "title": "", "label": TRACKER_HIGH_LABEL}
+            for d in frame[frame["상태"] == STATUS_WAITING].to_dict("records")]
 
 
 def display_frame(frame: pd.DataFrame, symbol: str = "", interval: str = "") -> pd.DataFrame:
     """표시용 문자열 표 — 상승 쪽과 같은 포맷 규칙(시각 KST, 빈 값 공백). 값 계산 없음."""
-    out = frame[[c for c in COLUMNS if c != TF_COL]].copy()
+    out = frame[[c for c in COLUMNS if c != TF_COL and c in frame.columns]].copy()
+    if DOWN_DIVERGENCE_COL not in out.columns:
+        out[DOWN_DIVERGENCE_COL] = ""
     out.insert(0, TF_COL, f"{symbol} {interval}".strip())
     out = out[list(COLUMNS)]
     for c in TIME_COLUMNS:
@@ -182,7 +252,7 @@ def display_frame(frame: pd.DataFrame, symbol: str = "", interval: str = "") -> 
 # ------------------------------------------------------------------ streamlit
 def render_down_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
                                 recent_bars: int = RECENT_BARS) -> pd.DataFrame:
-    """알람 탭 별도 섹션 — 상승 쪽 '60MA 전환 추적' 바로 옆(아래). 차트 가격선·알림 배지 없음. 반환값은 후보 표."""
+    """알람 탭 별도 섹션 — 상승 쪽 '60MA 전환 추적' 바로 옆(아래). 반환값은 후보 표(차트 고점선은 호출부가 ``down_tracker_reference_lines`` 로)."""
     import streamlit as st
 
     frame = track_candidates(df, recent_bars=recent_bars)
@@ -207,10 +277,13 @@ def render_down_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
                                for c in COLUMNS},
             )
         st.caption(summary_line(frame, recent_bars))
+        st.caption(divergence_summary_line(frame))
         st.caption(f"대기 중 = 대파동(20,10,10) 쌍봉 확정 후 {OBS_BARS}봉 창이 살아 있는 후보 · "
                    f"하방 전환 = 창 안에 MA60(t) < MA60(t−1) 이고 직전 봉은 아닌 봉(상승 쪽 정의의 거울상) · "
                    f"경과/소요 = 확정봉 기준 봉 수(대기: 현재까지 경과, 전환 발생: 전환까지 소요, 소멸: 창 종료까지) · "
                    f"창은 후보 가용 시점(피봇 확정 지연 1~2봉 가능) 기준 {OBS_BARS}봉이라 지연 후보는 분모에 '+N봉' 표기 · "
                    f"시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
-                   "확정 시 60MA '이미 하방' 은 전환이 아니므로 창 안의 새 전환만 셈.")
+                   "확정 시 60MA '이미 하방' 은 전환이 아니므로 창 안의 새 전환만 셈 · "
+                   f"{DOWN_DIVERGENCE_COL} = 스토캐(20,10,10) 둘째 봉우리 < 첫째 봉우리(LH) 이면서 두 피봇 봉의 고가는 둘째 > 첫째 "
+                   "(상승 다이버전스 정의의 거울상, 판정 아님).")
     return frame

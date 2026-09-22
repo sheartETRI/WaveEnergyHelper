@@ -149,6 +149,12 @@ def test_down_events_equal_down_tracker_turned_rows(pipe, events):
         if e.kind == EV.KIND_MA60_DOWN:
             assert e.known_pos == int(pipe.index.get_loc(e.ts)) and e.last_pos == len(pipe) - 1
             assert e.fields["pattern_high"] > 0 and e.fields["bars"] >= 0
+    # 하락 다이버전스 = 하방 모듈의 거울상 정의 라벨(행 그대로) — 이벤트가 재계산하지 않는다
+    by_ts = {pd.Timestamp(d["전환 시각"]): d for d in turned.to_dict("records")}
+    for e in events:
+        if e.kind == EV.KIND_MA60_DOWN:
+            assert e.fields["divergence"] == (by_ts[e.ts][MD.DOWN_DIVERGENCE_COL] == DV.YES)
+    assert {e.fields["divergence"] for e in events if e.kind == EV.KIND_MA60_DOWN} <= {True, False}
     # 하방 전환봉과 상승 전환봉은 같은 봉일 수 없다(전환 정의가 서로 배타적)
     up_ts = {e.ts for e in events if e.kind == EV.KIND_MA60_TURN}
     assert not (got & up_ts)
@@ -241,10 +247,10 @@ def _turn_event(ts="2026-09-18 12:00", last_pos=100, known_pos=99):
         "price": 80725.6, "pattern_low": 74967.97, "baseline": 74593.13})
 
 
-def _down_event(ts="2026-09-18 12:00", last_pos=100, known_pos=99):
+def _down_event(ts="2026-09-18 12:00", last_pos=100, known_pos=99, divergence=True):
     return EV.Event("BTCUSDT", "4h", EV.KIND_MA60_DOWN, pd.Timestamp(ts), known_pos, last_pos, {
         "confirm_ts": pd.Timestamp("2026-09-18 08:00"), "turn_ts": pd.Timestamp(ts), "bars": 1,
-        "price": 80725.6, "pattern_high": 84967.97})
+        "price": 80725.6, "pattern_high": 84967.97, "divergence": divergence})
 
 
 def _ll_event(ts="2026-09-19 00:00", last_pos=100, known_pos=99):
@@ -294,9 +300,11 @@ def test_message_format_ma60_down_is_mirror_and_states_observation_only():
     msg = EV.format_message(_down_event())
     assert msg.splitlines() == [
         "[BTCUSDT 4h] 60MA 하방 전환 발생 (미검증)",
-        "쌍봉 확정 09-18 17:00 → 하방 전환 09-18 21:00 (소요 1봉)",
-        "가격 80,726 · 패턴 고점 84,968 · 현물 보유 시 참고용 관측 · 하방 전환율 미측정",
+        "쌍봉 확정 09-18 17:00 → 전환 09-18 21:00 (소요 1봉)",
+        "가격 80,726 · 패턴 고점 84,968 · 하락 다이버전스 있음",
+        "참고: 현물 보유 시 관측용",
     ]
+    assert EV.format_message(_down_event(divergence=False)).splitlines()[2] == "가격 80,726 · 패턴 고점 84,968 · 하락 다이버전스 없음"
     assert "40.7" not in msg and "41.3" not in msg and "기준선" not in msg      # 상승 쪽 수치·롱 손절 참조값 미사용
     assert _down_event().key == "BTCUSDT|4h|ma60_down|2026-09-18T12:00:00Z"
     assert _down_event().key != _turn_event().key                                 # 같은 봉이라도 종류가 달라 키가 다르다
@@ -626,11 +634,49 @@ def test_ledger_rows_are_finished_candidates_with_single_definition_divergence(p
             assert r["result"] == "turned" and r["bars_to_turn"] == int(d["_bars"]) and r["turn_price"] == float(d["전환 시 가격"])
         else:
             assert r["result"] == "expired" and r["bars_to_turn"] is None and r["turn_ts"] is None
-    assert set(rows[0]) == set(LG.FIELDS) - {"recorded_at"}
+    assert set(rows[0]) == set(LG.FIELDS) - {"recorded_at", "direction", "pattern_high", "already_down"}   # 상승 행 형식 불변
     csv_text = LG.to_csv([{**r, "recorded_at": "2026-09-22T00:00:00Z"} for r in rows])
     assert csv_text.splitlines()[0] == ",".join(LG.FIELDS) and len(csv_text.splitlines()) == len(rows) + 1
     s = LG.summary(rows)
     assert s["divergence"]["turned"] + s["divergence"]["expired"] + s["no_divergence"]["turned"] + s["no_divergence"]["expired"] == len(rows)
+
+
+def test_ledger_down_rows_have_direction_and_mirror_fields_and_do_not_collide_with_up_rows(pipe):
+    """하방 후보 생애주기도 같은 ledger 에 direction="down" 행으로. 상승 행 형식(키 집합)은 종전 그대로."""
+    up_rows = LG.finished_rows(pipe, "BTCUSDT", "4h")
+    dn_rows = LG.finished_rows_down(pipe, "BTCUSDT", "4h")
+    frame = MD.track_candidates(pipe, recent_bars=len(pipe))
+    fin = frame[frame["상태"].isin([MD.STATUS_TURNED, MD.STATUS_EXPIRED])]
+    assert len(dn_rows) == len(fin) >= 3 and {r["result"] for r in dn_rows} <= {"turned", "expired"}
+    assert all("direction" not in r and "pattern_high" not in r for r in up_rows)              # 상승 행 형식 불변
+    assert set(up_rows[0]) == set(LG.FIELDS) - {"recorded_at", "direction", "pattern_high", "already_down"}
+    assert set(dn_rows[0]) == set(LG.FIELDS) - {"recorded_at", "pattern_low", "already_up"}
+    by = {r["confirm_ts"]: r for r in dn_rows}
+    for d in fin.to_dict("records"):
+        r = by[pd.Timestamp(d["확정 시각"]).strftime("%Y-%m-%dT%H:%M:%SZ")]
+        assert r["direction"] == "down" and r["pattern_high"] == float(d[MD.HIGH_COL])
+        assert r["divergence"] == (d[MD.DOWN_DIVERGENCE_COL] == DV.YES)
+        assert r["already_down"] == (d["확정 시 60MA"] == MD.ALREADY_DOWN_MARK)
+        if d["상태"] == MD.STATUS_TURNED:
+            assert r["result"] == "turned" and r["bars_to_turn"] == int(d["_bars"]) and r["turn_price"] == float(d["전환 시 가격"])
+        else:
+            assert r["result"] == "expired" and r["bars_to_turn"] is None and r["turn_ts"] is None
+    # 키: 상승 행은 종전 형식 그대로, 하방 행은 '|down' — 같은 확정봉이라도 충돌하지 않는다
+    up = {"symbol": "X", "tf": "1h", "confirm_ts": "2026-09-22T00:00:00Z", "result": "expired", "divergence": False}
+    dn = {**up, "direction": "down", "pattern_high": 1.0, "already_down": False}
+    assert LG.key_of(up) == "X|1h|2026-09-22T00:00:00Z" and LG.key_of(dn) == "X|1h|2026-09-22T00:00:00Z|down"
+    hist = H.empty(); H.ledger_init(hist, now=pd.Timestamp("2026-09-22 00:00"))
+    assert H.ledger_append(hist, [up, dn], now=pd.Timestamp("2026-09-23 00:00")) == 2
+    assert H.ledger_append(hist, [up, dn], now=pd.Timestamp("2026-09-23 00:00")) == 0
+    assert H.ledger_keys(hist) == {LG.key_of(up), LG.key_of(dn)}
+    # CSV: 헤더에 direction·pattern_high·already_down, 상승 행은 direction "up" 으로만 채움(저장 형식은 그대로)
+    csv_lines = LG.to_csv([{**r, "recorded_at": "2026-09-22T00:00:00Z"} for r in up_rows[:1] + dn_rows[:1]]).splitlines()
+    assert csv_lines[0] == ",".join(LG.FIELDS) and csv_lines[1].split(",")[LG.FIELDS.index("direction")] == "up"
+    assert csv_lines[2].split(",")[LG.FIELDS.index("direction")] == "down"
+    # 요약은 방향별로 분리 — 기본 호출은 상승 행만(기존 호출 불변)
+    s_up, s_dn = LG.summary(up_rows + dn_rows), LG.summary(up_rows + dn_rows, direction="down")
+    assert sum(v for d in s_up.values() for v in d.values()) == len(up_rows)
+    assert sum(v for d in s_dn.values() for v in d.values()) == len(dn_rows)
 
 
 def test_ledger_no_backfill_only_after_since_and_dedup():
@@ -672,8 +718,9 @@ def test_run_records_ledger_including_6h_and_never_backfills(tmp_path, bars, eve
     r2 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], ledger_tfs=["4h", "6h"],
                fetch=fetch, send=_Sender(), env={}, now=now1)
     rows = H.load(state)["ledger"]["rows"]
-    fin = LG.finished_rows(S.build_pipe(bars), "BTCUSDT", "4h")
+    fin = LG.finished_rows(S.build_pipe(bars), "BTCUSDT", "4h") + LG.finished_rows_down(S.build_pipe(bars), "BTCUSDT", "4h")
     assert r2["ledger_added"] == len(rows) == 2 * len(fin) and {r["tf"] for r in rows} == {"4h", "6h"}
+    assert {LG.direction_of(r) for r in rows} == {"up", "down"}                             # 하방 생애주기도 기록
     r3 = S.run(state_path=state, dry_run=False, symbols=["BTCUSDT"], tfs=["4h"], ledger_tfs=["4h", "6h"],
                fetch=fetch, send=_Sender(), env={}, now=now1)
     assert r3["ledger_added"] == 0 and len(H.load(state)["ledger"]["rows"]) == len(rows)    # 재실행 중복 없음
