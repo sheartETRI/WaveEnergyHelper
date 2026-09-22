@@ -23,7 +23,7 @@ from data.processor import build_dataframe, get_fetch_interval, resample_timefra
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
-from display.ma60_down_tracker import render_down_tracker_section
+from display.ma60_down_tracker import down_tracker_reference_lines, render_down_tracker_section
 from display.ma60_turn_tracker import render_tracker_section, tracker_reference_lines
 from display.trend_structure import render_structure_section, structure_markers
 from display.tz_label import KST_LABEL, to_kst
@@ -213,7 +213,7 @@ def main():
         tracker_frame = render_tracker_section(df, symbol, interval)
         # 60MA 하방 전환 추적 (미검증) — 상승 쪽의 거울상(대파동 쌍봉 → 20봉 안 60MA 하방 전환). 현물 보유 시 참고용 관측.
         # 차트 가격선·알람 푸시 연동 없음(표시 전용).
-        render_down_tracker_section(df, symbol, interval)
+        down_frame = render_down_tracker_section(df, symbol, interval)
         # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
         structure_result = render_structure_section(df, symbol, interval)
 
@@ -226,6 +226,7 @@ def main():
             show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
             tracker_lines=tracker_reference_lines(tracker_frame),
             structure_markers=structure_markers(structure_result),
+            down_tracker_lines=down_tracker_reference_lines(down_frame),   # 하방 추적 대기 후보 패턴 고점(구분 색, 표시 전용)
         )
 
 if __name__ == "__main__":

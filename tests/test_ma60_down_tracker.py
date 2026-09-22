@@ -12,6 +12,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import charts.lw_builder as LW  # noqa: E402
+import display.divergence_flag as DV  # noqa: E402
 import display.ma60_down_tracker as D  # noqa: E402
 import display.ma60_turn_tracker as T  # noqa: E402
 import validation.wave_ma60_turn_probe as probe  # noqa: E402
@@ -84,7 +86,8 @@ def test_price_inversion_maps_down_tracker_onto_up_tracker(seed):
     raw = _raw(seed=seed)
     down = D.track_candidates(_pipeline(raw), recent_bars=len(raw)).set_index("확정 시각")
     up_inv = T.track_candidates(_pipeline(_invert(raw)), recent_bars=len(raw)).set_index("확정 시각")
-    assert len(down) >= 20 and set(down.index) == set(up_inv.index)
+    # 표본 밀도: 검출기 정의 교체(ee2ba79) 뒤 1,600봉에 쌍봉 확정 8~10건 — 대칭 검사는 전 건에 대해 수행
+    assert len(down) >= 8 and set(down.index) == set(up_inv.index)
     for ts in down.index:
         a, b = down.loc[ts], up_inv.loc[ts]
         assert a["상태"] == b["상태"] and a[D.ELAPSED_COL] == b[T.ELAPSED_COL]
@@ -96,8 +99,11 @@ def test_price_inversion_maps_down_tracker_onto_up_tracker(seed):
             assert a["전환 시 가격"] == pytest.approx(-b["전환 시 가격"])
         if a["상태"] == D.STATUS_EXPIRED:
             assert pd.Timestamp(a["소멸 시각"]) == pd.Timestamp(b["소멸 시각"])
+        # 하락 다이버전스 = 가격 반전 프레임의 상승 다이버전스(단일 정의) — 값까지 대응
+        assert a[D.DOWN_DIVERGENCE_COL] == b[DV.DIVERGENCE_COL]
     # 창 안 '전환 발생' 과 '소멸' 이 모두 표본에 있어야 대칭 검사가 의미 있다
     assert (down["상태"] == D.STATUS_TURNED).sum() >= 3 and (down["상태"] == D.STATUS_EXPIRED).sum() >= 3
+    assert set(down[D.DOWN_DIVERGENCE_COL]) == {DV.YES, DV.NO}                     # 두 값 모두 표본에 있음
 
 
 def test_mirror_signal_direction_is_exact_negation_of_probe_flags():
@@ -116,7 +122,7 @@ def test_mirror_signal_direction_is_exact_negation_of_probe_flags():
     # 후보는 probe 의 쌍봉 경로(stoch_tops) 부분집합이며 패턴 고점은 첫~둘째 봉우리 구간 high 최대
     tops = {t["confirm_pos"]: t for t in sig_up["stoch_tops"]}
     high = pipe["high"].to_numpy(dtype=float)
-    assert len(sig_dn["cands"]) >= 20
+    assert len(sig_dn["cands"]) >= 8
     for cd in sig_dn["cands"]:
         assert cd["confirm_pos"] in tops and cd["known_pos"] == tops[cd["confirm_pos"]]["known_pos"]
         assert cd["p1"] < cd["p2"] <= cd["confirm_pos"]
@@ -157,7 +163,7 @@ def test_synthetic_cases_turned_expired_waiting_and_already_down():
     assert by[22]["확정 시 60MA"] == D.ALREADY_DOWN_MARK and by[22]["상태"] == D.STATUS_EXPIRED
     assert by[22][D.HIGH_COL] == 123.0 and "패턴 저점" not in by[22] and "기준선(×0.995)" not in by[22]
     assert by[10]["확정 시 60MA"] == "상방" and by[20]["확정 시 60MA"] == "상방"     # 확정 시 상방이던 건(거울 라벨 복원)
-    assert set(D.COLUMNS) - {D.TF_COL} <= set(by[10])
+    assert set(D.COLUMNS) - {D.TF_COL, D.DOWN_DIVERGENCE_COL} <= set(by[10])   # 다이버전스 열은 track_candidates 가 붙인다(상승 쪽과 동일)
     # 상승 쪽 함수를 같은 sig 로 호출한 결과와 상태·경과·시각이 동일(라벨만 다름)
     ref = {int(r["_confirm_pos"]): r for r in T.lifecycle_rows(
         _sig(n, [_cand(10), _cand(20), _cand(50), _cand(42, lag=1), _cand(22, high=123.0)],
@@ -167,6 +173,43 @@ def test_synthetic_cases_turned_expired_waiting_and_already_down():
                (ref[c]["상태"], ref[c][T.ELAPSED_COL], ref[c]["전환 시각"], ref[c]["소멸 시각"])
         assert r[D.HIGH_COL] == ref[c]["패턴 저점"]
         assert (r["확정 시 60MA"] == D.ALREADY_DOWN_MARK) == (ref[c]["확정 시 60MA"] == T.ALREADY_UP_MARK)
+
+
+def test_bearish_divergence_flags_are_exact_mirror_of_single_definition():
+    """정의 거울상: kind == LH(둘째 봉우리 < 첫째) AND 피봇 봉 고가 둘째 > 첫째. 가격 반전 프레임에서 DV.divergence_flags 와 일치."""
+    raw = _raw(seed=7)
+    pipe = D.tracker_pipe(_pipeline(raw))
+    sig = D.extract_mirror_signals(pipe)
+    flags = D.bearish_divergence_flags(pipe, sig)
+    assert set(flags) == {int(c["confirm_pos"]) for c in sig["cands"]} and len(flags) >= 8
+    kind = pipe[D.KIND_COL].to_numpy(dtype=object)
+    high = pipe["high"].to_numpy(dtype=float)
+    for cd in sig["cands"]:
+        c, p1, p2 = int(cd["confirm_pos"]), int(cd["p1"]), int(cd["p2"])
+        assert flags[c] == (kind[c] == "LH" and high[p2] > high[p1])
+    assert flags == DV.divergence_flags(T.tracker_pipe(_pipeline(_invert(raw))))     # 거울상 = 반전 프레임의 단일 정의
+    assert any(flags.values()) and not all(flags.values())
+    # 합성 sig: kind 컬럼이 없으면 전부 '없음'(플래그 False), 라벨은 단일 정의의 있음/없음
+    mini = pd.DataFrame({"high": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    assert D.bearish_divergence_flags(mini, {"cands": [{"confirm_pos": 4, "p1": 0, "p2": 3}]}) == {4: False}
+    mini[D.KIND_COL] = [None, None, None, None, "LH"]
+    assert D.bearish_divergence_flags(mini, {"cands": [{"confirm_pos": 4, "p1": 0, "p2": 3}]}) == {4: True}
+    mini["high"] = [5.0, 4.0, 3.0, 2.0, 1.0]                                        # 가격 고점이 낮아지면 없음
+    assert D.bearish_divergence_flags(mini, {"cands": [{"confirm_pos": 4, "p1": 0, "p2": 3}]}) == {4: False}
+    assert D.div_label(True) == DV.YES and D.div_label(False) == DV.NO and D.div_label(None) == ""
+
+
+def test_divergence_column_position_and_cohort_line_mirror_up_side():
+    assert D.COLUMNS.index(D.DOWN_DIVERGENCE_COL) == T.COLUMNS.index(DV.DIVERGENCE_COL)     # 같은 자리(확정 시 60MA 뒤)
+    assert D.DOWN_DIVERGENCE_COL in D.TABLE_COLUMN_WIDTHS
+    f = pd.DataFrame({
+        "상태": [D.STATUS_TURNED, D.STATUS_EXPIRED, D.STATUS_TURNED, D.STATUS_WAITING, D.STATUS_EXPIRED],
+        D.DOWN_DIVERGENCE_COL: [DV.YES, DV.YES, DV.NO, DV.YES, DV.NO],
+    })
+    assert D.divergence_summary(f) == {DV.YES: {"turned": 1, "expired": 1}, DV.NO: {"turned": 1, "expired": 1}}
+    line = D.divergence_summary_line(f)
+    assert line == "하락 다이버전스 있음: 하방 전환 1 / 소멸 1 · 없음: 하방 전환 1 / 소멸 1 (미검증, 표본 적음)"
+    assert D.divergence_summary(pd.DataFrame(columns=D.COLUMNS)) == {DV.YES: {"turned": 0, "expired": 0}, DV.NO: {"turned": 0, "expired": 0}}
 
 
 def test_summary_counts_already_down_separately_and_rate_uses_finished_only():
@@ -198,18 +241,20 @@ def test_labels_unverified_no_up_side_rate_and_no_recommendation_words():
         assert w not in text, w
     assert "(미검증)" in text and D.FIXED_CAPTION in text and "하방 전환 " in text
     assert D.STATUS_TURNED == "전환 발생"
+    assert f"{D.DOWN_DIVERGENCE_COL} 있음: 하방 전환" in text and f" · {D.DOWN_DIVERGENCE_COL} " in text
 
 
 def test_display_frame_columns_and_formats():
     f = pd.DataFrame([{
         "상태": D.STATUS_TURNED, "확정 시각": pd.Timestamp("2026-09-18 08:00"), D.ELAPSED_COL: "1/20",
         "60MA 현재": "하방", "확정 시 60MA": "상방", "전환 시각": pd.Timestamp("2026-09-18 12:00"),
-        "전환 시 가격": 80725.6, D.HIGH_COL: 84967.97, "소멸 시각": pd.NaT,
+        "전환 시 가격": 80725.6, D.HIGH_COL: 84967.97, "소멸 시각": pd.NaT, D.DOWN_DIVERGENCE_COL: DV.YES,
     }])
     d = D.display_frame(f, "BTCUSDT", "4h")
     assert list(d.columns) == list(D.COLUMNS) and "패턴 저점" not in d.columns and "기준선(×0.995)" not in d.columns
     assert d.iloc[0].tolist()[:4] == ["BTCUSDT 4h", D.STATUS_TURNED, "2026-09-18 17:00", "1/20"]
-    assert d.loc[0, D.HIGH_COL] == "84,967.97" and d.loc[0, "소멸 시각"] == ""
+    assert d.loc[0, D.HIGH_COL] == "84,967.97" and d.loc[0, "소멸 시각"] == "" and d.loc[0, D.DOWN_DIVERGENCE_COL] == DV.YES
+    assert D.display_frame(f.drop(columns=[D.DOWN_DIVERGENCE_COL]), "BTCUSDT", "4h").loc[0, D.DOWN_DIVERGENCE_COL] == ""
     assert "None" not in d.to_string() and set(D.TABLE_COLUMN_WIDTHS) <= set(D.COLUMNS)
 
 
@@ -220,15 +265,56 @@ def test_empty_or_unprepared_frame_is_safe():
     assert D.build_lines(D.track_candidates(raw))[2] == "해당 구간에 대파동 쌍봉 후보 없음"
 
 
+# ------------------------------------------------------------ 차트 연동 (대기 중 후보 패턴 고점선, 구분 색)
+def _ohlc(n=30):
+    idx = pd.date_range("2026-09-01", periods=n, freq="h")
+    c = np.linspace(100, 110, n)
+    return pd.DataFrame({"open": c, "high": c + 1, "low": c - 1, "close": c, "volume": 1.0}, index=idx)
+
+
+def test_down_tracker_lines_only_for_waiting_one_line_per_candidate_distinct_color():
+    f = pd.DataFrame({"상태": [D.STATUS_WAITING, D.STATUS_TURNED, D.STATUS_EXPIRED, D.STATUS_WAITING],
+                      D.HIGH_COL: [105.0, 99.0, 98.0, 107.5]})
+    lines = D.down_tracker_reference_lines(f)
+    assert [l["price"] for l in lines] == [105.0, 107.5]                                  # 대기 중만, 후보당 1선(기준선 없음)
+    assert all(l["color"] == D.TRACKER_HIGH_COLOR and l["style"] == LW.LW_LINE_STYLE_DOTTED and l["title"] == "" for l in lines)
+    assert all(l["label"] == D.TRACKER_HIGH_LABEL and "(미검증)" in l["label"] for l in lines)
+    assert D.TRACKER_HIGH_COLOR not in (T.TRACKER_LOW_COLOR, T.TRACKER_LINE_COLOR, LW.STRUCT_LOW_COLOR, LW.STRUCT_LINE_COLOR)
+    assert D.down_tracker_reference_lines(pd.DataFrame(columns=D.COLUMNS)) == [] and D.down_tracker_reference_lines(None) == []
+    for w in FORBIDDEN_WORDS:
+        assert w not in D.TRACKER_HIGH_LABEL
+
+
+def test_lw_html_draws_down_tracker_lines_and_caption_only_when_given():
+    df = _ohlc()
+    base = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600, vendor_js="")
+    same = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600, vendor_js="", down_tracker_lines=[])
+    assert base == same and "하방 추적" not in base
+    lines = D.down_tracker_reference_lines(pd.DataFrame({"상태": [D.STATUS_WAITING], D.HIGH_COL: [86470.0]}))
+    html = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600, vendor_js="", down_tracker_lines=lines)
+    assert "하방 추적 " in html and "고점 86,470 (미검증)" in html and D.TRACKER_HIGH_COLOR in html
+    struct_lines = html.split("var STRUCT_LINES = ", 1)[1].split(";\n", 1)[0]
+    assert '"price": 86470.0' in struct_lines and '"label"' not in struct_lines       # 가격선 payload 에 포함(라벨은 캡션만)
+    two = LW.down_tracker_caption_html(lines + lines)
+    assert "하방 추적 외 1건" in two and LW.down_tracker_caption_html([]) == ""
+    # 상승 쪽 추적선과 함께 줄 때도 각자 캡션·가격선(상승 쪽 캡션 쌍 규칙 불변)
+    up_lines = [{"price": 80000.0, "color": T.TRACKER_LOW_COLOR, "style": 1, "title": "", "label": "x"},
+                {"price": 79600.0, "color": T.TRACKER_LINE_COLOR, "style": 2, "title": "", "label": "y"}]
+    both = LW.build_lw_html(df, "BTCUSDT", "1h", "[g]", chart_height=600, vendor_js="", tracker_lines=up_lines,
+                            down_tracker_lines=lines)
+    assert "추적 " in both and "저점 80,000" in both and "하방 추적 " in both and "고점 86,470" in both
+
+
 # ------------------------------------------------------------ main 배선 · 알람 정의 무접촉
-def test_main_wires_down_section_next_to_up_section_without_chart_or_alarm_hooks():
+def test_main_wires_down_section_next_to_up_section_and_high_line_into_chart_without_alarm_hooks():
     src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert "from display.ma60_down_tracker import render_down_tracker_section" in src
+    assert "from display.ma60_down_tracker import down_tracker_reference_lines, render_down_tracker_section" in src
     alarm_block = src.split("with tab_alarm:", 1)[1].split("with tab_chart:", 1)[0]
     i_up = alarm_block.index("render_tracker_section(df, symbol, interval)")
-    i_dn = alarm_block.index("render_down_tracker_section(df, symbol, interval)")
+    i_dn = alarm_block.index("down_frame = render_down_tracker_section(df, symbol, interval)")
     assert i_up < i_dn < alarm_block.index("render_structure_section(")
     chart_block = src.split("with tab_chart:", 1)[1]
-    assert "down" not in chart_block                        # 차트 가격선·마커 연동 없음
+    assert "down_tracker_lines=down_tracker_reference_lines(down_frame)" in chart_block   # 패턴 고점선만(마커·알람 없음)
+    assert "structure_markers=structure_markers(structure_result)" in chart_block          # 기존 배선 불변
     for fn in ("analysis/alarm_signals.py", "display/alarm_panel.py"):
         assert "ma60_down" not in open(os.path.join(ROOT, fn), encoding="utf-8").read()

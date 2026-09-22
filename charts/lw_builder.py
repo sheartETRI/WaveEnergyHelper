@@ -412,6 +412,15 @@ def tracker_caption_html(lines: list[dict]) -> str:
     )
 
 
+def down_tracker_caption_html(lines: list[dict]) -> str:
+    """60MA 하방 전환 추적(미검증) 대기 중 후보의 패턴 고점 캡션 조각(1선/후보). 없으면 빈 문자열(캡션 불변)."""
+    if not lines:
+        return ""
+    top = lines[0]
+    more = f" 외 {len(lines) - 1}건" if len(lines) > 1 else ""
+    return f' · 하방 추적{more} <span style="color:{top["color"]}">─</span> 고점 {format_price(top["price"])} (미검증)'
+
+
 # ------------------------------------------------------------------ HTML
 def chart_options() -> dict:
     """createChart 옵션 — 동작 요건을 여기 한곳에 둔다."""
@@ -791,12 +800,14 @@ def build_lw_html(
     vendor_js: Optional[str] = None,
     tracker_lines: Optional[list[dict]] = None,
     structure_markers: Optional[list[dict]] = None,
+    down_tracker_lines: Optional[list[dict]] = None,
 ) -> str:
     """components.html 에 넘길 HTML 문자열.
 
     gate_context 는 필수(비어 있으면 ValueError) — 게이트 상태 없이 가격 화면이 단독 표시되지 않는다.
     tracker_lines 는 60MA 전환 추적(미검증) 대기 중 후보의 가격선(구조 기준선과 같은 사전 형식) — 없으면 불변.
     structure_markers 는 추세 구조 추적(미검증)의 스윙 마커 — [{"ts", "position", "color", "shape", "text"}], 없으면 불변.
+    down_tracker_lines 는 60MA 하방 전환 추적(미검증) 대기 중 후보의 패턴 고점선(같은 사전 형식, 1선/후보) — 없으면 불변.
     """
     if not isinstance(gate_context, str) or not gate_context.strip():
         raise ValueError("gate_context 는 필수다 — 게이트 상태 라벨 없이 가격 화면을 그리지 않는다")
@@ -804,9 +815,11 @@ def build_lw_html(
     panes = pane_layout(payload, show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi)
     lines = struct_reference_lines(struct_reference)
     extra = list(tracker_lines or [])
+    down = list(down_tracker_lines or [])
     # 캡션 끝 시간대 표기 — 축·툴팁·오버레이 시각은 KST 표시(PAYLOAD 시프트). 알람 탭과 같은 라벨(display.tz_label).
     caption_html = (f"{_escape(str(symbol))} {_escape(str(display_interval))} · {_escape(gate_context)}"
-                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)} {_escape(KST_LABEL)}")
+                    f"{struct_caption_html(lines)}{tracker_caption_html(extra)}{down_tracker_caption_html(down)} "
+                    f"{_escape(KST_LABEL)}")
     vendor = vendor_js if vendor_js is not None else load_vendor_js()
     height = int(chart_height)
 
@@ -817,7 +830,7 @@ def build_lw_html(
         f"var CANDLE_OPTS = {json.dumps(candle_options())};",
         f"var MA_STYLES = {json.dumps(ma_styles())};",
         # label(의미)은 캡션 전용 — JS 로는 가격선 속성만 보낸다(title 은 빈 문자열).
-        f"var STRUCT_LINES = {json.dumps([{k: v for k, v in l.items() if k != 'label'} for l in lines + extra], ensure_ascii=False)};",
+        f"var STRUCT_LINES = {json.dumps([{k: v for k, v in l.items() if k != 'label'} for l in lines + extra + down], ensure_ascii=False)};",
         f"var VOLUME_TOP = {VOLUME_SCALE_TOP_MARGIN};",
         f"var WINDOW = {RECENT_WINDOW};",
         f"var STOCH_GUIDE_COLOR = {json.dumps(STOCH_GUIDE_COLOR)};",
@@ -902,6 +915,7 @@ def render_lw_chart(
     show_rsi: bool = True,
     tracker_lines: Optional[list[dict]] = None,
     structure_markers: Optional[list[dict]] = None,
+    down_tracker_lines: Optional[list[dict]] = None,
 ) -> None:
     """LW 엔진 렌더. 높이는 사이드바 셀렉트 값을 그대로 iframe 높이로 쓴다."""
     if df is None or df.empty:
@@ -910,7 +924,7 @@ def render_lw_chart(
         df, symbol, display_interval, gate_context,
         chart_height=chart_height, struct_reference=struct_reference,
         show_stochastic=show_stochastic, show_macd=show_macd, show_rsi=show_rsi,
-        tracker_lines=tracker_lines, structure_markers=structure_markers,
+        tracker_lines=tracker_lines, structure_markers=structure_markers, down_tracker_lines=down_tracker_lines,
     )
     components.html(html, height=int(chart_height), scrolling=False)
     st.caption(LW_CONTROLS_CAPTION)
