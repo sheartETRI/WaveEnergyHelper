@@ -408,6 +408,21 @@
  },
  "ledger": {
   "since": "2026-09-21T20:31:22Z",
-  "rows": []
+  "rows": [
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-21T22:00:00Z",
+    "divergence": true,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 807.11,
+    "already_down": false,
+    "recorded_at": "2026-09-22T22:52:44Z"
+   }
+  ]
  }
 }
