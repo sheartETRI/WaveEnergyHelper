@@ -50,6 +50,19 @@ def _triple_bottom_df():
     return df, idx
 
 
+def _widened_first_bottom_df():
+    """_triple_bottom_df 의 바닥1 을 3봉(15,16,15)으로 넓힌 변형 — 폭 비교 정의의 쌍바닥 공존 확인용."""
+    k = [50, 30, 15, 16, 15, 30, 45, 30, 12, 30, 40, 25, 18, 35, 50, 60]
+    idx = pd.date_range("2024-01-01", periods=len(k), freq="D")
+    df = pd.DataFrame({"k": pd.Series(k, index=idx, dtype="float64")})
+    pl = pd.Series(pd.NA, index=idx, dtype="Float64")
+    pl.iloc[2] = 15.0
+    pl.iloc[8] = 12.0
+    pl.iloc[12] = 18.0
+    df["pl"] = pl
+    return df, idx
+
+
 def test_triple_bottom_confirmed_with_db_coexistence():
     df, idx = _triple_bottom_df()
 
@@ -62,9 +75,11 @@ def test_triple_bottom_confirmed_with_db_coexistence():
     assert hits["tb_kind"].iloc[0] == "HL"          # 바닥3(18) > 바닥2(12)
     assert float(hits["tb_delta"].iloc[0]) > 0
 
-    # 공존: 같은 데이터에서 db도 기록 유지 (쓰리바닥이 쌍바닥을 소급 제거하지 않음)
-    db = detect_double_bottom_patterns(df.copy(), "k", "pl", "db", "cand", "neck")
-    assert db["db"].notna().any(), "동일 데이터에서 db도 기록되어야 한다 (공존)"
+    # 공존: 쓰리바닥이 쌍바닥을 소급 제거하지 않음. 쌍바닥(폭 비교 정의)은 첫 바닥이 두 번째보다 넓어야 하므로
+    # 바닥1 을 3봉(15,16,15)으로 넓힌 변형에서 확인한다 — 바닥2(12, 폭 1) 이탈 봉 iloc 9 에서 확정.
+    db = detect_double_bottom_patterns(_widened_first_bottom_df()[0], "k", "pl", "db", "cand", "neck")
+    assert db["db"].notna().any(), "동일 구조에서 db도 기록되어야 한다 (공존)"
+    assert db.index[db["db"].notna()][0] == db.index[9]
 
 
 def test_only_two_bottoms_no_triple():
@@ -81,7 +96,12 @@ def test_only_two_bottoms_no_triple():
     )
     assert tb["tb"].notna().sum() == 0, "바닥 2개뿐이면 쓰리바닥 미검출"
 
-    db = detect_double_bottom_patterns(df.copy(), "k", "pl", "db", "cand", "neck")
+    # 쌍바닥(폭 비교 정의): 바닥1 을 넓힌 변형 [50,30,15,16,15,30,45,30,12,40,55,65] 에서 정상 검출
+    k2 = [50, 30, 15, 16, 15, 30, 45, 30, 12, 40, 55, 65]
+    idx2 = pd.date_range("2024-01-01", periods=len(k2), freq="D")
+    df2 = pd.DataFrame({"k": pd.Series(k2, index=idx2, dtype="float64")})
+    df2["pl"] = pd.Series(pd.NA, index=idx2, dtype="Float64")
+    db = detect_double_bottom_patterns(df2, "k", "pl", "db", "cand", "neck")
     assert db["db"].notna().any(), "쌍바닥은 정상 검출"
 
 

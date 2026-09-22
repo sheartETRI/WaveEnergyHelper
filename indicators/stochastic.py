@@ -1,7 +1,8 @@
 # indicators/stochastic.py
+import numpy as np
 import pandas as pd
 import streamlit as st
-from config.settings import STOCH_LAYERS, STOCH_PIVOT_PARAMS
+from config.settings import STOCH_DOUBLE_PARAMS, STOCH_LAYERS, STOCH_PIVOT_PARAMS
 
 
 # 반전(100-값) 공간의 쌍바닥 kind를 원공간 쌍봉 kind로 뒤집어 매핑한다.
@@ -143,7 +144,7 @@ def compute_stochastic_pivots(series: pd.Series, lookback: int = 2, middle_zone:
     return pivot_lows, pivot_highs
 
 
-def detect_double_bottom_patterns(
+def detect_pivot_double_bottom_patterns(
     df: pd.DataFrame,
     value_col: str,
     pivot_low_col: str,
@@ -156,7 +157,9 @@ def detect_double_bottom_patterns(
     pivot_high_col: str | None = None,
     prev_opp_col: str | None = None,
 ) -> pd.DataFrame:
-    """Detects double bottoms using higher pivot lows and neckline breaks.
+    """[이전 정의 — RSI 전용] Detects double bottoms using higher pivot lows and neckline breaks.
+
+    스토캐 쌍바닥은 2026-09-22 부터 detect_double_bottom_patterns(폭 비교 정의)를 쓴다.
 
     kind_col/delta_col가 주어지면 두 바닥의 비교 결과(HL/LL/EQ)와 delta를 후보·확정
     봉에 '기록만' 한다. 상태머신의 전이 로직은 전혀 바뀌지 않는다.
@@ -334,7 +337,7 @@ def detect_double_bottom_patterns(
     return df
 
 
-def detect_double_top_patterns(
+def detect_pivot_double_top_patterns(
     df: pd.DataFrame,
     value_col: str,
     pivot_high_col: str,
@@ -344,7 +347,7 @@ def detect_double_top_patterns(
     pivot_low_col: str | None = None,
     prev_opp_col: str | None = None,
 ) -> pd.DataFrame:
-    """Detects double tops using lower pivot highs and neckline breaks."""
+    """[이전 정의 — RSI 전용] Detects double tops using lower pivot highs and neckline breaks."""
     df[dt_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
     df[dt_candidate_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
     df[neckline_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
@@ -493,11 +496,268 @@ def detect_double_top_patterns(
     return df
 
 
-def detect_stochastic_bottom_patterns(df: pd.DataFrame, suffix: str, oversold_level: float = 20.0) -> pd.DataFrame:
-    """Detects stochastic double bottoms using higher pivot lows and neckline breaks."""
-    # Kept for call compatibility; the pivot/neckline definition does not use
-    # an oversold-duration rule.
-    _ = oversold_level
+# ---------------------------------------------------------------------------
+# 쌍바닥 / 쌍봉 — 침체권·과매수권 이탈 후 두 번째 극점의 폭 비교 정의 (김박사, 2026-09-22)
+#
+#   쌍봉: 과매수권(K ≥ overbought)에 들어갔던 첫 봉우리가 과매수권을 벗어난 뒤 두 번째 봉우리를 만들되,
+#         두 번째 봉우리의 "봉우리 기간"이 첫 번째보다 짧아야 한다. 쌍바닥은 이와 대칭.
+#   봉우리 기간(폭): 정점 전후 대칭 폭 — 정점값에서 width_drop 만큼 내려온 높이 이상(K ≥ 정점 − width_drop)에
+#         머문 연속 봉 수. (바닥은 K ≤ 바닥 + width_drop.)
+#   두 번째 봉우리는 과매수권 재진입이 필수가 아니다(80 미달 봉우리도 인정). 다만 두 봉우리 사이의 골(H)이
+#         과매수선 아래이고 두 봉우리 각각의 폭 구간 밖까지 내려가야(H < min(정점1, 정점2) − width_drop) 별개
+#         봉우리로 본다.
+#   확정 봉: 두 번째 봉우리가 과매수권 아래로 이탈하는 봉 — 폭이 그 시점에 정해져야 비교가 가능하므로
+#         정확히는 K < min(overbought, 정점2 − width_drop) 이 처음 성립하는 봉(정점2 ≥ 80+drop 이면 80 이탈 봉과
+#         일치). 그 봉에서 폭2 < 폭1 이면 확정, 아니면 실패(정점2 가 과매수권이었으면 그 봉우리가 새 첫 봉우리).
+#
+# 컬럼 계약은 이전(피봇·넥라인 정의)과 같다:
+#   db/dt          확정 봉의 K.            candidate  두 번째 극점 봉의 K(형성 중, 폭 조건 현재 충족 시).
+#   neckline       확정 기준선(위 K 임계값). kind/delta 두 극점 값 비교(HL/LL/EQ · LH/HH/EQ), first_pos 첫 극점 iloc,
+#   prev_opp       첫 극점 직전 반대 피봇 값(기록 전용, 피봇 컬럼 사용).
+# 검출은 바닥 공간에서 한 번만 구현하고, 봉은 100 − K 반전 호출로 봉 단위 대칭을 보장한다(이전과 동일 방식).
+# 이전 피봇·넥라인 정의는 detect_pivot_double_*_patterns 로 이름을 바꿔 RSI 쌍바닥/쌍봉이 계속 쓴다.
+# ---------------------------------------------------------------------------
+
+
+def _double_params(oversold_level, width_drop) -> tuple[float, float]:
+    from config.settings import STOCH_DOUBLE_PARAMS
+    level = STOCH_DOUBLE_PARAMS["oversold"] if oversold_level is None else float(oversold_level)
+    drop = STOCH_DOUBLE_PARAMS["width_drop"] if width_drop is None else float(width_drop)
+    return float(level), float(drop)
+
+
+def detect_double_bottom_patterns(
+    df: pd.DataFrame,
+    value_col: str,
+    pivot_low_col: str,
+    db_col: str,
+    db_candidate_col: str,
+    neckline_col: str,
+    kind_col: str | None = None,
+    delta_col: str | None = None,
+    first_pos_col: str | None = None,
+    pivot_high_col: str | None = None,
+    prev_opp_col: str | None = None,
+    oversold_level: float | None = None,
+    width_drop: float | None = None,
+) -> pd.DataFrame:
+    """침체권 이탈 후 두 번째 바닥의 폭이 첫 바닥보다 짧으면 쌍바닥 (정의는 모듈 주석).
+
+    pivot_low_col 은 검출에 쓰지 않는다(호출 호환용). pivot_high_col 은 prev_opp 기록에만 쓴다.
+    oversold_level/width_drop 미지정 시 config.STOCH_DOUBLE_PARAMS.
+    """
+    level, drop = _double_params(oversold_level, width_drop)
+
+    df[db_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    df[db_candidate_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    df[neckline_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    record_kind = kind_col is not None and delta_col is not None
+    if record_kind:
+        df[kind_col] = pd.Series(pd.NA, index=df.index, dtype="object")
+        df[delta_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    if first_pos_col is not None:
+        df[first_pos_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    if prev_opp_col is not None:
+        df[prev_opp_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
+
+    if value_col not in df.columns:
+        return df
+
+    values = df[value_col].astype("float64").to_numpy()
+    n = len(values)
+    pivot_highs = df[pivot_high_col] if pivot_high_col and pivot_high_col in df.columns else None
+    index = df.index
+
+    def _valid(i: int) -> bool:
+        return i >= 0 and not np.isnan(values[i])
+
+    def _left_edge(center: int, ceiling: float, floor_pos: int) -> int:
+        """center 에서 왼쪽으로 값 ≤ ceiling 인 연속 구간의 시작 iloc (floor_pos 이전으로는 가지 않음)."""
+        left = center
+        while left - 1 >= floor_pos and _valid(left - 1) and values[left - 1] <= ceiling:
+            left -= 1
+        return left
+
+    def _record_kind(pos: int, first_value: float, second_value: float) -> None:
+        if not record_kind:
+            return
+        kind, delta = classify_pattern_kind(first_value, second_value)
+        df.at[index[pos], kind_col] = kind
+        df.at[index[pos], delta_col] = delta
+
+    def _record_prev_opp(confirm_pos: int, first_pos: int) -> None:
+        if prev_opp_col is None or pivot_highs is None or first_pos <= 0:
+            return
+        segment = pivot_highs.iloc[:first_pos].dropna()
+        if segment.empty:
+            return
+        df.at[index[confirm_pos], prev_opp_col] = float(segment.iloc[-1])
+
+    # --- 상태 ---
+    # phase: "idle"   침체권 진입 대기
+    #        "first"  첫 바닥 형성 중(침체권 안이거나, 이탈했지만 폭 구간이 아직 안 닫힘)
+    #        "second" 첫 바닥 폭 확정 후 두 번째 바닥 탐색
+    phase = "idle"
+    floor_pos = 0                      # 폭 구간 왼쪽 탐색 하한(직전 확정/실패 봉 — 이전 패턴을 넘지 않는다)
+    p1 = v1 = l1 = r1 = w1 = None      # 첫 바닥: iloc, 값, 폭 구간 [l1, r1) , 폭
+    exited = False                     # 첫 바닥이 침체선 위로 나갔는가
+    h = hpos = None                    # 첫 바닥 폭 확정 이후의 최고값(두 바닥 사이 골)과 위치
+    p2 = v2 = l2 = None                # 두 번째 바닥 후보
+    active_marks: list[int] = []       # 후보 표기 봉(후보 교체 시 지움)
+
+    def _clear_marks() -> None:
+        nonlocal active_marks
+        for pos in active_marks:
+            df.at[index[pos], db_candidate_col] = pd.NA
+            df.at[index[pos], neckline_col] = pd.NA
+            if record_kind:
+                df.at[index[pos], kind_col] = pd.NA
+                df.at[index[pos], delta_col] = pd.NA
+        active_marks = []
+
+    def _start_first(pos: int) -> None:
+        nonlocal phase, p1, v1, l1, r1, w1, exited, h, hpos, p2, v2, l2
+        phase, p1, v1, exited = "first", pos, values[pos], False
+        l1 = r1 = w1 = None
+        h = hpos = p2 = v2 = l2 = None
+
+    def _promote_second_to_first(pos: int) -> None:
+        """실패한 두 번째 바닥이 침체권 바닥이었으면 그것이 새 첫 바닥이 된다(폭은 이미 닫힘)."""
+        nonlocal phase, p1, v1, l1, r1, w1, exited, h, hpos, p2, v2, l2
+        p1, v1, l1, r1 = p2, v2, l2, pos
+        w1 = r1 - l1
+        exited = True
+        phase, h, hpos = "second", values[pos], pos
+        p2 = v2 = l2 = None
+
+    for pos in range(n):
+        if not _valid(pos):
+            continue
+        v = values[pos]
+
+        if phase == "idle":
+            if v <= level:
+                _start_first(pos)
+            continue
+
+        if phase == "first":
+            if v < v1:                       # 더 낮은 바닥 → 바닥 갱신(폭 구간도 다시 잰다)
+                p1, v1, r1 = pos, v, None
+            if v > level:
+                exited = True
+            if r1 is None and pos > p1 and v > v1 + drop:
+                r1 = pos                     # 폭 구간 오른쪽 끝(배타)
+            if exited and r1 is not None:
+                l1 = _left_edge(p1, v1 + drop, floor_pos)
+                w1 = r1 - l1
+                phase, h, hpos = "second", v, pos
+                p2 = v2 = l2 = None
+            continue
+
+        # phase == "second"
+        if v > h:                            # 두 바닥 사이 골 갱신 → 그 뒤부터 두 번째 바닥을 다시 찾는다
+            h, hpos = v, pos
+            if p2 is not None:
+                _clear_marks()
+            p2 = v2 = l2 = None
+            continue
+
+        if p2 is None or v < v2:             # 두 번째 바닥 후보 갱신(골 이후의 최저값)
+            if p2 is not None:
+                _clear_marks()
+            p2, v2 = pos, v
+            l2 = _left_edge(p2, v2 + drop, hpos + 1)
+        confirm_level = max(level, v2 + drop)
+
+        if pos > p2 and v > confirm_level:   # 두 번째 바닥 이탈 봉 → 폭 확정·비교
+            w2 = pos - l2
+            separated = h > v2 + drop        # 골이 두 번째 바닥 폭 구간 밖(별개 바닥)
+            if separated and w2 < w1:
+                df.at[index[pos], db_col] = float(v)
+                df.at[index[pos], neckline_col] = float(confirm_level)
+                _record_kind(pos, v1, v2)
+                if first_pos_col is not None:
+                    df.at[index[pos], first_pos_col] = float(p1)
+                _record_prev_opp(pos, p1)
+                active_marks = []
+                floor_pos = pos
+                phase = "idle"
+                p1 = v1 = l1 = r1 = w1 = None
+                h = hpos = p2 = v2 = l2 = None
+                continue
+            # 실패: 두 번째 바닥이 침체권 바닥이었으면 새 첫 바닥으로, 아니면 새 침체권 진입 대기
+            _clear_marks()
+            floor_pos = pos
+            if separated and v2 <= level:
+                _promote_second_to_first(pos)
+            else:
+                phase = "idle"
+                p1 = v1 = l1 = r1 = w1 = None
+                h = hpos = p2 = v2 = l2 = None
+            continue
+
+        # 형성 중 표기: 별개 바닥이고 지금까지의 폭이 첫 바닥보다 짧을 때만 후보로 보인다
+        if h > v2 + drop and (pos - l2 + 1) < w1:
+            if not active_marks:
+                df.at[index[p2], db_candidate_col] = float(v2)
+                df.at[index[p2], neckline_col] = float(confirm_level)
+                _record_kind(p2, v1, v2)
+                active_marks = [p2]
+            if pos != p2:
+                df.at[index[pos], neckline_col] = float(confirm_level)
+                active_marks.append(pos)
+        elif active_marks:
+            _clear_marks()
+
+    return df
+
+
+def detect_double_top_patterns(
+    df: pd.DataFrame,
+    value_col: str,
+    pivot_high_col: str,
+    dt_col: str,
+    dt_candidate_col: str,
+    neckline_col: str,
+    kind_col: str | None = None,
+    delta_col: str | None = None,
+    first_pos_col: str | None = None,
+    pivot_low_col: str | None = None,
+    prev_opp_col: str | None = None,
+    overbought_level: float | None = None,
+    width_drop: float | None = None,
+) -> pd.DataFrame:
+    """쌍봉 = 100 − 값 반전 공간의 쌍바닥 (봉 단위 대칭). 결과는 원공간 값으로 되돌려 기록한다."""
+    from config.settings import STOCH_DOUBLE_PARAMS
+    level = STOCH_DOUBLE_PARAMS["overbought"] if overbought_level is None else float(overbought_level)
+
+    inverted = pd.DataFrame(index=df.index)
+    inverted[value_col] = 100.0 - df[value_col] if value_col in df.columns else pd.NA
+    inv_low = "__inv_pivot_low"
+    inv_high = "__inv_pivot_high"
+    inverted[inv_low] = (100.0 - df[pivot_high_col]) if pivot_high_col in df.columns else pd.NA
+    inverted[inv_high] = (100.0 - df[pivot_low_col]) if pivot_low_col and pivot_low_col in df.columns else pd.NA
+    k_kind, k_delta, k_first, k_prev = "__kind", "__delta", "__first", "__prev"
+    inverted = detect_double_bottom_patterns(
+        inverted, value_col, inv_low, "__db", "__cand", "__neck",
+        kind_col=k_kind, delta_col=k_delta, first_pos_col=k_first, pivot_high_col=inv_high, prev_opp_col=k_prev,
+        oversold_level=100.0 - level, width_drop=width_drop,
+    )
+    df[dt_col] = (100.0 - inverted["__db"]).astype("Float64")
+    df[dt_candidate_col] = (100.0 - inverted["__cand"]).astype("Float64")
+    df[neckline_col] = (100.0 - inverted["__neck"]).astype("Float64")
+    if kind_col is not None and delta_col is not None:
+        df[kind_col] = inverted[k_kind].map(_INVERT_KIND_MAP).astype("object")
+        df[delta_col] = (-inverted[k_delta]).astype("Float64")
+    if first_pos_col is not None:
+        df[first_pos_col] = inverted[k_first].astype("Float64")
+    if prev_opp_col is not None:
+        df[prev_opp_col] = (100.0 - inverted[k_prev]).astype("Float64")
+    return df
+
+
+def detect_stochastic_bottom_patterns(df: pd.DataFrame, suffix: str, oversold_level: float | None = None) -> pd.DataFrame:
+    """스토캐 쌍바닥 — 침체권(K ≤ oversold) 이탈 후 두 번째 바닥의 폭이 첫 바닥보다 짧을 때 (정의: 모듈 주석)."""
     return detect_double_bottom_patterns(
         df,
         f"stoch_k_{suffix}",
@@ -510,63 +770,30 @@ def detect_stochastic_bottom_patterns(df: pd.DataFrame, suffix: str, oversold_le
         first_pos_col=f"stoch_db_first_pos_{suffix}",
         pivot_high_col=f"stoch_pivot_high_{suffix}",
         prev_opp_col=f"stoch_db_prev_opp_{suffix}",
+        oversold_level=oversold_level,
     )
 
 
-def detect_stochastic_top_patterns(df: pd.DataFrame, suffix: str, overbought_level: float = 80.0) -> pd.DataFrame:
-    """Detects stochastic double tops by reusing the double-bottom state machine on an
-    inverted (100 - value) wave.
+def detect_stochastic_top_patterns(df: pd.DataFrame, suffix: str, overbought_level: float | None = None) -> pd.DataFrame:
+    """스토캐 쌍봉 — 과매수권(K ≥ overbought) 이탈 후 두 번째 봉우리의 폭이 첫 봉우리보다 짧을 때.
 
-    쌍바닥 상태머신을 복제하지 않고 반전 호출로 구현한다. 이렇게 하면 쌍봉이 쌍바닥과
-    봉 단위로 정확히 대칭이 된다. 결과는 기존 컬럼명(stoch_dt_*)에 그대로 기록한다.
+    100 − K 반전 공간의 쌍바닥으로 구현해 쌍바닥과 봉 단위로 정확히 대칭이다(정의: 모듈 주석).
+    결과는 기존 컬럼명(stoch_dt_*)에 그대로 기록한다.
     """
-    k_col = f"stoch_k_{suffix}"
-    pivot_high_col = f"stoch_pivot_high_{suffix}"
-    pivot_low_col = f"stoch_pivot_low_{suffix}"
-    dt_col = f"stoch_dt_{suffix}"
-    dt_candidate_col = f"stoch_dt_candidate_{suffix}"
-    dt_neckline_col = f"stoch_dt_neckline_{suffix}"
-
-    dt_kind_col = f"stoch_dt_kind_{suffix}"
-    dt_delta_col = f"stoch_dt_delta_{suffix}"
-
-    df[dt_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-    df[dt_candidate_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-    df[dt_neckline_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-    df[dt_kind_col] = pd.Series(pd.NA, index=df.index, dtype="object")
-    df[dt_delta_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-    dt_first_pos_col = f"stoch_dt_first_pos_{suffix}"
-    dt_prev_opp_col = f"stoch_dt_prev_opp_{suffix}"
-    df[dt_first_pos_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-    df[dt_prev_opp_col] = pd.Series(pd.NA, index=df.index, dtype="Float64")
-
-    if k_col not in df.columns or pivot_high_col not in df.columns or pivot_low_col not in df.columns:
-        return df
-
-    # 1) 임시 df에 100 - K, 피봇 고/저를 교환해 구성
-    inverted = pd.DataFrame(index=df.index)
-    inverted[k_col] = 100.0 - df[k_col]
-    inverted[pivot_low_col] = 100.0 - df[pivot_high_col]
-    inverted[pivot_high_col] = 100.0 - df[pivot_low_col]
-
-    # 2) 기존 쌍바닥 검출을 oversold_level = 100 - overbought_level로 호출 (kind도 반전 공간에서 산출)
-    inverted = detect_stochastic_bottom_patterns(inverted, suffix, oversold_level=100.0 - overbought_level)
-
-    # 3) 결과를 100 - 값으로 되돌려 쌍봉 컬럼에 기록
-    df[dt_col] = (100.0 - inverted[f"stoch_db_{suffix}"]).astype("Float64")
-    df[dt_candidate_col] = (100.0 - inverted[f"stoch_db_candidate_{suffix}"]).astype("Float64")
-    df[dt_neckline_col] = (100.0 - inverted[f"stoch_neckline_{suffix}"]).astype("Float64")
-
-    # 4) kind는 반전 공간(HL/LL) -> 원공간(LH/HH)으로 뒤집어 매핑, delta는 부호 반전
-    inv_kind = inverted[f"stoch_db_kind_{suffix}"]
-    df[dt_kind_col] = inv_kind.map(_INVERT_KIND_MAP).astype("object")
-    df[dt_delta_col] = (-inverted[f"stoch_db_delta_{suffix}"]).astype("Float64")
-    # 위치는 반전 불변량 — 반전 공간 db first_pos를 그대로 복사
-    df[dt_first_pos_col] = inverted[f"stoch_db_first_pos_{suffix}"].astype("Float64")
-    # 값은 반전 복원 — neckline과 동일 패턴 (100 − v)
-    db_prev_opp = inverted[f"stoch_db_prev_opp_{suffix}"]
-    df[dt_prev_opp_col] = (100.0 - db_prev_opp).astype("Float64")
-    return df
+    return detect_double_top_patterns(
+        df,
+        f"stoch_k_{suffix}",
+        f"stoch_pivot_high_{suffix}",
+        f"stoch_dt_{suffix}",
+        f"stoch_dt_candidate_{suffix}",
+        f"stoch_dt_neckline_{suffix}",
+        kind_col=f"stoch_dt_kind_{suffix}",
+        delta_col=f"stoch_dt_delta_{suffix}",
+        first_pos_col=f"stoch_dt_first_pos_{suffix}",
+        pivot_low_col=f"stoch_pivot_low_{suffix}",
+        prev_opp_col=f"stoch_dt_prev_opp_{suffix}",
+        overbought_level=overbought_level,
+    )
 
 
 def detect_triple_bottom_patterns(

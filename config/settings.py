@@ -75,6 +75,16 @@ STOCH_PIVOT_PARAMS = {
     "min_gap": 4,
     "min_delta": 4.0,
 }
+# 스토캐 쌍바닥/쌍봉 정의 파라미터 (김박사 정의, 2026-09-22 — indicators/stochastic.py 모듈 주석 참조).
+#   쌍봉: 과매수권(K ≥ overbought)에 들어간 첫 봉우리가 과매수권을 벗어난 뒤 두 번째 봉우리를 만들되,
+#         두 번째 봉우리의 폭이 첫 번째보다 짧아야 한다. 쌍바닥은 대칭(K ≤ oversold).
+#   width_drop: 봉우리 폭(정점 전후 대칭 폭)을 재는 높이 — 정점에서 이 값만큼 내려온 높이 위에 머문 봉 수.
+#   김박사 조정 대상. 피봇(STOCH_PIVOT_PARAMS)은 쌍바닥/쌍봉 검출에 더는 쓰이지 않고 쓰리바닥·기록용으로만 남는다.
+STOCH_DOUBLE_PARAMS = {
+    "overbought": 80.0,
+    "oversold": 20.0,
+    "width_drop": 10.0,
+}
 
 # --- MACD Settings ---
 MACD_PARAMS = {

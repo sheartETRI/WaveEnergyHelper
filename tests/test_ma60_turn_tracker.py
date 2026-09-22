@@ -285,8 +285,16 @@ def test_elapsed_column_waiting_turned_expired_from_confirm_bar():
 def test_elapsed_column_is_in_table_and_named_by_meaning():
     assert T.ELAPSED_COL == "경과/소요" and T.ELAPSED_COL in T.COLUMNS and "경과" not in T.COLUMNS
     df = _synthetic_frame()
-    text = " | ".join(T.build_lines(T.track_candidates(df, recent_bars=len(df))))
-    assert "소요 " in text and "경과 " in text     # 전환 발생은 '소요', 대기 중은 '경과' 로 읽힌다
+    frame = T.track_candidates(df, recent_bars=len(df))
+    text = " | ".join(T.build_lines(frame))
+    # 전환 발생은 '소요', 대기 중은 '경과' 로 읽힌다 — 합성 프레임에 어떤 상태가 있느냐는 검출기 정의에 따르므로
+    # 존재하는 상태에 대해서만 낱말을 확인한다(낱말 규칙 자체는 test_elapsed_column_waiting_turned_expired_from_confirm_bar).
+    statuses = set(frame["상태"].tolist())
+    assert statuses & {T.STATUS_TURNED, T.STATUS_WAITING}, "합성 프레임에 전환/대기 후보가 하나도 없다"
+    if T.STATUS_TURNED in statuses:
+        assert "소요 " in text
+    if T.STATUS_WAITING in statuses:
+        assert "경과 " in text
 
 
 def test_tf_column_and_bar_unit_caption_make_elapsed_readable():

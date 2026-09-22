@@ -1,4 +1,8 @@
-"""스토캐스틱 쌍바닥/쌍봉 kind·delta 기록 + 골든(기존 결과 불변) 테스트 (작업 1).
+"""스토캐스틱 쌍바닥/쌍봉 kind·delta 기록 + 골든(정의 고정) 테스트.
+
+2026-09-22 정의 교체: 쌍봉 = 과매수권 이탈 후 두 번째 봉우리의 폭(정점 전후 대칭 폭, width_drop)이 첫 봉우리보다
+짧을 때, 확정은 두 번째 봉우리가 min(80, 정점2−width_drop) 아래로 이탈하는 봉. 쌍바닥은 대칭.
+data_golden_stoch.json 은 이 정의로 다시 생성했다(위치·kind 완전 일치를 요구).
 
 실행: `python -m pytest tests/test_stoch_kind.py` 또는 `python tests/test_stoch_kind.py`
 """
@@ -111,29 +115,31 @@ def test_stochastic_kind_matches_computed_delta():
     assert found_db > 0 and found_dt > 0
 
 
-def test_golden_prepatch_HL_preserved():
-    """패치 전(HL 전용) 확정되던 모든 db/dt가 패치 후에도 동일 봉에서 확정되어야 한다.
-
-    LL/HH는 '추가'만 허용 (기존 확정은 손실 금지).
-    """
+def test_golden_definition_locked():
+    """폭 비교 정의의 db/dt 확정 위치·kind 가 골든과 정확히 일치한다 (정의 고정 — 의도치 않은 변경 감지)."""
     with open(_GOLDEN_PATH, encoding="utf-8") as fh:
         golden = json.load(fh)
 
     for seed_str, per_layer in golden.items():
         df = add_stochastic_slow_layers(_make_walk(400, int(seed_str)).copy())
         for s, cols in per_layer.items():
-            db_now = set(np.where(df[f"stoch_db_{s}"].notna().values)[0].tolist())
-            dt_now = set(np.where(df[f"stoch_dt_{s}"].notna().values)[0].tolist())
-            assert set(cols["db"]).issubset(db_now), f"seed{seed_str} {s}: db 손실 {set(cols['db'])-db_now}"
-            assert set(cols["dt"]).issubset(dt_now), f"seed{seed_str} {s}: dt 손실 {set(cols['dt'])-dt_now}"
-            for pos in cols["db"]:
-                assert df[f"stoch_db_kind_{s}"].iloc[pos] == "HL"
-            for pos in cols["dt"]:
-                assert df[f"stoch_dt_kind_{s}"].iloc[pos] == "LH"
+            db_now = np.where(df[f"stoch_db_{s}"].notna().values)[0].tolist()
+            dt_now = np.where(df[f"stoch_dt_{s}"].notna().values)[0].tolist()
+            assert db_now == cols["db"], f"seed{seed_str} {s}: db 위치 변경 {cols['db']} → {db_now}"
+            assert dt_now == cols["dt"], f"seed{seed_str} {s}: dt 위치 변경 {cols['dt']} → {dt_now}"
+            assert df.loc[df[f"stoch_db_{s}"].notna(), f"stoch_db_kind_{s}"].tolist() == cols["db_kind"]
+            assert df.loc[df[f"stoch_dt_{s}"].notna(), f"stoch_dt_kind_{s}"].tolist() == cols["dt_kind"]
+            # 폭 비교 정의: 확정 봉의 K 는 침체선(20) 위 / 과매수선(80) 아래 (이탈 봉이므로)
+            assert (df.loc[df[f"stoch_db_{s}"].notna(), f"stoch_k_{s}"] > 20.0).all()
+            assert (df.loc[df[f"stoch_dt_{s}"].notna(), f"stoch_k_{s}"] < 80.0).all()
 
 
 def test_db_first_pos_matches_first_bottom():
-    """확정 시 first_pos == 패턴 1번 바닥 iloc."""
+    """확정 시 first_pos == 패턴 1번 바닥 iloc (바닥 최저값의 첫 봉).
+
+    첫 바닥 15 (iloc 5~9, 폭 구간 K≤25 = iloc 4~9 → 폭 6), 침체선 이탈(30) 뒤 두 번째 바닥 8 (iloc 14~15, 폭 2).
+    확정 = 두 번째 바닥이 max(20, 8+10=18) 위로 이탈하는 봉 iloc 16 (K=30). 폭 2 < 6 → 쌍바닥.
+    """
     k = [80, 70, 55, 40, 25, 15, 15, 15, 15, 15,
          30, 45, 60,
          35, 8, 8,
@@ -151,7 +157,8 @@ def test_db_first_pos_matches_first_bottom():
     )
     hits = out[out["db"].notna()]
     assert len(hits) == 1
-    assert int(hits["fp"].iloc[0]) == 7
+    assert int(hits["fp"].iloc[0]) == 5
+    assert hits.index[0] == idx[16] and float(hits["neck"].iloc[0]) == 20.0
 
 
 def test_first_pos_golden_base_columns_unchanged():
@@ -181,7 +188,7 @@ def test_reversal_first_pos_symmetry():
 
 
 def test_LL_double_bottom_confirmed():
-    """첫 침체 길고 얕음(K≈15) + 두 번째 짧고 깊음(K≈8) + 넥라인 돌파 -> kind="LL" 확정."""
+    """첫 침체 길고 얕음(K≈15, 폭 6) + 두 번째 짧고 깊음(K≈8, 폭 2) + 침체선 이탈 -> kind="LL" 확정."""
     k = [80, 70, 55, 40, 25, 15, 15, 15, 15, 15,
          30, 45, 60,
          35, 8, 8,
