@@ -4,6 +4,8 @@
 token.txt
 pushbullet_state.json
 pushbullet_state.json.tmp
+pushbullet_state.legacy.json
+pushbullet_state.legacy.json.tmp
 __pycache__/
 *.py[cod]
 .pytest_cache/
