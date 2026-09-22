@@ -86,6 +86,19 @@ STOCH_DOUBLE_PARAMS = {
     "width_drop": 10.0,
 }
 
+# --- 알람 Pushbullet 푸시 (scripts/push_alarms.py) — 김박사 조정 대상 ---
+# 감시 목록: 심볼 × TF 전부 순회. TF 는 Binance 네이티브 간격만(커스텀 2d·4d·2w 는 닫힌 봉 판정 미지원).
+PUSH_WATCHLIST = {
+    "symbols": ["BTCUSDT"],
+    "intervals": ["1h", "2h", "4h", "6h", "1d"],
+}
+PUSH_PARAMS = {
+    "include_candidates": False,          # 후보(미확정) 신호 전송 여부 — 기본 확정만
+    "lookback_bars": 3,                   # 전송 이력이 없는 첫 실행에서 볼 최근 닫힌 봉 수(과거 알람 폭주 방지)
+    "token_file": "token.txt",            # 저장소 홈, Pushbullet Access Token 한 줄 (.gitignore)
+    "state_file": "pushbullet_state.json",  # 전송 이력(중복 방지·따라잡기), 저장소 홈 (.gitignore)
+}
+
 # --- MACD Settings ---
 MACD_PARAMS = {
     "fast": 12,
