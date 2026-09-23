@@ -422,6 +422,20 @@
     "pattern_high": 807.11,
     "already_down": false,
     "recorded_at": "2026-09-22T22:52:44Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-22T04:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 2807.34,
+    "already_down": false,
+    "recorded_at": "2026-09-23T01:24:27Z"
    }
   ]
  }
