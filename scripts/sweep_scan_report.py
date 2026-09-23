@@ -99,7 +99,12 @@ def scan_confluence_frame(df: pd.DataFrame):
     rows = []
     for role in roles:
         suffix = WAVE_LAYER_ROLES[role]
-        for prefix, name in (("stoch_db", "db"), ("stoch_dt", "dt")):
+        for prefix, name in (
+            ("stoch_db", "db"),
+            ("stoch_dt", "dt"),
+            ("stoch_db_candidate", "db_candidate"),
+            ("stoch_dt_candidate", "dt_candidate"),
+        ):
             col = f"{prefix}_{suffix}"
             if col not in enriched.columns:
                 continue
@@ -136,6 +141,11 @@ def main() -> int:
 
     for interval in [s.strip() for s in args.intervals.split(",") if s.strip()]:
         df = build_dataframe(fetch_klines(args.symbol, interval, args.limit))
+
+        # 원봉 덤프 — 원격 진단 재현용 (스냅샷, 매 실행 덮어씀).
+        ohlcv_path = os.path.join(logs_dir, f"ohlcv_{args.symbol}_{interval}.csv")
+        df.to_csv(ohlcv_path, encoding="utf-8-sig")
+
         frame = events_to_frame(scan_sweep_events(df))
 
         out_path = os.path.join(logs_dir, f"sweep_events_{args.symbol}_{interval}.csv")
