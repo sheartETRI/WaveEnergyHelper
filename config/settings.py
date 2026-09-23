@@ -271,3 +271,11 @@ SWEEP_CONFLUENCE_PARAMS = {
     "max_gap_bars": 8,
     "layer_roles": ["large"],
 }
+
+# 구역 니어미스 진단 (analysis/stoch_near_miss.py) — 기록 전용.
+#   침체/과매수 경계에 near_band 이내로 못 미친 국소 극값을 기록 — FN 클래스 빈도 표본.
+#   구역 값은 STOCH_DOUBLE_PARAMS 재사용. docs/SPEC_SWEEP_RECLAIM.md §7 동결 스펙.
+STOCH_NEAR_MISS_PARAMS = {
+    "near_band": 5.0,
+    "layer_roles": ["large"],
+}

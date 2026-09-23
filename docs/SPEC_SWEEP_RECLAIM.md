@@ -99,3 +99,34 @@
 - `analysis/sweep_confluence.py` — 검출기 무수정: `stoch_db_{suffix}`/`stoch_dt_{suffix}`
   확정 컬럼과 `scan_sweep_events` 출력을 읽는 조인 레이어(alarm_signals 와 같은 태도).
 - 비목표: §0과 동일 — 게이팅·알람 발송·백테스트 판정 없음.
+
+## 7. 부록 — 구역 니어미스 기록 (2026-09-23 동결, 기록 전용 진단)
+
+배경: 2026-09 BTCUSDT 6h 조정의 1차 바닥은 대파동 K 20.49 — 침체선 20.0에 **0.49
+미달**로 구역 진입에 실패해 쌍바닥 후보가 아예 열리지 않았다(모양은 교과서적
+쌍바닥, 이후 K 89까지 직행). 연속 변수에 하드 문턱을 걸 때 생기는 FN 클래스의
+빈도를 세기 위한 진단 레이어다. **검출기 판정은 바꾸지 않는다** — 침체선 완화
+여부는 이 기록이 쌓인 뒤(2027-03 열람 이후) 표본으로 판단한다.
+
+### 정의 (하단 기준 — 상단은 미러)
+
+| 항목 | 정의 |
+|---|---|
+| 국소 극소 | `K[i-1] > K[i] < K[i+1]` 인 봉 i (엄격 부등호 — 동값 플래토는 판정하지 않음: 이중 스무딩된 K 에서 드묾). 확정 봉 = i+1 (t+1, lookahead 없음) |
+| db 니어미스 | `oversold < K[i] ≤ oversold + near_band` — 구역 진입 실패 바닥. `K[i] ≤ oversold` 는 본 검출기 영역이므로 기록하지 않음 |
+| dt 니어미스 | `overbought − near_band ≤ K[i] < overbought` — 미러 |
+| margin | 경계까지 거리: db 는 `K[i] − oversold`, dt 는 `overbought − K[i]` |
+| 구역 값 | `STOCH_DOUBLE_PARAMS` 의 oversold(20.0)/overbought(80.0) 재사용 — 중복 정의 금지 |
+
+### 사전등록 파라미터 (`config.settings.STOCH_NEAR_MISS_PARAMS`)
+
+| 키 | 값 | 의미 |
+|---|---|---|
+| `near_band` | 5.0 | 구역 경계 바깥 기록 폭(K 포인트) |
+| `layer_roles` | ["large"] | 대상 레이어 (§6과 동일 관례) |
+
+### 구현 계약
+
+- `analysis/stoch_near_miss.py` — 검출기·지표 무수정: 이미 계산된
+  `stoch_k_{suffix}` 컬럼만 읽는다. 순수 pandas.
+- 비목표: §0과 동일. 니어미스는 신호가 아니라 FN 클래스 빈도 표본이다.

@@ -81,11 +81,12 @@ def scan_confluence_frame(df: pd.DataFrame):
     """
     try:
         from indicators.stochastic import add_stochastic_slow_layers
+        from analysis.stoch_near_miss import near_miss_to_frame, scan_near_miss_events
         from analysis.sweep_confluence import confluence_to_frame, scan_confluence_events
         from config.settings import SWEEP_CONFLUENCE_PARAMS, WAVE_LAYER_ROLES
     except Exception as err:
         print(f"(합류 스캔 생략 — 임포트 실패: {err})")
-        return None, None
+        return None, None, None
     enriched = add_stochastic_slow_layers(df.copy())
     roles = SWEEP_CONFLUENCE_PARAMS.get("layer_roles", [])
     missing = [
@@ -94,7 +95,7 @@ def scan_confluence_frame(df: pd.DataFrame):
     ]
     if missing:
         print(f"(합류 스캔 생략 — 검출 컬럼 없음: {missing})")
-        return None, None
+        return None, None, None
 
     rows = []
     for role in roles:
@@ -121,7 +122,8 @@ def scan_confluence_frame(df: pd.DataFrame):
     confirms = pd.DataFrame(
         rows, columns=["timestamp", "layer", "kind", "db_kind", "value"]
     ).sort_values("timestamp")
-    return confluence_to_frame(scan_confluence_events(enriched)), confirms
+    near = near_miss_to_frame(scan_near_miss_events(enriched))
+    return confluence_to_frame(scan_confluence_events(enriched)), confirms, near
 
 
 def main() -> int:
@@ -165,7 +167,13 @@ def main() -> int:
         print(show.to_string(index=False) if len(show) else "(해당 기간 이벤트 없음)")
         print(f"-> CSV: {os.path.relpath(out_path, root)}")
 
-        conf, confirms = scan_confluence_frame(df)
+        conf, confirms, near = scan_confluence_frame(df)
+        if near is not None:
+            near_path = os.path.join(
+                logs_dir, f"stoch_near_miss_{args.symbol}_{interval}.csv"
+            )
+            near.to_csv(near_path, index=False, encoding="utf-8-sig")
+            print(f"-> 구역 니어미스 진단 CSV: {os.path.relpath(near_path, root)} ({len(near)}건)")
         if confirms is not None:
             confirms_path = os.path.join(
                 logs_dir, f"stoch_confirms_{args.symbol}_{interval}.csv"
