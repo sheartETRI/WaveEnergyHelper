@@ -70,7 +70,8 @@ def _frame(n=1600, seed=7):
 
 
 def test_flags_consume_detector_kind_and_probe_pivots_on_pipeline():
-    pipe = T.tracker_pipe(_frame())
+    # 검출 정의 개선(ee2ba79) 뒤 1,600봉 표본은 후보 13건 — 표본 ≥20 기준은 그대로 두고 같은 생성식으로 3,200봉(후보 23건)을 쓴다
+    pipe = T.tracker_pipe(_frame(n=3200))
     sig = probe.extract_signals(pipe)
     flags = DV.divergence_flags(pipe, sig)
     assert set(flags) == {int(cd["confirm_pos"]) for cd in sig["cands"]} and len(flags) >= 20

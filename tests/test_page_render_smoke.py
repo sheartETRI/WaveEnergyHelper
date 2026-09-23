@@ -26,7 +26,9 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 _STEP_MS = {"m": 60_000, "h": 3_600_000, "d": 86_400_000, "w": 604_800_000, "M": 30 * 86_400_000}
 
 
-SEED = 2      # 최근 120봉(1h) 안에 상승 후보 5건(있음 1·없음 4)·하방 후보 3건이 들어오는 시드 — 표가 실제로 그려져야 검사가 성립
+# 검출 정의 개선(ee2ba79) 뒤 최근 120봉(1h) 안에 상승 후보 2건(있음 1·없음 1 — 대기 중 1·'해당 없음 (이미 상방)' 1)·하방 후보 1건('해당 없음 (이미 하방)')
+# 이 들어오는 시드 — 표가 실제로 그려져야 검사가 성립. 후보 위치는 가격열만의 함수라 시각 정렬(지금 기준)과 무관하게 재현된다.
+SEED = 49
 
 
 def _synthetic_klines(interval: str, n: int, seed: int = SEED):
@@ -98,6 +100,10 @@ def test_alarm_tab_tracker_table_renders_divergence_column_and_cohort_caption(ap
     # 하방 추적 표는 열이 없다(변경 없음)
     down = [d.value for d in app.dataframe if list(d.value.columns) == list(D.COLUMNS)]
     assert down and DV.DIVERGENCE_COL not in down[0].columns
+    # '확정 시 이미 상방/하방' 상태 분리(908b71c)가 렌더 결과물에 있다: 표 상태 문구 + 5번째 메트릭(건수)
+    assert T.STATUS_ALREADY_UP in set(df["상태"]) and D.STATUS_ALREADY_DOWN in set(down[0]["상태"])
+    labels = [m.label for m in app.metric]
+    assert f"{T.ALREADY_UP_MARK} {T.UNVERIFIED}" in labels and f"{D.ALREADY_DOWN_MARK} {D.UNVERIFIED}" in labels
 
 
 def test_tracker_table_matches_direct_computation_on_same_frame(app):
@@ -112,3 +118,4 @@ def test_tracker_table_matches_direct_computation_on_same_frame(app):
     got = _tracker_df(app)
     assert list(got[DV.DIVERGENCE_COL]) == list(expected[DV.DIVERGENCE_COL])
     assert list(got["확정 시각"]) == list(expected["확정 시각"])
+    assert list(got["상태"]) == list(expected["상태"])                      # 상태 분리(해당 없음)도 렌더 경로에서 그대로
