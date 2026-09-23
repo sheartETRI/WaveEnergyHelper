@@ -17,3 +17,9 @@ validation/observatory_journal.csv
 # 키 차트 검증(§8): OHLCV·프레임 상태 캐시 — 재생성 가능, 커밋 대상 아님
 validation/keychart/_ohlcv_cache/
 validation/keychart/_state_cache/
+
+# 실행 로그·정적 차트 산출물 — 커밋 대상 아님 (logs/ 는 push_alarms --log 용 빈 디렉터리만 유지)
+*.log
+logs/*
+!logs/.gitkeep
+/*_ma_chart.png

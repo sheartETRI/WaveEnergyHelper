@@ -1,7 +1,7 @@
 # 레거시·연구 경로 전용 의존 — 데모(main.py)는 이 파일 없이 기동한다.
 #   pip install -r requirements.txt -r requirements-legacy.txt
 
-# charts/plotly_builder.py (이전 차트 엔진, display/panel_registry 지연 import)·legacy_main.py
+# charts/plotly_builder.py (이전 차트 엔진, display/panel_registry 지연 import)
 plotly
 # plot_btcusdt_ma.py, validation/g1a_render.py (정적 차트 이미지)
 mplfinance
