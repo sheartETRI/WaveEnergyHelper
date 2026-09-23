@@ -59,11 +59,11 @@ def test_port_is_verbatim_import_consumption_no_reimplementation():
 
 def test_events_equal_tracker_rows(pipe, events):
     turned = MT.track_candidates(pipe, recent_bars=len(pipe))
-    turned = turned[turned["상태"] == MT.STATUS_TURNED]
+    turned = turned[turned[MT.LIFECYCLE_COL] == MT.STATUS_TURNED]      # 원 생애주기 — '이미 상방'(표 상태 해당 없음) 후보의 창 안 새 전환도 종전대로 발화
     got_turn = {e.ts for e in events if e.kind == EV.KIND_MA60_TURN}
     assert got_turn == set(pd.to_datetime(turned["전환 시각"])) and len(got_turn) >= 1
     down = MD.track_candidates(pipe, recent_bars=len(pipe))
-    down = down[down["상태"] == MD.STATUS_TURNED]
+    down = down[down[MD.LIFECYCLE_COL] == MD.STATUS_TURNED]
     got_down = {e.ts: e for e in events if e.kind == EV.KIND_MA60_DOWN}
     assert set(got_down) == set(pd.to_datetime(down["전환 시각"])) and len(got_down) >= 1
     for d in down.to_dict("records"):
@@ -248,6 +248,11 @@ def test_ledger_rows_up_and_down_with_direction_and_no_key_collision(pipe):
     by_ts = {pd.Timestamp(d["확정 시각"]).strftime("%Y-%m-%dT%H:%M:%SZ"): d for d in frame.to_dict("records")}
     for r in up_rows:
         assert r["divergence"] == flags[int(by_ts[r["confirm_ts"]]["_confirm_pos"])]
+    # '이미 상방' 후보도 원 생애주기(LIFECYCLE_COL)로 그대로 기록 — 표 상태 '해당 없음' 과 무관, already_up 필드로 구분(기록 불변)
+    done = frame[frame[MT.LIFECYCLE_COL].isin([MT.STATUS_TURNED, MT.STATUS_EXPIRED])]
+    assert len(up_rows) == len(done) >= 1
+    already_ts = {pd.Timestamp(t).strftime("%Y-%m-%dT%H:%M:%SZ") for t in done.loc[done["상태"] == MT.STATUS_ALREADY_UP, "확정 시각"]}
+    assert {r["confirm_ts"] for r in up_rows if r["already_up"]} == already_ts
     down = MD.track_candidates(pipe, recent_bars=len(pipe))
     by_dn = {pd.Timestamp(d["확정 시각"]).strftime("%Y-%m-%dT%H:%M:%SZ"): d for d in down.to_dict("records")}
     for r in dn_rows:

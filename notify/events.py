@@ -1,9 +1,11 @@
 """알림 이벤트 4종 — 검출 모듈 출력만 소비 (재구현 없음).
 
 - ``ma60_turn``   : 대파동 쌍바닥 확정 후 20봉 창 안 60MA 하방→상방 전환. ``display.ma60_turn_tracker.track_candidates``
-                    의 '전환 발생' 행 그대로(창·전환 규칙은 probe.simulate 와 동일, 그 모듈의 테스트가 단언).
+                    의 '전환 발생' 행 그대로(창·전환 규칙은 probe.simulate 와 동일, 그 모듈의 테스트가 단언). 행 선별은 원 생애주기 열
+                    ``LIFECYCLE_COL`` — 확정 시 '이미 상방' 후보의 표 상태가 '해당 없음' 으로 분리돼도 발화·ledger 는 종전과 같다.
 - ``ma60_down``   : 대파동 쌍봉 확정 후 20봉 창 안 60MA 상방→하방 전환(상승 쪽의 거울상). ``display.ma60_down_tracker.track_candidates``
-                    의 '전환 발생' 행 그대로(하락 다이버전스 열 = 그 모듈의 거울상 정의 ``bearish_divergence_flags`` 라벨).
+                    의 '전환 발생' 행 그대로(하락 다이버전스 열 = 그 모듈의 거울상 정의 ``bearish_divergence_flags`` 라벨; 행 선별은
+                    ``LIFECYCLE_COL``, 위와 같다).
                     현물 보유 시 참고용 관측 — 숏·매도 신호가 아니며 하방 전환율은 측정된 바 없음.
 - ``stoch_db``    : 대파동(20,10,10) 쌍바닥 확정 후보(닫힌 봉 기준). ``track_candidates`` 의 후보 행 전부(상태 무관 — 발송 시점의
                     60MA 상태를 본문에 적음). 다이버전스는 ``display.divergence_flag`` 단일 정의(main 870f025).
@@ -92,7 +94,7 @@ def ma60_turn_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
     if frame.empty:
         return out
     flags = DV.divergence_flags(MT.tracker_pipe(pipe))
-    for d in frame[frame["상태"] == MT.STATUS_TURNED].to_dict("records"):
+    for d in frame[frame[MT.LIFECYCLE_COL] == MT.STATUS_TURNED].to_dict("records"):     # 원 생애주기 — 발화 조건 불변
         t_pos = int(pipe.index.get_loc(d["전환 시각"]))
         out.append(Event(
             symbol=symbol, tf=tf, kind=KIND_MA60_TURN, ts=pd.Timestamp(d["전환 시각"]),
@@ -137,7 +139,7 @@ def ma60_down_events(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Event]:
     out: List[Event] = []
     if frame.empty:
         return out
-    for d in frame[frame["상태"] == MD.STATUS_TURNED].to_dict("records"):
+    for d in frame[frame[MD.LIFECYCLE_COL] == MD.STATUS_TURNED].to_dict("records"):     # 원 생애주기 — 발화 조건 불변
         t_pos = int(pipe.index.get_loc(d["전환 시각"]))
         out.append(Event(
             symbol=symbol, tf=tf, kind=KIND_MA60_DOWN, ts=pd.Timestamp(d["전환 시각"]),

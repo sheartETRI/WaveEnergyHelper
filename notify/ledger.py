@@ -6,6 +6,8 @@ direction 키가 없는 행은 상승 쪽이다(CSV 내보내기에서만 "up" �
 - 대상 셀: notify.scanner.SYMBOLS × LEDGER_TFS(1h·4h·6h·1d). 6h 는 기록 전용(알림 대상 아님).
 - 후보·상태·소요 봉 수·전환 가격은 ``display.ma60_turn_tracker.track_candidates`` 의 행 그대로(창 20봉·as-of 규칙 그 모듈 소관),
   다이버전스는 ``display.divergence_flag`` (단일 정의, main 870f025) 그대로. 재구현 없음.
+- 확정 시 60MA 가 이미 상방/하방이던 후보도 **원 생애주기**(행의 ``LIFECYCLE_COL`` — 창 규칙의 전환/소멸)로 그대로 기록한다. 표의 상태
+  '해당 없음 (이미 상방)' 은 표시 분리일 뿐이며, 행의 ``already_up`` / ``already_down`` 필드로 구분한다(기록 불변).
 - **과거 소급 기록 금지**: ledger 가 처음 만들어진 실행 시각(``since``) 이후에 확정된 후보(확정봉 open_time ≥ since)만 기록.
 - 저장 위치: 워크플로가 커밋하는 유일한 파일인 notify/sent.json(notify-state 브랜치) 안의 ``"ledger"`` 필드
   (.github/workflows/notify_scan.yml 무수정 제약). CSV 는 ``to_csv`` 로 내보낸다(python -m notify.scanner --export-ledger 경로).
@@ -58,9 +60,9 @@ def finished_rows(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Dict]:
     flags = DV.divergence_flags(MT.tracker_pipe(pipe))      # 단일 정의 — 확정봉 위치 → 있음/없음
     out: List[Dict] = []
     for d in frame.to_dict("records"):
-        if d["상태"] == MT.STATUS_TURNED:
+        if d[MT.LIFECYCLE_COL] == MT.STATUS_TURNED:           # 원 생애주기 — '이미 상방'(표 상태 해당 없음) 행도 종전대로 기록
             result, bars, turn_ts, price = RESULT_TURNED, int(d["_bars"]), _iso(d["전환 시각"]), float(d["전환 시 가격"])
-        elif d["상태"] == MT.STATUS_EXPIRED:
+        elif d[MT.LIFECYCLE_COL] == MT.STATUS_EXPIRED:
             result, bars, turn_ts, price = RESULT_EXPIRED, None, None, None
         else:
             continue
@@ -82,9 +84,9 @@ def finished_rows_down(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Dict]:
         return []
     out: List[Dict] = []
     for d in frame.to_dict("records"):
-        if d["상태"] == MD.STATUS_TURNED:
+        if d[MD.LIFECYCLE_COL] == MD.STATUS_TURNED:           # 원 생애주기 — '이미 하방'(표 상태 해당 없음) 행도 종전대로 기록
             result, bars, turn_ts, price = RESULT_TURNED, int(d["_bars"]), _iso(d["전환 시각"]), float(d["전환 시 가격"])
-        elif d["상태"] == MD.STATUS_EXPIRED:
+        elif d[MD.LIFECYCLE_COL] == MD.STATUS_EXPIRED:
             result, bars, turn_ts, price = RESULT_EXPIRED, None, None, None
         else:
             continue

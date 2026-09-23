@@ -54,10 +54,9 @@ def _turn(tf, ts, kind=EV.KIND_MA60_TURN, divergence=False):
         "pattern_low": 1.0, "baseline": 1.0, "pattern_high": 1.0, "divergence": divergence})
 
 
-def _snap(tf, ma="↑", waiting=()):
-    rows = [{"elapsed": f"{w[0]}/20", "bars": w[0], "divergence": w[1], "already_up": bool(w[2:] and w[2])}   # (bars, ★[, already_up])
-            for w in waiting]
-    return {"symbol": "BTCUSDT", "tf": tf, "ma60_dir": ma, "waiting": rows}
+def _snap(tf, ma="↑", waiting=(), already_up=0):
+    return {"symbol": "BTCUSDT", "tf": tf, "ma60_dir": ma, "already_up": already_up,
+            "waiting": [{"elapsed": f"{b}/20", "bars": b, "divergence": d} for b, d in waiting]}
 
 
 NOW = pd.Timestamp("2026-09-23 00:01")     # 09:01 KST
@@ -115,32 +114,36 @@ def test_summary_body_format_and_no_evaluative_words():
     assert none.splitlines()[-1] == "스캐너 오류 1셀 · 마지막 순회 09:01 · 6셀 OK"
 
 
-def test_already_up_candidates_excluded_from_headline_and_waiting_count_but_noted_separately(monkeypatch):
-    # 확정 시 60MA 가 이미 상방이던 후보만 '대기 중'이면 ② 에 들지 않는다 → 첫 줄 특이 사항 없음, 대기 중 줄은 건수만 별도
-    only = [_snap("4h", waiting=((7, True, True),)), _snap("1h")]
-    assert P.headline([], only, NOW) == "특이 사항 없음"
-    lines = P.build_daily_summary([], only, H.empty(), NOW, n_cells=7, failures=[]).splitlines()
-    assert lines[0] == "특이 사항 없음" and lines[2] == "대기 중: 없음 (이미 상방 1건 별도)"
-    # 섞이면 첫 줄·나열은 전환 대기 행만(★ 이미 상방 행은 ★ 우선에도 들지 않는다), 이미 상방은 건수만
-    mixed = [_snap("4h", waiting=((7, True, True), (3, False))), _snap("1d", waiting=((2, False, True), (5, False, True)))]
-    assert P.headline([], mixed, NOW) == "볼 TF: 4h — 후보 대기 중 (경과 3/20)"
-    assert P.build_daily_summary([], mixed, H.empty(), NOW, n_cells=7, failures=[]).splitlines()[2] == "대기 중: 4h(3/20) (이미 상방 3건 별도)"
-    # 하방 요약이 추가되면 already_down 도 같은 규칙 — 스냅샷 행에 플래그만 실리면 지금 코드가 그대로 뺀다
-    dn = [{"symbol": "BTCUSDT", "tf": "2h", "ma60_dir": "↓",
-           "waiting": [{"elapsed": "4/20", "bars": 4, "divergence": False, "already_down": True}]}]
-    assert P.headline([], dn, NOW) == "특이 사항 없음"
-    assert P.build_daily_summary([], dn, H.empty(), NOW, n_cells=7, failures=[]).splitlines()[2] == "대기 중: 없음 (이미 하방 1건 별도)"
-    assert P.already_note(only + dn) == "이미 상방 1건 · 이미 하방 1건 별도" and P.already_note([_snap("1h")]) == ""
-    # 스냅샷의 already_up 은 추적 표 '확정 시 60MA' 열 그대로(판정 없음) — 추적 표를 고정해 대응을 확인
-    frame = pd.DataFrame({"상태": [MT.STATUS_WAITING, MT.STATUS_WAITING, MT.STATUS_TURNED],
-                          MT.ELAPSED_COL: ["7/20", "3/20", "5/20"], "_bars": [7, 3, 5],
-                          "확정 시 60MA": [MT.ALREADY_UP_MARK, "하방", MT.ALREADY_UP_MARK],
-                          DIVERGENCE_COL: [DIV_YES, DIV_NO, DIV_NO]})
+def test_already_up_candidates_are_excluded_by_tracker_status_and_counted_separately(monkeypatch):
+    """확정 시 이미 상방 후보는 추적 표 상태가 '해당 없음 (이미 상방)' — 제외는 표시 모듈(MT.waiting_rows·summarize, 앱 메트릭과 같은 함수)이
+    하고, 요약은 그 결과를 그대로 읽어 첫 줄 ②·"대기 중" 에 넣지 않고 건수만 별도 표기한다."""
+    # 추적 표를 고정: 이미 상방 2건(창 진행 중 1 · 창 종료 1 — 표 상태는 같다) + 대기 중 1건 + 전환 발생 1건
+    frame = pd.DataFrame({"상태": [MT.STATUS_ALREADY_UP, MT.STATUS_WAITING, MT.STATUS_ALREADY_UP, MT.STATUS_TURNED],
+                          MT.LIFECYCLE_COL: [MT.STATUS_WAITING, MT.STATUS_WAITING, MT.STATUS_EXPIRED, MT.STATUS_TURNED],
+                          MT.ELAPSED_COL: ["7/20", "3/20", "20/20", "5/20"], "_bars": [7, 3, 20, 5],
+                          "확정 시 60MA": [MT.ALREADY_UP_MARK, "하방", MT.ALREADY_UP_MARK, "하방"],
+                          DIVERGENCE_COL: [DIV_YES, DIV_NO, DIV_NO, DIV_NO]})
     monkeypatch.setattr(MT, "track_candidates", lambda pipe, recent_bars=MT.RECENT_BARS: frame)
     snap = P.cell_snapshot(pd.DataFrame({"MA60": [1.0, 2.0]}), "BTCUSDT", "4h")
-    assert [(w["elapsed"], w["divergence"], w["already_up"]) for w in snap["waiting"]] == [("7/20", True, True), ("3/20", False, False)]
-    assert P.headline([], [snap], NOW) == "볼 TF: 4h — 후보 대기 중 (경과 3/20)"        # ★ 이미 상방 행은 ★ 우선에도 들지 않는다
-    assert P.build_daily_summary([], [snap], H.empty(), NOW, n_cells=7, failures=[]).splitlines()[2] == "대기 중: 4h(3/20) (이미 상방 1건 별도)"
+    assert [(w["elapsed"], w["divergence"]) for w in snap["waiting"]] == [("3/20", False)]     # ★ 이미 상방 행은 ★ 우선에도 없다
+    assert snap["already_up"] == MT.summarize(frame)["already_up"] == 2 and MT.summarize(frame)["waiting"] == 1
+    assert P.headline([], [snap], NOW) == "볼 TF: 4h — 후보 대기 중 (경과 3/20)"
+    assert P.build_daily_summary([], [snap], H.empty(), NOW, n_cells=7, failures=[]).splitlines()[2] == "대기 중: 4h(3/20) (이미 상방 2건 별도)"
+    # 이미 상방 후보만 있으면 ② 에 들지 않는다 → 첫 줄 특이 사항 없음, 대기 중 줄은 건수만 별도
+    only_frame = frame[frame["상태"] == MT.STATUS_ALREADY_UP]
+    monkeypatch.setattr(MT, "track_candidates", lambda pipe, recent_bars=MT.RECENT_BARS: only_frame)
+    only = [P.cell_snapshot(pd.DataFrame({"MA60": [1.0, 2.0]}), "BTCUSDT", "4h"), _snap("1h")]
+    assert only[0]["waiting"] == [] and only[0]["already_up"] == 2
+    lines = P.build_daily_summary([], only, H.empty(), NOW, n_cells=7, failures=[]).splitlines()
+    assert lines[0] == "특이 사항 없음" and lines[2] == "대기 중: 없음 (이미 상방 2건 별도)"
+    assert P.headline([], [_snap("4h", already_up=1), _snap("1h")], NOW) == "특이 사항 없음"
+    one = P.build_daily_summary([], [_snap("4h", already_up=1)], H.empty(), NOW, n_cells=7, failures=[]).splitlines()
+    assert one[0] == "특이 사항 없음" and one[2] == "대기 중: 없음 (이미 상방 1건 별도)"
+    # 하방 요약이 추가되면 already_down(MD.summarize) 도 같은 규칙 — 스냅샷에 건수만 실리면 그대로 표기
+    dn = [{"symbol": "BTCUSDT", "tf": "2h", "ma60_dir": "↓", "waiting": [], "already_down": 1}]
+    assert P.headline([], dn, NOW) == "특이 사항 없음"
+    assert P.build_daily_summary([], dn, H.empty(), NOW, n_cells=7, failures=[]).splitlines()[2] == "대기 중: 없음 (이미 하방 1건 별도)"
+    assert P.already_note(only + dn) == "이미 상방 2건 · 이미 하방 1건 별도" and P.already_note([_snap("1h")]) == ""
 
 
 # ------------------------------------------------------------ run 통합 — dry-run 샘플 · 발송 1회 · 실패 재시도

@@ -90,19 +90,20 @@ def test_price_inversion_maps_down_tracker_onto_up_tracker(seed):
     assert len(down) >= 8 and set(down.index) == set(up_inv.index)
     for ts in down.index:
         a, b = down.loc[ts], up_inv.loc[ts]
-        assert a["상태"] == b["상태"] and a[D.ELAPSED_COL] == b[T.ELAPSED_COL]
+        assert a[D.LIFECYCLE_COL] == b[T.LIFECYCLE_COL] and a[D.ELAPSED_COL] == b[T.ELAPSED_COL]     # 원 생애주기 동일
+        assert a["상태"] == (D.STATUS_ALREADY_DOWN if b["상태"] == T.STATUS_ALREADY_UP else b["상태"])   # 표 상태는 거울 라벨
         assert a[D.HIGH_COL] == pytest.approx(-b["패턴 저점"])
         assert (a["확정 시 60MA"] == D.ALREADY_DOWN_MARK) == (b["확정 시 60MA"] == T.ALREADY_UP_MARK)
         assert D._DIR_MIRROR[b["60MA 현재"]] == a["60MA 현재"]
-        if a["상태"] == D.STATUS_TURNED:
+        if a[D.LIFECYCLE_COL] == D.STATUS_TURNED:
             assert pd.Timestamp(a["전환 시각"]) == pd.Timestamp(b["전환 시각"])
             assert a["전환 시 가격"] == pytest.approx(-b["전환 시 가격"])
-        if a["상태"] == D.STATUS_EXPIRED:
+        if a[D.LIFECYCLE_COL] == D.STATUS_EXPIRED:
             assert pd.Timestamp(a["소멸 시각"]) == pd.Timestamp(b["소멸 시각"])
         # 하락 다이버전스 = 가격 반전 프레임의 상승 다이버전스(단일 정의) — 값까지 대응
         assert a[D.DOWN_DIVERGENCE_COL] == b[DV.DIVERGENCE_COL]
     # 창 안 '전환 발생' 과 '소멸' 이 모두 표본에 있어야 대칭 검사가 의미 있다
-    assert (down["상태"] == D.STATUS_TURNED).sum() >= 3 and (down["상태"] == D.STATUS_EXPIRED).sum() >= 3
+    assert (down[D.LIFECYCLE_COL] == D.STATUS_TURNED).sum() >= 3 and (down[D.LIFECYCLE_COL] == D.STATUS_EXPIRED).sum() >= 3
     assert set(down[D.DOWN_DIVERGENCE_COL]) == {DV.YES, DV.NO}                     # 두 값 모두 표본에 있음
 
 
@@ -175,6 +176,37 @@ def test_synthetic_cases_turned_expired_waiting_and_already_down():
         assert (r["확정 시 60MA"] == D.ALREADY_DOWN_MARK) == (ref[c]["확정 시 60MA"] == T.ALREADY_UP_MARK)
 
 
+def test_already_down_candidates_are_not_applicable_mirror_of_up_side():
+    """확정 시 60MA 이미 하방 → 표 상태 '해당 없음 (이미 하방)'(창 진행 중·종료·창 안 새 전환 모두 같음) — 상승 쪽 규칙의 거울상.
+    대기·소멸·실측에서 제외, 건수만. 원 생애주기는 내부 열에 남아 ledger·하방 전환 알림은 종전과 같다."""
+    n = 60
+    idx = pd.date_range("2026-09-18 00:00", periods=n, freq="h")
+    close = np.linspace(110, 100, n)
+    # 이미 하방 3건: A 확정 5(창 안 새 하방 전환 없음 → 원 소멸) · B 확정 30(창 안 새 전환 35 → 원 전환 발생) · C 확정 50(창 진행 중 → 원 대기)
+    # · 비교용 일반 후보 D 확정 52(확정 시 상방) → 대기 중
+    sig = _sig(n, [_cand(5), _cand(30), _cand(50), _cand(52)], down_at=(5, 30, 35, 50), turn_at=(35,))
+    rows = D.apply_already_status(D.lifecycle_rows(sig, idx, close, recent_bars=n))
+    by = {int(r["_confirm_pos"]): r for r in rows}
+    assert D.STATUS_ALREADY_DOWN == "해당 없음 (이미 하방)" and D.STATUS_ALREADY_DOWN in D.STATUS_ORDER
+    assert all(by[c]["상태"] == D.STATUS_ALREADY_DOWN and by[c]["확정 시 60MA"] == D.ALREADY_DOWN_MARK for c in (5, 30, 50))
+    assert (by[5][D.LIFECYCLE_COL], by[30][D.LIFECYCLE_COL], by[50][D.LIFECYCLE_COL]) == (D.STATUS_EXPIRED, D.STATUS_TURNED, D.STATUS_WAITING)
+    assert by[30]["전환 시각"] == idx[35] and by[52]["상태"] == D.STATUS_WAITING and by[52]["확정 시 60MA"] == "상방"
+    frame = pd.DataFrame(rows)
+    s = D.summarize(frame)
+    assert (s["waiting"], s["turned"], s["expired"], s["already_down"], s["rate"]) == (1, 0, 0, 3, None)
+    assert [l["price"] for l in D.down_tracker_reference_lines(frame)] == [100.0]     # 고점선은 대기 중 D 만
+    # 이미 하방 후보만 있을 때: 대기 0 · 소멸 0 · 실측 '—' · 상태 문구 · 고점선 없음
+    only = pd.DataFrame([r for r in rows if r["상태"] == D.STATUS_ALREADY_DOWN])
+    s0 = D.summarize(only)
+    assert (s0["waiting"], s0["turned"], s0["expired"], s0["already_down"], s0["rate"]) == (0, 0, 0, 3, None)
+    line = D.summary_line(only)
+    assert "하방 전환 0건 / 소멸 0건 / 대기 0건" in line and "0/0 = —" in line and "이미 하방 3건 별도" in line
+    assert sum(l.startswith("[해당 없음 (이미 하방)]") for l in D.build_lines(only)) == 3 and D.down_tracker_reference_lines(only) == []
+    # 상승 쪽 함수를 거울 라벨로 호출한 것뿐 — 같은 sig 를 상승 쪽에 넣으면 '해당 없음 (이미 상방)'
+    ref = {int(r["_confirm_pos"]): r for r in T.apply_already_status(T.lifecycle_rows(sig, idx, close, recent_bars=n))}
+    assert all(ref[c]["상태"] == T.STATUS_ALREADY_UP for c in (5, 30, 50)) and ref[52]["상태"] == T.STATUS_WAITING
+
+
 def test_bearish_divergence_flags_are_exact_mirror_of_single_definition():
     """정의 거울상: kind == LH(둘째 봉우리 < 첫째) AND 피봇 봉 고가 둘째 > 첫째. 가격 반전 프레임에서 DV.divergence_flags 와 일치."""
     raw = _raw(seed=7)
@@ -214,8 +246,8 @@ def test_divergence_column_position_and_cohort_line_mirror_up_side():
 
 def test_summary_counts_already_down_separately_and_rate_uses_finished_only():
     f = pd.DataFrame({
-        "상태": [D.STATUS_TURNED, D.STATUS_EXPIRED, D.STATUS_EXPIRED, D.STATUS_WAITING],
-        "확정 시 60MA": [D.ALREADY_DOWN_MARK, "상방", "상방", "상방"],
+        "상태": [D.STATUS_TURNED, D.STATUS_EXPIRED, D.STATUS_EXPIRED, D.STATUS_WAITING, D.STATUS_ALREADY_DOWN],
+        "확정 시 60MA": ["상방", "상방", "상방", "상방", D.ALREADY_DOWN_MARK],
     })
     s = D.summarize(f)
     assert (s["turned"], s["expired"], s["waiting"], s["already_down"]) == (1, 2, 1, 1)

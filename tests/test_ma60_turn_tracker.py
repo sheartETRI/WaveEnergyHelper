@@ -99,7 +99,7 @@ def test_lifecycle_matches_probe_simulate_on_synthetic_frame():
     checked = 0
     for ts, row in sim.iterrows():
         assert ts in mine.index, f"probe 후보 {ts} 가 표시 표에 없다"
-        status = mine.loc[ts, "상태"]
+        status = mine.loc[ts, T.LIFECYCLE_COL]            # 원 생애주기(창 규칙) — probe 와 대조. 표 상태는 아래에서 별도 단언
         if row["status"] in (probe.CAND_ENTERED, probe.CAND_BUSY):
             assert status == T.STATUS_TURNED, (ts, row["status"], status)
             if row["status"] == probe.CAND_ENTERED:
@@ -113,11 +113,16 @@ def test_lifecycle_matches_probe_simulate_on_synthetic_frame():
     assert checked >= 5
     # 표시 표에만 있는 후보 = 창이 자료 끝을 넘는 최근 건(대기 중) — simulate 의 DATA_END 와 대응
     extra = set(mine.index) - set(sim.index)
-    assert all(mine.loc[ts, "상태"] == T.STATUS_WAITING for ts in extra)
-    # 이미 상방 표기는 가용 시점의 MA60 방향에서만 나온다
+    assert all(mine.loc[ts, T.LIFECYCLE_COL] == T.STATUS_WAITING for ts in extra)
+    # 이미 상방 표기는 가용 시점의 MA60 방향에서만 나온다 — 그 행의 표 상태는 창과 무관하게 '해당 없음 (이미 상방)', 나머지는 원 생애주기 그대로
+    n_already = 0
     for ts in mine.index:
         k = int(mine.loc[ts, "_known_pos"])
-        assert (mine.loc[ts, "확정 시 60MA"] == T.ALREADY_UP_MARK) == bool(sig["ma60_up"][k])
+        already = mine.loc[ts, "확정 시 60MA"] == T.ALREADY_UP_MARK
+        assert already == bool(sig["ma60_up"][k])
+        assert mine.loc[ts, "상태"] == (T.STATUS_ALREADY_UP if already else mine.loc[ts, T.LIFECYCLE_COL])
+        n_already += int(already)
+    assert n_already >= 1 and set(mine[T.LIFECYCLE_COL]) & {T.STATUS_TURNED, T.STATUS_EXPIRED}
 
 
 def test_waiting_elapsed_and_recent_filter():
@@ -127,6 +132,7 @@ def test_waiting_elapsed_and_recent_filter():
     assert len(recent) <= len(full)
     assert (recent["_known_pos"] >= len(df) - 120).all()
     for d in full.to_dict("records"):
+        d["상태"] = d[T.LIFECYCLE_COL]                      # 경과/소요 규칙은 원 생애주기 기준(이미 상방 행 포함)
         if d["상태"] == T.STATUS_NO_MA:
             assert d[T.ELAPSED_COL] == "—"
             continue
@@ -147,8 +153,8 @@ def test_waiting_elapsed_and_recent_filter():
 
 def test_summary_rate_uses_finished_only():
     f = pd.DataFrame({
-        "상태": [T.STATUS_TURNED, T.STATUS_TURNED, T.STATUS_EXPIRED, T.STATUS_WAITING],
-        "확정 시 60MA": [T.ALREADY_UP_MARK, "하방", "하방", "하방"],
+        "상태": [T.STATUS_TURNED, T.STATUS_TURNED, T.STATUS_EXPIRED, T.STATUS_WAITING, T.STATUS_ALREADY_UP],
+        "확정 시 60MA": ["하방", "하방", "하방", "하방", T.ALREADY_UP_MARK],
     })
     s = T.summarize(f)
     assert (s["turned"], s["expired"], s["waiting"], s["already_up"]) == (2, 1, 1, 1)
@@ -252,8 +258,8 @@ def test_display_frame_formats_without_none_or_truncation_risk():
 
 
 # ------------------------------------------------------------ 경과/소요 열 — 합성 케이스로 상태별 값 단언
-def _sig(n, cands, turn_at=()):
-    up = np.zeros(n, dtype=bool); up[list(turn_at)] = True
+def _sig(n, cands, turn_at=(), up_at=()):
+    up = np.zeros(n, dtype=bool); up[list(turn_at)] = True; up[list(up_at)] = True    # up_at: 전환 없이 상방인 봉(확정 시 이미 상방 케이스)
     turn = np.zeros(n, dtype=bool); turn[list(turn_at)] = True
     return {"cands": cands, "ma60_up": up, "ma60_turn": turn, "ma60_valid": np.ones(n, dtype=bool)}
 
@@ -280,6 +286,41 @@ def test_elapsed_column_waiting_turned_expired_from_confirm_bar():
     assert by[42]["상태"] == T.STATUS_TURNED and by[42][T.ELAPSED_COL] == "5/21 (가용 +1봉)"
     assert by[42]["전환 시각"] == idx[47] and by[42]["확정 시각"] == idx[42]
     assert T.elapsed_label(0, 0) == "0/20" and T.elapsed_label(22, 2) == "22/22 (가용 +2봉)"
+
+
+def test_already_up_candidates_are_not_applicable_regardless_of_window_and_excluded_from_metrics():
+    """확정 시 60MA 이미 상방 → 표 상태 '해당 없음 (이미 상방)' — 창 진행 중·창 종료·창 안 새 전환 모두 같은 상태. 대기·소멸·전환율에서
+    제외하고 건수만 별도. 원 생애주기는 내부 열에 남아 ledger·전환 알림은 종전과 같다(검출·판정 무접촉)."""
+    n = 60
+    idx = pd.date_range("2026-09-18 00:00", periods=n, freq="h")
+    close = np.linspace(100, 110, n)
+    # 이미 상방 3건(가용 시점 k 에 MA60 상방): A 확정 5 → 창 [5,25] 새 전환 없음(원 소멸) · B 확정 30 → 창 안 새 전환 35(원 전환 발생)
+    # · C 확정 50 → 창 진행 중(원 대기 중). 비교용 일반 후보 D 확정 52(확정 시 하방) → 대기 중.
+    sig = _sig(n, [_cand(5), _cand(30), _cand(50), _cand(52)], turn_at=(35,), up_at=(5, 30, 50))
+    raw = T.lifecycle_rows(sig, idx, close, recent_bars=n)
+    assert [r["상태"] for r in sorted(raw, key=lambda r: r["_confirm_pos"])] == [T.STATUS_EXPIRED, T.STATUS_TURNED, T.STATUS_WAITING,
+                                                                                T.STATUS_WAITING]     # 창 규칙 출력은 무접촉
+    rows = T.apply_already_status(raw)
+    by = {int(r["_confirm_pos"]): r for r in rows}
+    assert T.STATUS_ALREADY_UP == "해당 없음 (이미 상방)" and T.STATUS_ALREADY_UP in T.STATUS_ORDER
+    assert all(by[c]["상태"] == T.STATUS_ALREADY_UP for c in (5, 30, 50))
+    assert by[52]["상태"] == T.STATUS_WAITING == by[52][T.LIFECYCLE_COL]
+    assert (by[5][T.LIFECYCLE_COL], by[30][T.LIFECYCLE_COL], by[50][T.LIFECYCLE_COL]) == (T.STATUS_EXPIRED, T.STATUS_TURNED, T.STATUS_WAITING)
+    assert by[30]["전환 시각"] == idx[35] and by[5]["소멸 시각"] == idx[25]           # ledger 가 쓰는 값은 그대로
+    frame = pd.DataFrame(rows)
+    s = T.summarize(frame)
+    assert (s["waiting"], s["turned"], s["expired"], s["already_up"], s["rate"]) == (1, 0, 0, 3, None)
+    assert T.waiting_rows(frame)["_confirm_pos"].tolist() == [52]
+    assert [l["price"] for l in T.tracker_reference_lines(frame)] == [100.0, 99.5]   # 차트선은 대기 중 D 만(저점·기준선)
+    # 이미 상방 후보만 있을 때: 대기 0 · 소멸 0 · 전환율 '—' · 상태 문구 · 차트선 없음
+    only = pd.DataFrame([r for r in rows if r["상태"] == T.STATUS_ALREADY_UP])
+    s0 = T.summarize(only)
+    assert (s0["waiting"], s0["turned"], s0["expired"], s0["already_up"], s0["rate"]) == (0, 0, 0, 3, None)
+    line = T.summary_line(only)
+    assert "전환 0건 / 소멸 0건 / 대기 0건" in line and "0/0 = —" in line and "이미 상방 3건 별도" in line
+    text = T.build_lines(only)
+    assert sum(l.startswith("[해당 없음 (이미 상방)]") for l in text) == 3 and T.tracker_reference_lines(only) == []
+    assert T.display_frame(only, "BTCUSDT", "1h")["상태"].tolist() == [T.STATUS_ALREADY_UP] * 3
 
 
 def test_elapsed_column_is_in_table_and_named_by_meaning():

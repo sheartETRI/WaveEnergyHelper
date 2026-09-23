@@ -17,6 +17,10 @@ extract_signals 는 가격 10MA 쌍봉 컬럼(``ma10_dt``)도 요구하므로 �
 
 '다이버전스' 열(2026-09-22): 단일 정의(docs/CANDIDATES_POST_2027_03 정의 고정, main 870f025)를 ``display.divergence_flag``
 가 계산하고 여기서는 후보별 값을 열로 옮겨 싣기만 한다(있음/없음). 집계 줄은 있음/없음 코호트별 전환·소멸 건수를 따로 센다.
+
+'해당 없음 (이미 상방)'(2026-09-23): 확정(가용) 시점에 MA60 이 이미 상방이던 후보는 창 진행 중이든 끝났든 표 상태를 이것으로 두고
+대기·소멸·전환율에서 뺀다(건수만 별도 메트릭 '이미 상방'). 창 규칙으로 계산한 원 생애주기는 내부 열 ``LIFECYCLE_COL`` 에 남겨
+ledger 기록·60MA 전환 알림(notify)은 종전과 같다 — 검출·판정 무접촉, 상태 표기만 분리(``apply_already_status``).
 """
 from __future__ import annotations
 
@@ -59,9 +63,12 @@ STATUS_WAITING = "대기 중"
 STATUS_TURNED = "전환 발생"
 STATUS_EXPIRED = "소멸"
 STATUS_NO_MA = "MA60 미산출"
-STATUS_ORDER = (STATUS_WAITING, STATUS_TURNED, STATUS_EXPIRED, STATUS_NO_MA)
 
 ALREADY_UP_MARK = "이미 상방"     # 확정(가용) 시점에 MA60 이 이미 상방이던 건 — 계측 37.6%
+STATUS_ALREADY_UP = f"해당 없음 ({ALREADY_UP_MARK})"   # 그 후보의 표 상태 — 창 진행 중이든 끝났든 같다(대기·소멸·전환율에서 제외, 건수만)
+STATUS_ORDER = (STATUS_WAITING, STATUS_TURNED, STATUS_EXPIRED, STATUS_ALREADY_UP, STATUS_NO_MA)
+LIFECYCLE_COL = "_lifecycle"     # 내부 열: 창 규칙으로 계산한 원 생애주기(대기/전환/소멸/미산출). '이미 상방' 행도 그대로 남겨
+                                 # ledger 기록·60MA 전환 알림(notify)은 이 열을 본다 — 검출·기록 불변, 상태 표기만 분리.
 
 # 표는 현재 표시 중인 심볼·TF 한 셀만 담는다(적재 프레임 1개). 그래도 '경과 1/20' 이 몇 시간인지 표만 보고 알 수 있게
 # 맨 앞에 심볼·TF 열을 두고(TF_COL), 캡션에 1봉 시간을 적는다.
@@ -103,6 +110,8 @@ def lifecycle_rows(sig: dict, idx, close: np.ndarray, recent_bars: int) -> List[
 
     창은 probe.simulate 와 동일하게 가용 시점 k 기준 [k, k+OBS_BARS]. 경과/소요 봉 수는 **표에 보이는 확정봉(c)** 기준:
       대기 중 = 현재봉 − c · 전환 발생 = 전환봉 − c · 소멸 = (k+OBS_BARS) − c = 20 + 지연.
+    출력의 '상태' 는 창 규칙 그대로다('이미 상방' 행도 대기/전환/소멸). 표 상태 '해당 없음 (이미 상방)' 은 track_candidates 가
+    ``apply_already_status`` 로 덧씌운다(원 값은 LIFECYCLE_COL).
     """
     n = len(idx)
     up, turn, valid = sig["ma60_up"], sig["ma60_turn"], sig["ma60_valid"]
@@ -139,11 +148,33 @@ def lifecycle_rows(sig: dict, idx, close: np.ndarray, recent_bars: int) -> List[
     return rows
 
 
+def apply_already_status(rows: List[dict], mark: str = ALREADY_UP_MARK, status: str = STATUS_ALREADY_UP) -> List[dict]:
+    """'확정 시 60MA' 가 mark('이미 상방')인 행의 표 상태를 status('해당 없음 (이미 상방)')로 — 창 진행 중이든 끝났든 같다.
+
+    창 규칙으로 계산한 원 생애주기는 LIFECYCLE_COL 에 남긴다(ledger 기록·60MA 전환 알림이 보는 값 — 기록·검출 불변).
+    하방 추적은 거울 라벨(이미 하방)로 같은 함수를 호출한다. 표·메트릭·차트선·일일 요약(scripts/push_alarms)은 모두 이 결과의
+    '상태' 만 보므로 제외 규칙은 여기 한 곳이다.
+    """
+    for r in rows:
+        r[LIFECYCLE_COL] = r["상태"]
+        if r["확정 시 60MA"] == mark:
+            r["상태"] = status
+    return rows
+
+
+def waiting_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """'대기 중' 행 — 메트릭·차트 기준선·일일 요약이 같은 함수를 쓴다. '이미 상방' 은 상태가 다르므로(해당 없음) 들지 않는다."""
+    if frame is None or frame.empty or "상태" not in frame.columns:
+        return pd.DataFrame(columns=list(COLUMNS))
+    return frame[frame["상태"] == STATUS_WAITING]
+
+
 def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.DataFrame:
     """최근 recent_bars 안에 가용(known)된 후보의 생애주기 표.
 
     상태 규칙(probe.simulate 와 동일한 창 [k, k+OBS_BARS]):
       창 안 첫 60MA 전환 → 전환 발생 / 창이 모두 지났는데 전환 없음 → 소멸 / 아직 창 안 → 대기 중.
+      확정 시 60MA 가 이미 상방 → 해당 없음 (이미 상방) — 창과 무관하게 같은 상태(원 생애주기는 LIFECYCLE_COL, apply_already_status).
     마지막 봉은 진행 중일 수 있다(호출부 캡션).
     """
     pipe = tracker_pipe(df)
@@ -153,7 +184,7 @@ def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.Dat
         sig = probe.extract_signals(pipe)
     except (KeyError, ValueError):
         return pd.DataFrame(columns=list(COLUMNS))
-    rows = lifecycle_rows(sig, pipe.index, pipe["close"].to_numpy(dtype=float), recent_bars)
+    rows = apply_already_status(lifecycle_rows(sig, pipe.index, pipe["close"].to_numpy(dtype=float), recent_bars))
     if not rows:
         return pd.DataFrame(columns=list(COLUMNS))
     flags = divergence_flags(pipe, sig)                      # 단일 정의 — 확정봉 → 있음/없음
@@ -164,7 +195,8 @@ def track_candidates(df: pd.DataFrame, recent_bars: int = RECENT_BARS) -> pd.Dat
 
 
 def summarize(frame: pd.DataFrame) -> dict:
-    """구간 집계 — 전환 X / 소멸 Y / 대기 Z, 전환율 X/(X+Y) (종료된 건 기준), 이미 상방 W."""
+    """구간 집계 — 전환 X / 소멸 Y / 대기 Z, 전환율 X/(X+Y) (종료된 건 기준), 이미 상방 W(해당 없음 — 앞 셋·전환율에 들지 않음).
+    상태 열만 본다(이미 상방은 apply_already_status 가 상태로 분리해 두었다). 일일 요약(scripts/push_alarms)도 이 함수·waiting_rows 를 쓴다."""
     if frame is None or frame.empty:
         return {"turned": 0, "expired": 0, "waiting": 0, "no_ma": 0, "already_up": 0, "rate": None}
     st_ = frame["상태"]
@@ -172,8 +204,8 @@ def summarize(frame: pd.DataFrame) -> dict:
     done = turned + expired
     return {
         "turned": turned, "expired": expired,
-        "waiting": int((st_ == STATUS_WAITING).sum()), "no_ma": int((st_ == STATUS_NO_MA).sum()),
-        "already_up": int((frame["확정 시 60MA"] == ALREADY_UP_MARK).sum()),
+        "waiting": int(len(waiting_rows(frame))), "no_ma": int((st_ == STATUS_NO_MA).sum()),
+        "already_up": int((st_ == STATUS_ALREADY_UP).sum()),
         "rate": (turned / done) if done else None,
     }
 
@@ -220,7 +252,6 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
             tail = f"경과 {d[ELAPSED_COL]} · 60MA {d['60MA 현재']}"
         lines.append(f"[{d['상태']}] 확정 {to_kst(d['확정 시각']):%m-%d %H:%M} · {tail} · "
                      f"저점 {d['패턴 저점']:,.8g} · 기준선 {d['기준선(×0.995)']:,.8g}"
-                     + (f" · {ALREADY_UP_MARK}" if d["확정 시 60MA"] == ALREADY_UP_MARK else "")
                      + (f" · {DIVERGENCE_COL} {d[DIVERGENCE_COL]}" if d.get(DIVERGENCE_COL) else ""))
     lines.append(summary_line(frame, recent_bars))
     lines.append(divergence_summary_line(frame))
@@ -241,7 +272,7 @@ def tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:
     if frame is None or frame.empty:
         return []
     lines: List[dict] = []
-    for d in frame[frame["상태"] == STATUS_WAITING].to_dict("records"):
+    for d in waiting_rows(frame).to_dict("records"):        # 이미 상방(해당 없음)은 대기 중이 아니므로 선을 긋지 않는다
         lines.append({"price": float(d["패턴 저점"]), "color": TRACKER_LOW_COLOR, "style": LW_LINE_STYLE_DOTTED,
                       "title": "", "label": TRACKER_LOW_LABEL})
         lines.append({"price": float(d["기준선(×0.995)"]), "color": TRACKER_LINE_COLOR, "style": LW_LINE_STYLE_DASHED,
@@ -314,12 +345,14 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
         st.caption(FIXED_CAPTION)
         render_slope_block(df, symbol, interval)
         s = summarize(frame)
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric(f"대기 중 {UNVERIFIED}", f"{s['waiting']}건")
         c2.metric(f"전환 발생 {UNVERIFIED}", f"{s['turned']}건")
         c3.metric(f"소멸 {UNVERIFIED}", f"{s['expired']}건")
         c4.metric("전환율(종료 건)", "—" if s["rate"] is None else f"{s['rate'] * 100:.0f}%",
-                  help="전환 발생 ÷ (전환 발생 + 소멸). 대기 중은 제외. 미검증 표시.")
+                  help="전환 발생 ÷ (전환 발생 + 소멸). 대기 중·이미 상방(해당 없음)은 제외. 미검증 표시.")
+        c5.metric(f"{ALREADY_UP_MARK} {UNVERIFIED}", f"{s['already_up']}건",
+                  help=f"확정 시 60MA 가 이미 상방이던 후보 — 상태 '{STATUS_ALREADY_UP}'. 대기·소멸·전환율에 들지 않음(건수만).")
         if frame.empty:
             st.caption("해당 구간에 대파동 쌍바닥 후보 없음")
         else:
@@ -335,7 +368,7 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
                    f"경과/소요 = 확정봉 기준 봉 수(대기: 현재까지 경과, 전환 발생: 전환까지 소요, 소멸: 창 종료까지) · "
                    f"창은 후보 가용 시점(피봇 확정 지연 1~2봉 가능) 기준 {OBS_BARS}봉이라 지연 후보는 분모에 '+N봉' 표기 · "
                    f"시각은 {KST_LABEL} 표시 · 마지막 봉은 진행 중일 수 있음 · "
-                   "확정 시 60MA '이미 상방' 은 전환이 아니므로 창 안의 새 전환만 셈 · "
+                   f"확정 시 60MA '이미 상방' 은 상태 '{STATUS_ALREADY_UP}'(창 진행 중이든 끝났든 같음) — 대기·소멸·전환율에 들지 않고 건수만 별도 · "
                    f"{DIVERGENCE_COL} = 스토캐(20,10,10) 둘째 저점 > 첫째 저점(HL) 이면서 두 피봇 봉의 저가는 둘째 < 첫째 "
                    "(단일 정의, docs/CANDIDATES_POST_2027_03).")
     return frame
