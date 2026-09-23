@@ -63,3 +63,39 @@
 - 상·하단 상태기계는 독립(한 봉이 양쪽 에피소드에 속할 수 있음).
 - 테스트: `tests/test_sweep_reclaim.py` — 봉내 스윕·다봉 재탈환·왕복·붕괴·보류(마지막 봉)·
   상단 미러·거래량 비율·입력 결측 각 1건 이상.
+
+## 6. 부록 — 합류(confluence) 판정 (2026-09-23 동결, 기록 전용)
+
+목적: "같은 TF에서 스윕 재탈환과 스토캐 쌍바닥이 함께 확정되면 트랩 완료" 가설의 표본
+축적. 2026-09 BTCUSDT 6h 사례(9/15 이탈 → 9/17 00:00 재탈환 확정, 대파동 쌍바닥 동반,
+저점 74,968)가 원형이다. 판정은 여기서 동결하고 해석은 열람 시점(2027-03 이후)의 몫.
+
+### 정의
+
+| 항목 | 정의 |
+|---|---|
+| bull 합류 | `sweep_low_reclaim` 확정 봉과 `stoch_db_{layer}` 확정 봉의 부호 있는 간격 gap = (쌍바닥 확정 − 스윕 확정, 봉)이 \|gap\| ≤ `max_gap_bars` |
+| bear 합류 | `sweep_high_reclaim` × `stoch_dt_{layer}` — 전부 미러 |
+| 제외 | 붕괴/돌파 지속(`*_breakdown`/`*_breakout`) 이벤트는 합류에 참여하지 않음 |
+| timestamp | 두 확정 봉 중 **나중** 봉 — 그 시점에 양쪽이 모두 기지(lookahead 없음) |
+| 중복 규칙 | 스윕 이벤트 1건당 레이어별 합류 최대 1건 — 창 내 확정이 여럿이면 \|gap\| 최소(동률이면 앞선 봉). 쌍바닥 확정 1건이 복수 스윕과 짝지어지는 것은 허용(기록 전용) |
+| 레이어 | 기본 대파동(large). `layer_roles` 로 사전등록, 레이어 컬럼이 없으면 그 레이어만 조용히 건너뜀 |
+
+### 사전등록 파라미터 (`config.settings.SWEEP_CONFLUENCE_PARAMS`)
+
+| 키 | 값 | 의미 |
+|---|---|---|
+| `max_gap_bars` | 8 | 두 확정 봉 간 허용 간격(봉). 6h 기준 2일, 1d 기준 8일 |
+| `layer_roles` | ["large"] | 참여 스토캐 레이어 역할 (WAVE_LAYER_ROLES 키) |
+
+### 기록 필드
+
+`layer`(suffix), `gap_bars`(부호 있음 — 음수면 쌍바닥이 먼저), `sweep_ts`, `stoch_ts`,
+`db_kind`(HL/LL 등, 검출기 kind 컬럼 승계), 스윕 필드 승계(`level`, `depth_pct`,
+`dwell_bars`).
+
+### 구현 계약
+
+- `analysis/sweep_confluence.py` — 검출기 무수정: `stoch_db_{suffix}`/`stoch_dt_{suffix}`
+  확정 컬럼과 `scan_sweep_events` 출력을 읽는 조인 레이어(alarm_signals 와 같은 태도).
+- 비목표: §0과 동일 — 게이팅·알람 발송·백테스트 판정 없음.

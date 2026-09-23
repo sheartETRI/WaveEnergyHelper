@@ -9,8 +9,10 @@
     python scripts/sweep_scan_report.py --symbol BTCUSDT --intervals 1d,6h --since 2025-10-01
 
 출력:
-    · 콘솔 — since 이후 이벤트 요약표
-    · logs/sweep_events_<symbol>_<interval>.csv — 전 구간 이벤트 (utf-8-sig, 엑셀 호환)
+    · 콘솔 — since 이후 이벤트 요약표 (+ 합류 이벤트, SPEC §6)
+    · logs/sweep_events_<symbol>_<interval>.csv — 전 구간 스윕 이벤트 (utf-8-sig, 엑셀 호환)
+    · logs/sweep_confluence_<symbol>_<interval>.csv — 전 구간 합류 이벤트 (스토캐 검출
+      가능 환경에서만 — indicators.stochastic 임포트 실패 시 그 부분만 건너뜀)
 
 streamlit 무의존 — data/binance.py 를 임포트하지 않고 같은 엔드포인트를 직접
 두드린다(그쪽은 st.cache_data 데코레이터 때문에 streamlit 이 따라온다). 요청 주소
@@ -70,6 +72,27 @@ def build_dataframe(raw: list) -> pd.DataFrame:
     return df.set_index("open_time")
 
 
+def scan_confluence_frame(df: pd.DataFrame):
+    """스토캐 검출 컬럼을 채워 합류 이벤트까지 스캔. 불가 환경이면 None (그 부분만 생략)."""
+    try:
+        from indicators.stochastic import add_stochastic_slow_layers
+        from analysis.sweep_confluence import confluence_to_frame, scan_confluence_events
+        from config.settings import SWEEP_CONFLUENCE_PARAMS, WAVE_LAYER_ROLES
+    except Exception as err:
+        print(f"(합류 스캔 생략 — 임포트 실패: {err})")
+        return None
+    enriched = add_stochastic_slow_layers(df.copy())
+    roles = SWEEP_CONFLUENCE_PARAMS.get("layer_roles", [])
+    missing = [
+        r for r in roles
+        if f"stoch_db_{WAVE_LAYER_ROLES.get(r, '')}" not in enriched.columns
+    ]
+    if missing:
+        print(f"(합류 스캔 생략 — 검출 컬럼 없음: {missing})")
+        return None
+    return confluence_to_frame(scan_confluence_events(enriched))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="스윕 재탈환 검출기 실봉 스캔 (기록 전용)")
     parser.add_argument("--symbol", default="BTCUSDT")
@@ -105,6 +128,24 @@ def main() -> int:
         )
         print(show.to_string(index=False) if len(show) else "(해당 기간 이벤트 없음)")
         print(f"-> CSV: {os.path.relpath(out_path, root)}")
+
+        conf = scan_confluence_frame(df)
+        if conf is not None:
+            conf_path = os.path.join(
+                logs_dir, f"sweep_confluence_{args.symbol}_{interval}.csv"
+            )
+            conf.to_csv(conf_path, index=False, encoding="utf-8-sig")
+            recent_conf = conf[conf["timestamp"] >= args.since]
+            print(
+                f"--- 합류 이벤트 — 전 구간 {len(conf)}건 / {args.since} 이후 {len(recent_conf)}건 ---"
+            )
+            if len(recent_conf):
+                cols = [
+                    "timestamp", "kind", "layer", "gap_bars", "sweep_ts", "stoch_ts",
+                    "db_kind", "level", "depth_pct",
+                ]
+                print(recent_conf[cols].to_string(index=False))
+            print(f"-> CSV: {os.path.relpath(conf_path, root)}")
 
     return 0
 

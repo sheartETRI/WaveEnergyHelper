@@ -263,3 +263,11 @@ SWEEP_RECLAIM_PARAMS = {
     "reclaim_max_bars": 3,
     "vol_ma_n": 20,
 }
+
+# 스윕×쌍바닥 합류 (analysis/sweep_confluence.py) — 기록 전용 관측.
+#   같은 TF 에서 스윕 재탈환과 스토캐 쌍바닥/쌍봉 확정이 max_gap_bars 이내면 합류.
+#   docs/SPEC_SWEEP_RECLAIM.md §6 동결 스펙 — 값 변경은 문서 개정으로만.
+SWEEP_CONFLUENCE_PARAMS = {
+    "max_gap_bars": 8,
+    "layer_roles": ["large"],
+}
