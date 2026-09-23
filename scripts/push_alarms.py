@@ -28,6 +28,8 @@
     두 번 안 가고, 서버가 늦게 켜져도 그날 첫 순회에 나간다. 발송 조건·검출 무접촉(순회가 이미 만든 이벤트·추적 표만 읽는다).
     첫 줄 = 오늘 상태 한 문장(우선순위 기계적: ① 지난 24h 60MA 상방·하방 전환 → ② 대기 중 후보(★ 우선, 경과 짧은 순) → ③ 특이 사항 없음).
     "볼 TF" 는 사건이 있는 TF 를 가리킬 뿐이라 사건 종류를 항상 병기하고 평가어를 쓰지 않는다.
+    확정 시점에 60MA 가 이미 상방이던 후보(추적 표 '확정 시 60MA' = 이미 상방)는 전환 대기가 아니므로 ②·"대기 중" 집계에서 빼고
+    건수만 별도 표기한다("대기 중: 없음 (이미 상방 1건 별도)"). 하방 요약이 추가되면 already_down 도 같은 규칙.
 """
 from __future__ import annotations
 
@@ -53,6 +55,7 @@ from analysis.alarm_signals import SEV_CONFIRMED, AlarmSignal, scan_alarm_signal
 from config.settings import CUSTOM_INTERVAL_BASE, CUSTOM_INTERVALS, PUSH_PARAMS, PUSH_WATCHLIST  # noqa: E402
 from data.binance import clear_klines_cache, fetch_klines, get_auto_limit  # noqa: E402
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe  # noqa: E402
+import display.ma60_down_tracker as MD  # noqa: E402
 import display.ma60_turn_tracker as MT  # noqa: E402
 from display.alarm_panel import format_signal_line  # noqa: E402
 from display.divergence_flag import DIVERGENCE_COL, YES as DIV_YES  # noqa: E402
@@ -198,7 +201,9 @@ def load_history(state_path: str) -> dict:
 def cell_snapshot(pipe: pd.DataFrame, symbol: str, tf: str) -> dict:
     """일일 요약용 셀 상태 — 추적 표(상승 쪽 track_candidates, 최근 120봉)의 '대기 중' 행과 MA60 방향. 판정 없음.
 
-    waiting: [{"elapsed": "7/20", "bars": 7, "divergence": bool}], ma60_dir: "↑"(MA60 상승) / "↓"(하락) / "→"(같음·미산출).
+    waiting: [{"elapsed": "7/20", "bars": 7, "divergence": bool, "already_up": bool}] — already_up 은 추적 표 '확정 시 60MA' 가
+    '이미 상방'(확정 시점에 MA60 이 이미 상방)인 행. 요약은 이 행을 대기 집계에서 빼고 건수만 별도 표기한다.
+    ma60_dir: "↑"(MA60 상승) / "↓"(하락) / "→"(같음·미산출).
     """
     ma = pd.to_numeric(pipe["MA60"], errors="coerce") if "MA60" in pipe.columns else pd.Series(dtype=float)
     ma60_dir = "→"
@@ -210,7 +215,8 @@ def cell_snapshot(pipe: pd.DataFrame, symbol: str, tf: str) -> dict:
         for d in frame[frame["상태"] == MT.STATUS_WAITING].to_dict("records"):
             bars = d.get("_bars")
             waiting.append({"elapsed": str(d[MT.ELAPSED_COL]), "bars": int(bars) if bars is not None and not pd.isna(bars) else 0,
-                            "divergence": d.get(DIVERGENCE_COL) == DIV_YES})
+                            "divergence": d.get(DIVERGENCE_COL) == DIV_YES,
+                            "already_up": d.get("확정 시 60MA") == MT.ALREADY_UP_MARK})
     return {"symbol": symbol, "tf": tf, "ma60_dir": ma60_dir, "waiting": waiting}
 
 
@@ -249,6 +255,28 @@ SUMMARY_LOOKBACK = pd.Timedelta(hours=24)
 _TURN_LABEL = {EV.KIND_MA60_TURN: "60MA 상방 전환", EV.KIND_MA60_DOWN: "60MA 하방 전환"}
 _DIV_LABEL = {EV.KIND_MA60_TURN: ("다이버전스 있음", "다이버전스 없음"),
               EV.KIND_MA60_DOWN: ("하락 다이버전스 있음", "하락 다이버전스 없음")}
+# 확정 시점에 60MA 가 이미 그 방향이던 후보는 전환 대기가 아니다 → 첫 줄 ②·"대기 중" 집계에서 빼고 건수만 별도 표기.
+# (스냅샷 waiting 행의 플래그 키, 표기) — 하방 요약이 추가되면 행에 already_down 만 실으면 같은 규칙을 탄다.
+_ALREADY_LABEL: Tuple[Tuple[str, str], ...] = (("already_up", MT.ALREADY_UP_MARK), ("already_down", MD.ALREADY_DOWN_MARK))
+
+
+def _is_already(w: dict) -> bool:
+    return any(w.get(key) for key, _ in _ALREADY_LABEL)
+
+
+def pending_waiting(snapshots: Sequence[dict]) -> List[Tuple[str, dict]]:
+    """(TF, 대기 행) — 전환 대기 행만('이미 상방/하방' 제외)."""
+    return [(s["tf"], w) for s in snapshots for w in s["waiting"] if not _is_already(w)]
+
+
+def already_note(snapshots: Sequence[dict]) -> str:
+    """'이미 상방 1건 별도' / '이미 상방 1건 · 이미 하방 2건 별도' / '' (없음)."""
+    parts = []
+    for key, label in _ALREADY_LABEL:
+        n = sum(1 for s in snapshots for w in s["waiting"] if w.get(key))
+        if n:
+            parts.append(f"{label} {n}건")
+    return f"{' · '.join(parts)} 별도" if parts else ""
 
 
 def tf_seconds(tf: str) -> float:
@@ -299,7 +327,7 @@ def sent_counts_last_24h(hist: dict, now: pd.Timestamp) -> Dict[str, int]:
 
 def headline(events: Sequence[EV.Event], snapshots: Sequence[dict], now: pd.Timestamp) -> str:
     """첫 줄 — 우선순위(기계적): ① 지난 24h 60MA 상방·하방 전환 → ② 대기 중 후보(★ 우선, 경과 짧은 순) → ③ 특이 사항 없음.
-    여러 TF 면 긴 TF부터 나열하고 TF 마다 사건 종류를 병기한다."""
+    여러 TF 면 긴 TF부터 나열하고 TF 마다 사건 종류를 병기한다. ② 는 전환 대기 행만 본다('이미 상방/하방' 은 ②에 들지 않는다)."""
     cutoff = pd.Timestamp(now) - SUMMARY_LOOKBACK
     turns = [e for e in events if e.kind in _TURN_LABEL and cutoff <= e.ts <= pd.Timestamp(now)]
     if turns:
@@ -315,7 +343,7 @@ def headline(events: Sequence[EV.Event], snapshots: Sequence[dict], now: pd.Time
             parts.append(f"{tf}: {_TURN_LABEL[e.kind]} ({_when_label(e.ts, now)}, {div})" if len(tfs) > 1
                          else f"{_TURN_LABEL[e.kind]} ({_when_label(e.ts, now)}, {div})")
         return f"볼 TF: {', '.join(tfs)} — {' · '.join(parts)}"
-    waiting = [(s["tf"], w) for s in snapshots for w in s["waiting"]]
+    waiting = pending_waiting(snapshots)
     if waiting:
         best: Dict[str, dict] = {}
         for tf, w in waiting:                                # TF 당 ★ 우선, 없으면 경과 짧은 것
@@ -331,19 +359,21 @@ def headline(events: Sequence[EV.Event], snapshots: Sequence[dict], now: pd.Time
 
 def build_daily_summary(events: Sequence[EV.Event], snapshots: Sequence[dict], hist: dict, now: pd.Timestamp,
                         n_cells: int, failures: Sequence[str]) -> str:
-    """요약 본문(줄바꿈 구분). 첫 줄 상태 문장 + 상세 4줄. 평가어 없음."""
+    """요약 본문(줄바꿈 구분). 첫 줄 상태 문장 + 상세 4줄. 평가어 없음.
+    "대기 중" 은 전환 대기 행만 나열하고, '이미 상방/하방' 행은 건수만 괄호로 별도 표기한다."""
     c = sent_counts_last_24h(hist, now)
     waiting_parts = []
     for s in sorted(snapshots, key=lambda x: tf_seconds(x["tf"])):
-        for w in sorted(s["waiting"], key=lambda w: (not w["divergence"], w["bars"])):
+        for w in sorted((w for w in s["waiting"] if not _is_already(w)), key=lambda w: (not w["divergence"], w["bars"])):
             waiting_parts.append(f"{s['tf']}({w['elapsed']}{', ★' if w['divergence'] else ''})")
+    note = already_note(snapshots)
     ma_parts = " ".join(f"{s['tf']}{s['ma60_dir']}" for s in sorted(snapshots, key=lambda x: tf_seconds(x["tf"])))
     ok = n_cells - len(failures)
     status = "스캐너 정상" if not failures else f"스캐너 오류 {len(failures)}셀"
     return "\n".join([
         headline(events, snapshots, now),
         f"지난 24h 발송: 후보 {c[EV.KIND_STOCH_DB]} · 상방 {c[EV.KIND_MA60_TURN]} · 하방 {c[EV.KIND_MA60_DOWN]}",
-        f"대기 중: {' · '.join(waiting_parts) if waiting_parts else '없음'}",
+        f"대기 중: {' · '.join(waiting_parts) if waiting_parts else '없음'}" + (f" ({note})" if note else ""),
         f"60MA: {ma_parts or '—'}",
         f"{status} · 마지막 순회 {to_kst(now):%H:%M} · {ok}셀 OK",
     ])
