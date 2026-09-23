@@ -252,3 +252,14 @@ NARRATION_DISCLAIMER = (
     "입력 데이터가 제공사 정책에 따라 활용될 수 있습니다"
 )
 NARRATION_RATE_LIMIT_CAPTION = "한도 도달 — 기본 요약 표시"
+
+# 스윕 재탈환 검출기 (analysis/sweep_reclaim.py) — 기록 전용 관측.
+#   레벨 = Donchian(donchian_n) 경계(당봉 제외, shift 1). 이탈 후 종가 기준 체류가
+#   reclaim_max_bars 초과면 진짜 이탈(붕괴/돌파 지속), 이내 재탈환 + t+1 유지면 스윕.
+#   docs/SPEC_SWEEP_RECLAIM.md 동결 스펙 — 값 변경은 문서 개정으로만.
+SWEEP_RECLAIM_PARAMS = {
+    "donchian_n": 60,
+    "touch_tol_pct": 0.005,
+    "reclaim_max_bars": 3,
+    "vol_ma_n": 20,
+}
