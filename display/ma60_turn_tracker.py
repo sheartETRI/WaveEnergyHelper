@@ -54,7 +54,7 @@ OBS_BARS = probe.OBS_BARS            # 20 — 사전등록 고정값
 BUFFER = probe.BUFFER                # 0.005 — SS 승계
 RECENT_BARS = 120
 UNVERIFIED = "(미검증)"
-SECTION_TITLE = f"60MA 전환 추적 {UNVERIFIED}"
+SECTION_TITLE = f"60MA 상방 전환 추적 {UNVERIFIED}"   # 하방 섹션과 대칭 표기(2026-09-23) — 식별자·이력 키·ledger 필드 불변
 FIXED_CAPTION = ("탐색 계측 기준 후보의 약 60%는 60MA 전환 없이 소멸합니다 "
                  "(전환율 1h 40.7% / 4h 41.3%, 같은 표본 탐색 결과).")
 PROBE_RATES = {"1h": 0.407, "4h": 0.413}   # REPORT_MA60_TURN_PROBE §3 '창 안 60MA 전환 발생' 비율 — 표기 대조용
@@ -261,8 +261,8 @@ def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str
 # ------------------------------------------------------------------ 차트 연동 (대기 중 후보만)
 TRACKER_LOW_COLOR = "#7E57C2"     # 구조 기준선(갈색·적색)과 구분되는 보라 계열
 TRACKER_LINE_COLOR = "#26A69A"    # 청록
-TRACKER_LOW_LABEL = f"추적 후보 패턴 저점 {UNVERIFIED}"
-TRACKER_LINE_LABEL = f"추적 후보 기준선 ×0.995 {UNVERIFIED}"
+TRACKER_LOW_LABEL = f"상방 추적 후보 패턴 저점 {UNVERIFIED}"
+TRACKER_LINE_LABEL = f"상방 추적 후보 기준선 ×0.995 {UNVERIFIED}"
 
 
 def tracker_reference_lines(frame: pd.DataFrame) -> List[dict]:

@@ -113,7 +113,7 @@ def _db_event(ts="2026-09-21 04:00", last_pos=100, known_pos=100, **over):
 
 def test_message_formats_match_main_scanner_wording():
     assert EV.format_message(_turn_event()).splitlines() == [
-        "[BTCUSDT 4h] 60MA 전환 발생 (미검증)",
+        "[BTCUSDT 4h] 60MA 상방 전환 발생 (미검증)",
         "쌍바닥 확정 09-18 17:00 → 전환 09-18 21:00 (소요 1봉)",
         "가격 80,726 · 패턴 저점 74,968 / 기준선 74,593",
         "다이버전스 없음",

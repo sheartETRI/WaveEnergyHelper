@@ -117,7 +117,7 @@ def test_labels_no_wave_numbers_no_recommendation():
     assert "연쇄 2번째 스윙 뒤" in text
     frame = TS.chain_frame(result)
     assert list(frame.columns) == list(TS.COLUMNS)
-    assert frame["종류"].tolist() == ["고점", "저점", "60MA 전환", "고점"]   # 60MA 전환이 연쇄의 어느 지점인지 행으로
+    assert frame["종류"].tolist() == ["고점", "저점", "60MA 상방 전환", "고점"]   # 60MA 상방 전환이 연쇄의 어느 지점인지 행으로
     marks = TS.structure_markers(result)
     assert [m["text"] for m in marks] == ["—", "HL", "HH", "60MA"] and marks[1]["position"] == "belowBar"
     dense = dict(result, chain=chain * 15)

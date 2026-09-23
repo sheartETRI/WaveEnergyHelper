@@ -37,7 +37,7 @@ config 함수를 그대로 호출한다(테스트가 결과 동일성 단언). �
 
 - 대상: `PUSH_TARGETS` = BTCUSDT × (1h, 2h, 4h, 6h, 12h, 1d, 2d). ledger 도 7셀 전부.
 - 주기: `deploy/push_alarms.service` 무변경(`--loop 300 --offset 60`, 매시 :01·:06…).
-- 종류(`notify.events.KINDS`): `stoch_db`(대파동 쌍바닥 후보, ★ 상승 다이버전스) · `ma60_turn`(60MA 전환, 다이버전스 줄) · `ma60_down`(하방 전환,
+- 종류(`notify.events.KINDS`): `stoch_db`(대파동 쌍바닥 후보, ★ 상승 다이버전스) · `ma60_turn`(60MA 상방 전환, 다이버전스 줄) · `ma60_down`(하방 전환,
   하락 다이버전스 줄) · `structure_ll`(검출·기록만, 발송 꺼짐 — `notify/plan.SEND_DISABLED_KINDS`). 메시지는 `notify.events.format_message` 그대로.
 - 예전 3층 확정·RSI·MACD 6종은 발송에서 제거. 코드는 `--legacy-signals` 옵션(기본 꺼짐, 이력 `pushbullet_state.legacy.json`)으로 남김.
 

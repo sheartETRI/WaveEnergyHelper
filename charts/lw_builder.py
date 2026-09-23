@@ -407,7 +407,7 @@ def tracker_caption_html(lines: list[dict]) -> str:
     n = len(lines) // 2
     more = f" 외 {n - 1}건" if n > 1 else ""
     return (
-        f' · 추적{more} <span style="color:{low["color"]}">─</span> 저점 {format_price(low["price"])}'
+        f' · 상방 추적{more} <span style="color:{low["color"]}">─</span> 저점 {format_price(low["price"])}'
         f' · <span style="color:{ref["color"]}">┄</span> 기준선 {format_price(ref["price"])} (미검증)'
     )
 

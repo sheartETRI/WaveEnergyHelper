@@ -38,7 +38,7 @@ RETRACE_REFS = (38.2, 50.0, 61.8)   # 참고 표시만 — 판정에 쓰지 않�
 
 KIND_HIGH = "고점"
 KIND_LOW = "저점"
-KIND_TURN = "60MA 전환"
+KIND_TURN = "60MA 상방 전환"        # 표 "종류" 라벨(마커 텍스트는 "60MA" 그대로) — 60MA 상방 전환 추적 섹션과 같은 표기
 CLS_HH, CLS_HL, CLS_LH, CLS_LL, CLS_EQ = "HH", "HL", "LH", "LL", "EQ"
 
 STATE_FORMING = "형성 중 (스윙 없음)"
@@ -229,9 +229,9 @@ def build_lines(result: Optional[dict]) -> List[str]:
         lines.append("되돌림 실측: 최근 고점 뒤 확정 저점 없음")
     t = result.get("turn") or {}
     if t.get("pos") is not None:
-        lines.append(f"60MA 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄 {t['swings_before']}번째 스윙 뒤")
+        lines.append(f"60MA 상방 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄 {t['swings_before']}번째 스윙 뒤")
     else:
-        lines.append(f"60MA 전환: 없음 (60MA 추적 상태 {t.get('status', '—')})")
+        lines.append(f"60MA 상방 전환: 없음 (60MA 상방 전환 추적 상태 {t.get('status', '—')})")
     for r in result["chain"]:
         pct = "" if r["pct"] is None else f" {r['pct']:+.2f}%"
         lines.append(f"  {_fmt_ts(r['ts'])} {r['kind']} {_fmt_px(r['price'])} {r['cls']}{pct}")
@@ -288,10 +288,10 @@ def render_structure_section(df: pd.DataFrame, symbol: str, interval: str) -> Op
             st.caption(f"마지막 훼손(저점 LL): {_fmt_ts(stt['last_ll_at'])}")
         t = result.get("turn") or {}
         if t.get("pos") is not None:
-            st.caption(f"60MA 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄의 {t['swings_before']}번째 스윙 뒤 "
-                       f"(60MA 전환 추적 섹션과 같은 후보)")
+            st.caption(f"60MA 상방 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄의 {t['swings_before']}번째 스윙 뒤 "
+                       f"(60MA 상방 전환 추적 섹션과 같은 후보)")
         else:
-            st.caption(f"60MA 전환 없음 — 60MA 전환 추적 상태: {t.get('status', '—')}")
+            st.caption(f"60MA 상방 전환 없음 — 60MA 상방 전환 추적 상태: {t.get('status', '—')}")
         frame = chain_frame(result)
         if frame.empty:
             st.caption("기준점 이후 확정된 스윙 없음")

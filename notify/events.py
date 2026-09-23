@@ -38,7 +38,7 @@ KIND_STOCH_DB = "stoch_db"
 KINDS = (KIND_MA60_TURN, KIND_MA60_DOWN, KIND_STRUCTURE_LL, KIND_STOCH_DB)
 
 UNVERIFIED = MT.UNVERIFIED          # "(미검증)"
-TITLE = {KIND_MA60_TURN: "60MA 전환 발생", KIND_MA60_DOWN: "60MA 하방 전환 발생",
+TITLE = {KIND_MA60_TURN: "60MA 상방 전환 발생", KIND_MA60_DOWN: "60MA 하방 전환 발생",     # 표기만 대칭(2026-09-23) — 종류 이름·이력 키 불변
          KIND_STRUCTURE_LL: "구조 훼손 — 저점 LL 발생", KIND_STOCH_DB: "대파동 쌍바닥 후보"}
 DIVERGENCE_LINE = {True: "다이버전스 있음", False: "다이버전스 없음"}          # 60MA 전환 알림 끝 줄
 STAR_DIVERGENCE = "★ 상승 다이버전스"                                          # 쌍바닥 후보 알림 2행(해당 시에만)
@@ -197,7 +197,7 @@ def format_message(ev: Event) -> str:
         ])
     if ev.kind == KIND_STOCH_DB:
         if f["status"] == MT.STATUS_TURNED:
-            ma_line = f"60MA 전환 발생 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)"
+            ma_line = f"60MA 상방 전환 발생 {_kst(f['turn_ts'])} (소요 {f['bars']}봉)"
         elif f["status"] == MT.STATUS_EXPIRED:
             ma_line = f"소멸 (창 {f['obs_bars']}봉 안 60MA 전환 없음)"
         elif f["status"] == MT.STATUS_NO_MA:

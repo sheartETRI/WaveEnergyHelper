@@ -191,8 +191,8 @@ def test_targets_kinds_and_schedule_are_fixed_without_touching_settings():
     args = P.parse_args([])
     assert args.loop is None and not args.legacy_signals and args.export_ledger is None and args.offset == 60
     assert P.parse_args(["--legacy-signals", "--export-ledger", "x.csv"]).legacy_signals
-    title, body = P.split_title("[BTCUSDT 4h] 60MA 전환 발생 (미검증)\n둘째 줄\n셋째 줄")
-    assert title == "[WEH] [BTCUSDT 4h] 60MA 전환 발생 (미검증)" and body == "둘째 줄\n셋째 줄"
+    title, body = P.split_title("[BTCUSDT 4h] 60MA 상방 전환 발생 (미검증)\n둘째 줄\n셋째 줄")
+    assert title == "[WEH] [BTCUSDT 4h] 60MA 상방 전환 발생 (미검증)" and body == "둘째 줄\n셋째 줄"
 
 
 def test_loop_grid_wakes_at_offset_after_the_hour():

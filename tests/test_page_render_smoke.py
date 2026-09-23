@@ -1,4 +1,4 @@
-"""페이지 렌더 스모크 — main.py 를 Streamlit AppTest 로 실제 실행해 알람 탭 "60MA 전환 추적" 표에 '다이버전스' 열과
+"""페이지 렌더 스모크 — main.py 를 Streamlit AppTest 로 실제 실행해 알람 탭 "60MA 상방 전환 추적" 표에 '다이버전스' 열과
 있음/없음 코호트 집계 캡션이 **렌더 결과물**에 존재함을 단언한다(단위 테스트가 통과해도 화면에 없던 사례의 재발 방지).
 
 네트워크는 data/binance.requests.get 을 합성 kline 으로 대체한다(모든 심볼·TF 동일 합성 시계열). 검증 대상은 렌더 트리이지
@@ -80,10 +80,10 @@ def app(monkeypatch):
 
 
 def _tracker_df(at):
-    """렌더 트리의 st.dataframe 중 60MA 전환 추적 표(열 집합이 COLUMNS 와 같은 것)."""
+    """렌더 트리의 st.dataframe 중 60MA 상방 전환 추적 표(열 집합이 COLUMNS 와 같은 것)."""
     frames = [d.value for d in at.dataframe]
     hits = [f for f in frames if list(f.columns) == list(T.COLUMNS)]
-    assert hits, f"60MA 전환 추적 표를 찾지 못함 — 렌더된 표 열 목록: {[list(f.columns) for f in frames]}"
+    assert hits, f"60MA 상방 전환 추적 표를 찾지 못함 — 렌더된 표 열 목록: {[list(f.columns) for f in frames]}"
     return hits[0]
 
 

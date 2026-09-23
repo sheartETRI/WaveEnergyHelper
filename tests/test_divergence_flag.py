@@ -1,5 +1,5 @@
 """다이버전스 플래그(display/divergence_flag) — 단일 정의 고정(스토캐 HL ∧ 피봇 봉 저가 둘째 < 첫째) · 기존 검출 결과 소비 ·
-60MA 전환 추적 표 '다이버전스' 열·집계 줄 · 재구현 금지 · 정의 문서 대조."""
+60MA 상방 전환 추적 표 '다이버전스' 열·집계 줄 · 재구현 금지 · 정의 문서 대조."""
 import os
 import subprocess
 import sys

@@ -1,4 +1,4 @@
-"""60MA 전환 추적 표시(display/ma60_turn_tracker) — 체리픽 동일성 · import 소비 단언 · probe.simulate 상태 일치 ·
+"""60MA 상방 전환 추적 표시(display/ma60_turn_tracker) — 체리픽 동일성 · import 소비 단언 · probe.simulate 상태 일치 ·
 미검증 라벨 · 차트 연동 · main 배선 · 알람 푸시 무접촉."""
 import hashlib
 import os
@@ -218,7 +218,7 @@ def test_lw_html_draws_tracker_lines_and_caption_only_when_given():
     html = LW.build_lw_html(df, "BTCUSDT", "1h", "[게이트 미적용 TF]", chart_height=600, vendor_js="",
                             tracker_lines=lines)
     assert '"price": 101.5' in html and '"price": 100.99' in html and '"label"' not in html
-    assert "추적" in html and "(미검증)" in html and "저점 101.50" in html and "기준선 100.99" in html
+    assert "상방 추적" in html and "(미검증)" in html and "저점 101.50" in html and "기준선 100.99" in html   # 하방 "하방 추적" 과 대칭
     two = LW.tracker_caption_html(lines + lines)
     assert "외 1건" in two
     assert LW.tracker_caption_html([]) == ""

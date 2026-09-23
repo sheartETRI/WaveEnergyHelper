@@ -1,5 +1,5 @@
 """60MA 기울기 실측 표시(display/ma60_slope) — 부호·스케일, 오프셋, 부호 변경 창, 다중 TF 재사용, 판정·예측 어휘 부재,
-정의·알람 무접촉, 60MA 전환 추적 섹션 배선."""
+정의·알람 무접촉, 60MA 상방 전환 추적 섹션 배선."""
 import os
 import sys
 
@@ -27,7 +27,7 @@ def test_slope_is_percent_per_bar_with_sign():
     assert s.iloc[2] == pytest.approx(-0.5)             # (100.495−101)/101 ×100 = −0.5
     assert s.iloc[3] == pytest.approx(0.0)
     assert M.direction(0.3) == M.DIR_UP and M.direction(-0.3) == M.DIR_DOWN
-    assert M.direction(0.0) == M.DIR_DOWN                # 60MA 전환 추적과 같은 기준: MA60(t) > MA60(t−1) 만 상방
+    assert M.direction(0.0) == M.DIR_DOWN                # 60MA 상방 전환 추적과 같은 기준: MA60(t) > MA60(t−1) 만 상방
     assert M.direction(float("nan")) == M.DIR_NA
 
 
