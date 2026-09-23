@@ -56,6 +56,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-09-23T16:00:00Z": {
+   "event_ts": "2026-09-23T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_turn|2026-09-03T08:00:00Z": {
    "event_ts": "2026-09-03T08:00:00Z",
    "sent_at": null,
@@ -120,6 +125,11 @@
    "event_ts": "2026-09-15T07:00:00Z",
    "sent_at": null,
    "delivered": false
+  },
+  "BTCUSDT|1h|ma60_down|2026-09-23T21:00:00Z": {
+   "event_ts": "2026-09-23T21:00:00Z",
+   "sent_at": "2026-09-23T22:29:44Z",
+   "delivered": true
   },
   "BTCUSDT|1h|ma60_turn|2026-09-03T12:00:00Z": {
    "event_ts": "2026-09-03T12:00:00Z",
@@ -223,6 +233,11 @@
   },
   "BTCUSDT|1h|structure_ll|2026-09-20T03:00:00Z": {
    "event_ts": "2026-09-20T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|structure_ll|2026-09-23T16:00:00Z": {
+   "event_ts": "2026-09-23T16:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -386,6 +401,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|1h|structure_ll|2026-09-23T16:00:00Z": {
+   "event_ts": "2026-09-23T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|4h|ma60_down|2026-09-09T16:00:00Z": {
    "event_ts": "2026-09-09T16:00:00Z",
    "sent_at": null,
@@ -469,6 +489,20 @@
     "pattern_high": 2807.34,
     "already_down": false,
     "recorded_at": "2026-09-23T16:46:35Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-23T12:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 9,
+    "turn_ts": "2026-09-23T21:00:00Z",
+    "turn_price": 84419.48,
+    "direction": "down",
+    "pattern_high": 87395.67,
+    "already_down": false,
+    "recorded_at": "2026-09-23T22:29:44Z"
    }
   ]
  }
