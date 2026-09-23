@@ -73,14 +73,19 @@ def build_dataframe(raw: list) -> pd.DataFrame:
 
 
 def scan_confluence_frame(df: pd.DataFrame):
-    """스토캐 검출 컬럼을 채워 합류 이벤트까지 스캔. 불가 환경이면 None (그 부분만 생략)."""
+    """스토캐 검출 컬럼을 채워 합류 이벤트 + 확정 봉 목록(진단용)을 스캔.
+
+    불가 환경이면 (None, None) — 그 부분만 생략. 두 번째 반환값은 레이어별
+    쌍바닥/쌍봉 확정 봉 목록으로, 합류 미성립 원인(확정 시점·gap)을 사후에
+    확인하는 진단 기록이다.
+    """
     try:
         from indicators.stochastic import add_stochastic_slow_layers
         from analysis.sweep_confluence import confluence_to_frame, scan_confluence_events
         from config.settings import SWEEP_CONFLUENCE_PARAMS, WAVE_LAYER_ROLES
     except Exception as err:
         print(f"(합류 스캔 생략 — 임포트 실패: {err})")
-        return None
+        return None, None
     enriched = add_stochastic_slow_layers(df.copy())
     roles = SWEEP_CONFLUENCE_PARAMS.get("layer_roles", [])
     missing = [
@@ -89,8 +94,29 @@ def scan_confluence_frame(df: pd.DataFrame):
     ]
     if missing:
         print(f"(합류 스캔 생략 — 검출 컬럼 없음: {missing})")
-        return None
-    return confluence_to_frame(scan_confluence_events(enriched))
+        return None, None
+
+    rows = []
+    for role in roles:
+        suffix = WAVE_LAYER_ROLES[role]
+        for prefix, name in (("stoch_db", "db"), ("stoch_dt", "dt")):
+            col = f"{prefix}_{suffix}"
+            if col not in enriched.columns:
+                continue
+            kind_col = f"{prefix}_kind_{suffix}"
+            confirmed = enriched[enriched[col].notna()]
+            for ts, row in confirmed.iterrows():
+                rows.append({
+                    "timestamp": ts,
+                    "layer": suffix,
+                    "kind": name,
+                    "db_kind": row.get(kind_col),
+                    "value": float(row[col]),
+                })
+    confirms = pd.DataFrame(
+        rows, columns=["timestamp", "layer", "kind", "db_kind", "value"]
+    ).sort_values("timestamp")
+    return confluence_to_frame(scan_confluence_events(enriched)), confirms
 
 
 def main() -> int:
@@ -129,7 +155,13 @@ def main() -> int:
         print(show.to_string(index=False) if len(show) else "(해당 기간 이벤트 없음)")
         print(f"-> CSV: {os.path.relpath(out_path, root)}")
 
-        conf = scan_confluence_frame(df)
+        conf, confirms = scan_confluence_frame(df)
+        if confirms is not None:
+            confirms_path = os.path.join(
+                logs_dir, f"stoch_confirms_{args.symbol}_{interval}.csv"
+            )
+            confirms.to_csv(confirms_path, index=False, encoding="utf-8-sig")
+            print(f"-> 확정 봉 진단 CSV: {os.path.relpath(confirms_path, root)}")
         if conf is not None:
             conf_path = os.path.join(
                 logs_dir, f"sweep_confluence_{args.symbol}_{interval}.csv"
