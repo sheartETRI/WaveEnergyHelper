@@ -306,6 +306,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BTCUSDT|4h|structure_ll|2026-09-24T08:00:00Z": {
+   "event_ts": "2026-09-24T08:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|1d|structure_ll|2026-09-15T00:00:00Z": {
    "event_ts": "2026-09-15T00:00:00Z",
    "sent_at": "2026-09-20T10:40:08Z",
@@ -473,6 +478,11 @@
   },
   "ETHUSDT|4h|structure_ll|2026-09-23T16:00:00Z": {
    "event_ts": "2026-09-23T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|4h|structure_ll|2026-09-24T08:00:00Z": {
+   "event_ts": "2026-09-24T08:00:00Z",
    "sent_at": null,
    "delivered": false
   }
