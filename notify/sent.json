@@ -623,6 +623,19 @@
     "pattern_low": 82874.93,
     "already_up": false,
     "recorded_at": "2026-09-25T11:42:54Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-24T18:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 756.83,
+    "already_up": false,
+    "recorded_at": "2026-09-25T15:56:23Z"
    }
   ]
  }
