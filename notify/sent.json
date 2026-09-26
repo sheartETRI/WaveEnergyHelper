@@ -11,6 +11,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|ma60_turn|2026-09-26T21:00:00Z": {
+   "event_ts": "2026-09-26T21:00:00Z",
+   "sent_at": "2026-09-26T23:51:14Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|stoch_db|2026-09-03T04:00:00Z": {
    "event_ts": "2026-09-03T04:00:00Z",
    "sent_at": null,
@@ -767,6 +772,19 @@
     "pattern_high": 2807.34,
     "already_down": false,
     "recorded_at": "2026-09-26T18:38:13Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-26T07:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 14,
+    "turn_ts": "2026-09-26T21:00:00Z",
+    "turn_price": 772.08,
+    "pattern_low": 771.29,
+    "already_up": true,
+    "recorded_at": "2026-09-26T23:51:14Z"
    }
   ]
  }
