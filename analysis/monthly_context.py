@@ -76,7 +76,7 @@ def monthly_context_frame(
     ).mask(diff > 0, "up").mask(diff < 0, "down").mask(diff == 0, "flat")
 
     ma20 = close.rolling(window=ma_n, min_periods=ma_n).mean()
-    ma20_slope_pct = ma20.pct_change() * 100.0
+    ma20_slope_pct = ma20.pct_change(fill_method=None) * 100.0
 
     band_low = low.rolling(window=band_n, min_periods=band_n).min()
     band_high = high.rolling(window=band_n, min_periods=band_n).max()
