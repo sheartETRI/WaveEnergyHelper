@@ -201,6 +201,20 @@ def main() -> int:
                 print(recent_conf[cols].to_string(index=False))
             print(f"-> CSV: {os.path.relpath(conf_path, root)}")
 
+    # 월봉 맥락 레코드 (SPEC §8) — 이벤트가 아니라 사이클 위치의 월별 시계열.
+    try:
+        from analysis.monthly_context import monthly_context_frame
+
+        ctx = monthly_context_frame(build_dataframe(fetch_klines(args.symbol, "1M", args.limit)))
+        ctx_path = os.path.join(logs_dir, f"monthly_context_{args.symbol}.csv")
+        ctx.to_csv(ctx_path, encoding="utf-8-sig")
+        print(f"\n===== 월봉 맥락 ({args.symbol}) — {len(ctx)}개월 -> {os.path.relpath(ctx_path, root)} =====")
+        tail = ctx.dropna(subset=["large_k"]).tail(2)
+        if len(tail):
+            print(tail.round(2).to_string())
+    except Exception as err:
+        print(f"(월봉 맥락 생략 — {err})")
+
     return 0
 
 

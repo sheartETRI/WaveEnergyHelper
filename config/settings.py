@@ -279,3 +279,11 @@ STOCH_NEAR_MISS_PARAMS = {
     "near_band": 5.0,
     "layer_roles": ["large"],
 }
+
+# 월봉 맥락 레코드 (analysis/monthly_context.py) — 기록 전용 상태.
+#   월봉은 이벤트 TF 가 아니라 사이클 위치(조인 키). 대파동 공식은 STOCH_LAYERS large 재사용.
+#   docs/SPEC_SWEEP_RECLAIM.md §8 동결 스펙 — 값 변경은 문서 개정으로만.
+MONTHLY_CONTEXT_PARAMS = {
+    "band_months": 24,
+    "ma_n": 20,
+}
