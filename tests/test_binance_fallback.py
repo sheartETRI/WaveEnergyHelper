@@ -129,12 +129,35 @@ def test_fallback_also_blocked_reports_fallback_url(monkeypatch):
     assert B.last_fetch_error("BTCUSDT", "1h") == f"HTTP 451 {BINANCE_FALLBACK_URL}"
 
 
-def test_connection_error_reports_type_and_url(monkeypatch):
+def test_connection_error_on_primary_falls_back_to_mirror(monkeypatch):
+    """연결 단계 실패(회사망 차단 등)도 미러로 폴백한다 — 451/403 뿐 아니라 ConnectionError 도."""
+    calls = []
+
+    def fake_get(url, params=None, timeout=None, **kw):
+        calls.append(url)
+        if url == BINANCE_BASE_URL:
+            raise requests.ConnectionError("blocked at connect")
+        return _Resp(200, PAYLOAD, url)
+
+    monkeypatch.setattr(B.requests, "get", fake_get)
+    assert B.fetch_klines("BTCUSDT", "1h", 5) == PAYLOAD
+    assert calls == [BINANCE_BASE_URL, BINANCE_FALLBACK_URL]   # 미러를 실제로 시도
+    assert B.active_data_url() == BINANCE_FALLBACK_URL
+    assert B.fallback_reason() == "api.binance.com ConnectionError"
+    assert B.last_fetch_error("BTCUSDT", "1h") is None
+
+
+def test_connection_error_on_both_tries_mirror_then_reports(monkeypatch):
+    """둘 다 연결 실패면 미러까지 시도한 뒤 None — 사유는 원래 주소로 남는다."""
+    calls = []
+
     def boom(url, params=None, timeout=None, **kw):
+        calls.append(url)
         raise requests.ConnectionError("no route")
 
     monkeypatch.setattr(B.requests, "get", boom)
     assert B.fetch_klines("BTCUSDT", "1h", 5) is None
+    assert calls == [BINANCE_BASE_URL, BINANCE_FALLBACK_URL]
     assert B.last_fetch_error("BTCUSDT", "1h") == f"ConnectionError {BINANCE_BASE_URL}"
 
 

@@ -97,12 +97,25 @@ def data_source_line() -> str:
 
 
 def _request_klines(params: dict):
-    """현재 주소로 GET. 원래 주소가 451/403 이면 대체 주소로 전환해 같은 요청을 1회 재시도한다.
+    """현재 주소로 GET. 원래 주소가 451/403 응답이거나 연결 자체가 실패하면 대체 주소로 전환해
+    같은 요청을 1회 재시도한다.
 
     반환: (response, url) — response 는 raise_for_status 를 아직 부르지 않은 상태.
+    연결 단계 실패(ConnectionError·Timeout 등)는 응답 상태가 없어 451/403 분기로 못 잡으므로
+    여기서 예외를 잡아 대체 주소로 넘긴다(standalone 스캔 스크립트와 동일한 태도). 이미 대체
+    주소를 쓰는 중이면 재시도 없이 원래 예외를 올린다.
     """
     url = active_data_url()
-    response = requests.get(url, params=params, timeout=10)
+    try:
+        response = requests.get(url, params=params, timeout=10)
+    except requests.exceptions.RequestException as exc:
+        if url != BINANCE_BASE_URL:
+            raise
+        reason = f"{_host(url)} {type(exc).__name__}"
+        logger.warning("binance %s → fallback %s (connect retry)", reason, BINANCE_FALLBACK_URL)
+        _DATA_URL["url"] = BINANCE_FALLBACK_URL
+        _DATA_URL["reason"] = reason
+        return requests.get(BINANCE_FALLBACK_URL, params=params, timeout=10), BINANCE_FALLBACK_URL
     status = getattr(response, "status_code", None)
     if url == BINANCE_BASE_URL and status in BINANCE_FALLBACK_STATUS:
         reason = f"{_host(url)} HTTP {status}"
