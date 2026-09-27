@@ -129,7 +129,11 @@ def scan_confluence_frame(df: pd.DataFrame):
 def main() -> int:
     parser = argparse.ArgumentParser(description="스윕 재탈환 검출기 실봉 스캔 (기록 전용)")
     parser.add_argument("--symbol", default="BTCUSDT")
-    parser.add_argument("--intervals", default="1d,6h", help="쉼표 구분 (Binance 네이티브 인터벌)")
+    parser.add_argument(
+        "--intervals",
+        default="1w,3d,1d,6h",
+        help="쉼표 구분 (Binance 네이티브 인터벌). 상위 TF 포함 — HTF 신뢰성 가설 표본 축적",
+    )
     parser.add_argument("--since", default="2025-10-01", help="콘솔 요약 시작일 (CSV 는 전 구간)")
     parser.add_argument("--limit", type=int, default=1000, help="인터벌당 수신 봉 수 (최대 1000)")
     args = parser.parse_args()
