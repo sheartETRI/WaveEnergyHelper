@@ -21,6 +21,7 @@ from data.binance import (
 )
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
+from display.tf_radar_panel import render_tf_radar_section
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
 from display.ma60_down_tracker import down_tracker_reference_lines, render_down_tracker_section
@@ -202,6 +203,8 @@ def main():
     tab_chart, tab_alarm = st.tabs(MAIN_TABS)
 
     with tab_alarm:
+        # TF 레이더 — 어느 TF에서 전투(레벨 이탈 에피소드)가 벌어지는지 교차 TF 요약 (표시 전용, SPEC §9).
+        render_tf_radar_section(symbol)
         render_alarm_panel(
             df, symbol, interval,
             history_bars=cfg["history_bars"],

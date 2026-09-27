@@ -287,3 +287,12 @@ MONTHLY_CONTEXT_PARAMS = {
     "band_months": 24,
     "ma_n": 20,
 }
+
+# TF 레이더 (analysis/tf_radar.py + display/tf_radar_panel.py) — 표시 전용 관측.
+#   전 TF 스윕 상태 요약으로 "지금 볼 TF"를 가리킴. 판정·게이팅·발송 아님.
+#   docs/SPEC_SWEEP_RECLAIM.md §9 동결 스펙 — 값 변경은 문서 개정으로만.
+TF_RADAR_PARAMS = {
+    "intervals": ["1w", "3d", "1d", "12h", "6h", "4h", "2h", "1h"],
+    "near_level_pct": 1.0,
+    "fresh_bars": 3,
+}

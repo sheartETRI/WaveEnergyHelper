@@ -123,8 +123,12 @@ def _scan_side(
     vol_ma_v: Optional[np.ndarray],
     p: dict,
     side: str,
-) -> list[SweepEvent]:
-    """한쪽(하단/상단) 상태기계. pierce_v 는 하단이면 low, 상단이면 high."""
+) -> tuple[list[SweepEvent], dict]:
+    """한쪽(하단/상단) 상태기계. pierce_v 는 하단이면 low, 상단이면 high.
+
+    반환: (이벤트 목록, 마지막 봉 기준 상태 스냅숏). 스냅숏은 관측(TF 레이더) 전용 —
+    확정 전 정보(진행 중 에피소드)를 담으므로 이벤트 기록과 달리 판정에 쓰지 않는다.
+    """
     n = int(p["donchian_n"])
     tol = float(p["touch_tol_pct"])
     max_dwell = int(p["reclaim_max_bars"])
@@ -244,7 +248,61 @@ def _scan_side(
             state = "broken"
             ep = None
 
-    return events
+    # 마지막 봉 기준 상태 스냅숏 (관측 전용).
+    if state == "episode" and ep is not None:
+        level = ep["level"]
+        if is_low:
+            depth_pct = (level - ep["extreme"]) / level * 100.0
+        else:
+            depth_pct = (ep["extreme"] - level) / level * 100.0
+        state_info = {
+            "state": "episode",
+            "side": side,
+            "level": level,
+            "depth_pct": float(depth_pct),
+            "dwell_bars": ep["dwell"],
+            "bars_from_start": (len(index) - 1) - ep["start_i"],
+            "pending_confirm": bool(ep["pending"]),
+            "rejects": ep["rejects"],
+            "touch_count": ep["touches"],
+            "start_ts": index[ep["start_i"]],
+        }
+    elif state == "broken":
+        state_info = {"state": "broken", "side": side}
+    else:
+        state_info = {"state": "normal", "side": side}
+    return events, state_info
+
+
+def _inputs(df: pd.DataFrame, params: Optional[dict]) -> Optional[dict]:
+    """스캔 공통 전처리 — 컬럼 결측·빈 df 면 None (조용히 건너뜀)."""
+    if df is None or df.empty:
+        return None
+    if not {"high", "low", "close"}.issubset(df.columns):
+        return None
+
+    p = _merged_params(params)
+    n = int(p["donchian_n"])
+    vol_n = int(p["vol_ma_n"])
+
+    low = df["low"].astype(float)
+    high = df["high"].astype(float)
+    prep = {
+        "p": p,
+        "index": df.index,
+        "low_v": low.to_numpy(),
+        "high_v": high.to_numpy(),
+        "close_v": df["close"].astype(float).to_numpy(),
+        "lvl_low": low.rolling(n).min().shift(1).to_numpy(),
+        "lvl_high": high.rolling(n).max().shift(1).to_numpy(),
+        "vol_v": None,
+        "vol_ma_v": None,
+    }
+    if "volume" in df.columns:
+        vol = df["volume"].astype(float)
+        prep["vol_v"] = vol.to_numpy()
+        prep["vol_ma_v"] = vol.rolling(vol_n).mean().shift(1).to_numpy()
+    return prep
 
 
 def scan_sweep_events(df: pd.DataFrame, params: Optional[dict] = None) -> list[SweepEvent]:
@@ -254,34 +312,35 @@ def scan_sweep_events(df: pd.DataFrame, params: Optional[dict] = None) -> list[S
     컬럼이 없거나 df 가 비면 빈 목록(조용히 건너뜀 — 알람 레이어와 같은 태도).
     params 로 SWEEP_RECLAIM_PARAMS 일부를 덮어쓸 수 있다(테스트·탐색용).
     """
-    if df is None or df.empty:
+    prep = _inputs(df, params)
+    if prep is None:
         return []
-    if not {"high", "low", "close"}.issubset(df.columns):
-        return []
-
-    p = _merged_params(params)
-    n = int(p["donchian_n"])
-    vol_n = int(p["vol_ma_n"])
-
-    low = df["low"].astype(float)
-    high = df["high"].astype(float)
-    close_v = df["close"].astype(float).to_numpy()
-
-    lvl_low = low.rolling(n).min().shift(1).to_numpy()
-    lvl_high = high.rolling(n).max().shift(1).to_numpy()
-
-    if "volume" in df.columns:
-        vol = df["volume"].astype(float)
-        vol_v = vol.to_numpy()
-        vol_ma_v = vol.rolling(vol_n).mean().shift(1).to_numpy()
-    else:
-        vol_v = None
-        vol_ma_v = None
-
-    events = _scan_side(df.index, low.to_numpy(), close_v, lvl_low, vol_v, vol_ma_v, p, SIDE_LOW)
-    events += _scan_side(df.index, high.to_numpy(), close_v, lvl_high, vol_v, vol_ma_v, p, SIDE_HIGH)
+    ev_low, _ = _scan_side(prep["index"], prep["low_v"], prep["close_v"], prep["lvl_low"],
+                           prep["vol_v"], prep["vol_ma_v"], prep["p"], SIDE_LOW)
+    ev_high, _ = _scan_side(prep["index"], prep["high_v"], prep["close_v"], prep["lvl_high"],
+                            prep["vol_v"], prep["vol_ma_v"], prep["p"], SIDE_HIGH)
+    events = ev_low + ev_high
     events.sort(key=lambda e: (e.timestamp, e.kind))
     return events
+
+
+def current_sweep_state(df: pd.DataFrame, params: Optional[dict] = None) -> dict:
+    """마지막 봉 기준 상·하단 상태기계 스냅숏 {"low": {...}, "high": {...}}.
+
+    관측(TF 레이더) 전용 — 확정 전 정보(진행 중 에피소드·재탈환 확정 대기)를
+    노출하므로 이벤트 기록과 달리 판정·기록에 쓰지 않는다.
+    """
+    prep = _inputs(df, params)
+    if prep is None:
+        return {
+            "low": {"state": "normal", "side": SIDE_LOW},
+            "high": {"state": "normal", "side": SIDE_HIGH},
+        }
+    _, st_low = _scan_side(prep["index"], prep["low_v"], prep["close_v"], prep["lvl_low"],
+                           prep["vol_v"], prep["vol_ma_v"], prep["p"], SIDE_LOW)
+    _, st_high = _scan_side(prep["index"], prep["high_v"], prep["close_v"], prep["lvl_high"],
+                            prep["vol_v"], prep["vol_ma_v"], prep["p"], SIDE_HIGH)
+    return {"low": st_low, "high": st_high}
 
 
 def events_to_frame(events: list[SweepEvent]) -> pd.DataFrame:
