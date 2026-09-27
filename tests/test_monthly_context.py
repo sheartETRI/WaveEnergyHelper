@@ -33,14 +33,26 @@ def test_columns_and_index_preserved():
 
 
 def test_rising_series_reads_high():
-    """단조 상승: 대파동 K 상단, 방향 up, 밴드 위치 상단."""
+    """단조 상승: 대파동 K 상단, 밴드 위치 상단, MA 기울기 양수.
+
+    방향은 여기서 검사하지 않는다 — 등차 상승에서는 %K 비율이 서서히 하락하는 게
+    수학적으로 맞다(절대 스텝 고정, 분모의 가격 비례 항 증가).
+    """
     df = _frame(np.linspace(100, 300, 40))
     last = monthly_context_frame(df).iloc[-1]
     assert last["large_k"] > 80
-    assert last["large_k_dir"] in ("up", "flat")
     # 밴드 하단이 24개월 전 저가(0.95배)라 선형 상승에선 이론상 ≈89% — 85 기준.
     assert last["band_pos_pct"] > 85
     assert last["ma20_slope_pct"] > 0
+
+
+def test_direction_labels():
+    """하락 후 급반등 -> 말봉 방향 up, 상승 후 급락 -> down."""
+    v_shape = list(np.linspace(300, 150, 30)) + list(np.linspace(160, 400, 10))
+    assert monthly_context_frame(_frame(v_shape)).iloc[-1]["large_k_dir"] == "up"
+
+    a_shape = list(np.linspace(150, 300, 30)) + list(np.linspace(290, 100, 10))
+    assert monthly_context_frame(_frame(a_shape)).iloc[-1]["large_k_dir"] == "down"
 
 
 def test_flat_series_is_safe():
