@@ -15,6 +15,12 @@ indicators.oscillators.add_rsi, indicators.oscillators.add_macd 가 이미 기�
   · MACD 0선 상향    macd 의 음→양 전이 봉 t, 그리고 t+1 봉의 macd ≥ 0   (직전 봉은 이 레이어에서 shift)
   · MACD 0선 하향    macd 의 양→음 전이 봉 t, 그리고 t+1 봉의 macd ≤ 0   (동, 대칭)
 
+여기에 스윕/합류 승계 여섯 가지가 더해진다(표시 전용 — 푸시 발송 대상 불변):
+  · 스윕 4종  analysis/sweep_reclaim   (하단 재탈환/붕괴 지속, 상단 페이크/돌파 지속 — high/low/close 필요)
+  · 합류 2종  analysis/sweep_confluence (스윕×쌍바닥/쌍봉 — 스토캐 검출 컬럼 필요)
+각 모듈의 확정 봉 이벤트를 행으로 옮기기만 하며(재검출 없음), 필요한 컬럼이 없으면
+그 종류만 조용히 건너뛴다(기존 태도 동일). SPEC_SWEEP_RECLAIM §0·§6 상응.
+
 알람은 상태가 아니라 엣지다. 쌍바닥/쌍봉 컬럼은 확정 봉에만 값이 들어오므로 그 자체가
 엣지다. 반면 RSI 구역 플래그는 레벨 상태이므로 False→True 전이만 뽑는다 — 과매도 구간이
 30봉 이어질 때 30번 울리지 않게 하려는 것. MACD 도 마찬가지로 부호 상태가 아니라 부호가
@@ -38,6 +44,18 @@ from typing import Iterable, Optional
 import pandas as pd
 
 from config.settings import RSI_PARAMS, STOCH_LAYERS, WAVE_LAYER_ROLES
+from analysis.sweep_confluence import (
+    KIND_CONFLUENCE_BEAR,
+    KIND_CONFLUENCE_BULL,
+    scan_confluence_events,
+)
+from analysis.sweep_reclaim import (
+    KIND_SWEEP_HIGH_BREAKOUT,
+    KIND_SWEEP_HIGH_RECLAIM,
+    KIND_SWEEP_LOW_BREAKDOWN,
+    KIND_SWEEP_LOW_RECLAIM,
+    scan_sweep_events,
+)
 
 # 신호 종류 키 (표시 라벨·방향은 _KIND_META 참조).
 KIND_STOCH_DB = "stoch_db"
@@ -83,6 +101,17 @@ _KIND_METRIC = {
     KIND_MACD_ZERO_UP: ("MACD", "MACD"),
     KIND_MACD_ZERO_DOWN: ("MACD", "MACD"),
 }
+
+# 스윕/합류 승계 행(레이어 None) — value 는 에피소드 동결 레벨 가격.
+_KIND_METRIC.update({
+    KIND_SWEEP_LOW_RECLAIM: ("스윕", "레벨"),
+    KIND_SWEEP_LOW_BREAKDOWN: ("스윕", "레벨"),
+    KIND_SWEEP_HIGH_RECLAIM: ("스윕", "레벨"),
+    KIND_SWEEP_HIGH_BREAKOUT: ("스윕", "레벨"),
+    KIND_CONFLUENCE_BULL: ("합류", "레벨"),
+    KIND_CONFLUENCE_BEAR: ("합류", "레벨"),
+})
+
 
 # 레이어 label -> 역할 이름(대/중/소). WAVE_LAYER_ROLES 역방향.
 _LAYER_ROLE = {label: role for role, label in WAVE_LAYER_ROLES.items()}
@@ -325,6 +354,38 @@ def _macd_signals(df: pd.DataFrame) -> list[AlarmSignal]:
     return out
 
 
+def _sweep_signals(df: pd.DataFrame) -> list[AlarmSignal]:
+    """스윕/합류 이벤트 -> 알람 행 승계 (표시 전용 — 푸시 발송 대상 아님).
+
+    검출·판정은 analysis.sweep_reclaim / sweep_confluence 가 하고(확정 봉 이벤트,
+    t+1 규율 동형), 여기서는 행으로 옮기기만 한다. high/low/close 가 없으면 스윕이,
+    스토캐 검출 컬럼이 없으면 합류가 각각 조용히 빈 목록으로 온다.
+    """
+    signals: list[AlarmSignal] = []
+    sweeps = scan_sweep_events(df)
+    for ev in sweeps:
+        extra = f"레벨 {ev.level:,.0f} 깊이 {ev.depth_pct:.1f}% 체류 {ev.dwell_bars}봉"
+        if ev.detail:
+            extra += f" · {ev.detail}"
+        signals.append(AlarmSignal(
+            timestamp=ev.timestamp, kind=ev.kind, label=ev.label,
+            direction=ev.direction, severity=SEV_CONFIRMED,
+            layer=None, value=float(ev.level), detail=extra,
+        ))
+    for ev in scan_confluence_events(df, sweep_events=sweeps):
+        extra = f"레벨 {ev.level:,.0f} gap {ev.gap_bars:+d}봉 {ev.layer}"
+        if ev.db_kind:
+            extra += f" {ev.db_kind}"
+        if ev.detail:
+            extra += f" · {ev.detail}"
+        signals.append(AlarmSignal(
+            timestamp=ev.timestamp, kind=ev.kind, label=ev.label,
+            direction=ev.direction, severity=SEV_CONFIRMED,
+            layer=None, value=float(ev.level), detail=extra,
+        ))
+    return signals
+
+
 def scan_alarm_signals(
     df: pd.DataFrame,
     layers: Optional[Iterable[str]] = None,
@@ -343,6 +404,7 @@ def scan_alarm_signals(
         signals.extend(_stoch_signals_for_layer(df, suffix, include_candidates))
     signals.extend(_rsi_signals(df))
     signals.extend(_macd_signals(df))
+    signals.extend(_sweep_signals(df))
 
     signals.sort(key=lambda s: (s.timestamp, s.kind))
     return signals
