@@ -7,6 +7,12 @@
 사용:
     python scripts/sweep_scan_report.py
     python scripts/sweep_scan_report.py --symbol BTCUSDT --intervals 1d,6h --since 2025-10-01
+    python scripts/sweep_scan_report.py --deep          # 2017~ 전체 역사 (페이지네이션)
+
+--deep: data/binance.fetch_klines_paginated 로 DEEP_LIMITS 봉까지 과거 페이지를 병합한다
+(endTime 커서·재시도·부분 반환은 그쪽 구현 그대로 — 단일 출처). 대파동 이벤트가 TF 당
+4~8건뿐이라 §11 급4 층화가 판정 불가였던 표본 문제를 푸는 용도. 앱 모듈이 streamlit 을
+끌고 오므로 그 환경에서만 동작하며, 임포트 실패 시 단일 호출(1000봉)로 조용히 물러난다.
 
 출력:
     · 콘솔 — since 이후 이벤트 요약표 (+ 합류 이벤트, SPEC §6)
@@ -36,6 +42,12 @@ _URLS = [
     "https://data-api.binance.vision/api/v3/klines",
 ]
 
+# --deep 일 때 인터벌별 수집 봉 수 — 바이낸스 BTCUSDT 역사(2017-08~) 기준 전체를 덮는 값.
+DEEP_LIMITS = {
+    "1w": 600, "3d": 1200, "1d": 3500, "12h": 7000, "6h": 14000,
+    "4h": 21000, "2h": 42000, "1h": 84000,
+}
+
 _SHOW_COLUMNS = [
     "timestamp", "kind", "level", "depth_pct", "dwell_bars", "bars_from_start",
     "touch_count", "level_age_bars", "dev_vol_ratio", "reclaim_vol_ratio", "detail",
@@ -56,6 +68,22 @@ def fetch_klines(symbol: str, interval: str, limit: int = 1000) -> list:
         except Exception as err:  # 다음 주소로 대체
             last_err = err
     raise RuntimeError(f"klines 수신 실패 ({symbol} {interval}): {last_err}")
+
+
+def fetch_history(symbol: str, interval: str, limit: int, deep: bool) -> list:
+    """단일 호출(≤1000봉) 또는 --deep 페이지네이션. 페이지네이션은 앱 모듈을 재사용한다."""
+    if not deep:
+        return fetch_klines(symbol, interval, limit)
+    total = DEEP_LIMITS.get(interval, limit)
+    try:
+        from data.binance import fetch_klines_paginated
+    except Exception as err:  # streamlit 없는 환경 등 — 단일 호출로 물러남
+        print(f"(--deep 생략 — data.binance 임포트 실패: {err}; 단일 호출 {limit}봉)")
+        return fetch_klines(symbol, interval, limit)
+    raw = fetch_klines_paginated(symbol, interval, total)
+    if not raw:
+        raise RuntimeError(f"페이지네이션 수신 실패 ({symbol} {interval}, 목표 {total}봉)")
+    return raw
 
 
 def build_dataframe(raw: list) -> pd.DataFrame:
@@ -153,6 +181,8 @@ def main() -> int:
     )
     parser.add_argument("--since", default="2025-10-01", help="콘솔 요약 시작일 (CSV 는 전 구간)")
     parser.add_argument("--limit", type=int, default=1000, help="인터벌당 수신 봉 수 (최대 1000)")
+    parser.add_argument("--deep", action="store_true",
+                        help="DEEP_LIMITS 봉까지 과거 페이지 병합 (data.binance.fetch_klines_paginated)")
     args = parser.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -163,7 +193,7 @@ def main() -> int:
     pd.set_option("display.max_columns", 20)
 
     for interval in [s.strip() for s in args.intervals.split(",") if s.strip()]:
-        df = build_dataframe(fetch_klines(args.symbol, interval, args.limit))
+        df = build_dataframe(fetch_history(args.symbol, interval, args.limit, args.deep))
 
         # 원봉 덤프 — 원격 진단 재현용 (스냅샷, 매 실행 덮어씀).
         ohlcv_path = os.path.join(logs_dir, f"ohlcv_{args.symbol}_{interval}.csv")
