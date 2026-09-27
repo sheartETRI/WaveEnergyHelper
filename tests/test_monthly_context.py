@@ -38,7 +38,8 @@ def test_rising_series_reads_high():
     last = monthly_context_frame(df).iloc[-1]
     assert last["large_k"] > 80
     assert last["large_k_dir"] in ("up", "flat")
-    assert last["band_pos_pct"] > 90
+    # 밴드 하단이 24개월 전 저가(0.95배)라 선형 상승에선 이론상 ≈89% — 85 기준.
+    assert last["band_pos_pct"] > 85
     assert last["ma20_slope_pct"] > 0
 
 
