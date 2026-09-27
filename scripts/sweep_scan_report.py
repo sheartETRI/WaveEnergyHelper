@@ -126,6 +126,23 @@ def scan_confluence_frame(df: pd.DataFrame):
     return confluence_to_frame(scan_confluence_events(enriched)), confirms, near
 
 
+def scan_alarm_events_frame(df: pd.DataFrame):
+    """스토캐·RSI·MACD·스윕·합류 전 이벤트를 알람 행 원장으로 덤프 (기록 전용).
+
+    조합 가설(예: 합류의 MACD 0선 동반 여부, 히스토그램 쌍바닥 동반 여부)을 열람 때
+    조인으로 층화하기 위한 원장 — 판정·게이팅에 쓰지 않는다. 불가 환경이면 None.
+    """
+    try:
+        from analysis.alarm_signals import scan_alarm_signals, signals_to_frame
+        from indicators.oscillators import add_macd, add_rsi
+        from indicators.stochastic import add_stochastic_slow_layers
+    except Exception as err:
+        print(f"(알람 이벤트 원장 생략 — {err})")
+        return None
+    enriched = add_macd(add_rsi(add_stochastic_slow_layers(df.copy())))
+    return signals_to_frame(scan_alarm_signals(enriched))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="스윕 재탈환 검출기 실봉 스캔 (기록 전용)")
     parser.add_argument("--symbol", default="BTCUSDT")
@@ -170,6 +187,14 @@ def main() -> int:
         )
         print(show.to_string(index=False) if len(show) else "(해당 기간 이벤트 없음)")
         print(f"-> CSV: {os.path.relpath(out_path, root)}")
+
+        alarm_frame = scan_alarm_events_frame(df)
+        if alarm_frame is not None:
+            alarm_path = os.path.join(
+                logs_dir, f"alarm_events_{args.symbol}_{interval}.csv"
+            )
+            alarm_frame.to_csv(alarm_path, index=False, encoding="utf-8-sig")
+            print(f"-> 알람 이벤트 원장 CSV: {os.path.relpath(alarm_path, root)} ({len(alarm_frame)}행)")
 
         conf, confirms, near = scan_confluence_frame(df)
         if near is not None:
