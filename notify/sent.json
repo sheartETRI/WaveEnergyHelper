@@ -146,6 +146,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|4h|ma60_turn|2026-09-28T20:00:00Z": {
+   "event_ts": "2026-09-28T20:00:00Z",
+   "sent_at": "2026-09-29T02:14:45Z",
+   "delivered": true
+  },
   "BNBUSDT|4h|stoch_db|2026-09-03T00:00:00Z": {
    "event_ts": "2026-09-03T00:00:00Z",
    "sent_at": null,
@@ -966,6 +971,32 @@
     "pattern_high": 2807.34,
     "already_down": false,
     "recorded_at": "2026-09-28T22:29:43Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-09-26T12:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 14,
+    "turn_ts": "2026-09-28T20:00:00Z",
+    "turn_price": 763.96,
+    "pattern_low": 768.58,
+    "already_up": true,
+    "recorded_at": "2026-09-29T02:14:45Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-09-27T08:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 9,
+    "turn_ts": "2026-09-28T20:00:00Z",
+    "turn_price": 763.96,
+    "pattern_low": 766.82,
+    "already_up": true,
+    "recorded_at": "2026-09-29T02:14:45Z"
    }
   ]
  }
