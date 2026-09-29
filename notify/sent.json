@@ -71,6 +71,11 @@
    "sent_at": "2026-09-28T22:29:43Z",
    "delivered": true
   },
+  "BNBUSDT|1h|stoch_db|2026-09-29T09:00:00Z": {
+   "event_ts": "2026-09-29T09:00:00Z",
+   "sent_at": "2026-09-29T15:07:48Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
    "event_ts": "2026-09-19T21:00:00Z",
    "sent_at": null,
@@ -261,6 +266,11 @@
    "sent_at": "2026-09-26T18:38:13Z",
    "delivered": true
   },
+  "BTCUSDT|1h|ma60_turn|2026-09-29T09:00:00Z": {
+   "event_ts": "2026-09-29T09:00:00Z",
+   "sent_at": "2026-09-29T15:07:48Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|stoch_db|2026-09-02T02:00:00Z": {
    "event_ts": "2026-09-02T02:00:00Z",
    "sent_at": null,
@@ -329,6 +339,11 @@
   "BTCUSDT|1h|stoch_db|2026-09-26T07:00:00Z": {
    "event_ts": "2026-09-26T07:00:00Z",
    "sent_at": "2026-09-26T11:51:40Z",
+   "delivered": true
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-29T08:00:00Z": {
+   "event_ts": "2026-09-29T08:00:00Z",
+   "sent_at": "2026-09-29T15:07:48Z",
    "delivered": true
   },
   "BTCUSDT|1h|structure_ll|2026-09-15T14:00:00Z": {
@@ -584,6 +599,11 @@
   "ETHUSDT|1h|stoch_db|2026-09-28T11:00:00Z": {
    "event_ts": "2026-09-28T11:00:00Z",
    "sent_at": "2026-09-28T16:59:16Z",
+   "delivered": true
+  },
+  "ETHUSDT|1h|stoch_db|2026-09-29T12:00:00Z": {
+   "event_ts": "2026-09-29T12:00:00Z",
+   "sent_at": "2026-09-29T15:07:48Z",
    "delivered": true
   },
   "ETHUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
@@ -1026,6 +1046,32 @@
     "pattern_high": 790.29,
     "already_down": true,
     "recorded_at": "2026-09-29T08:38:20Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-28T16:00:00Z",
+    "divergence": true,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 756.2,
+    "already_up": false,
+    "recorded_at": "2026-09-29T15:07:48Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-29T08:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 1,
+    "turn_ts": "2026-09-29T09:00:00Z",
+    "turn_price": 84258.01,
+    "pattern_low": 82563.0,
+    "already_up": false,
+    "recorded_at": "2026-09-29T15:07:48Z"
    }
   ]
  }
