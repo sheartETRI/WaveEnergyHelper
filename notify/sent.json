@@ -76,6 +76,11 @@
    "sent_at": "2026-09-29T15:07:48Z",
    "delivered": true
   },
+  "BNBUSDT|1h|stoch_db|2026-09-30T09:00:00Z": {
+   "event_ts": "2026-09-30T09:00:00Z",
+   "sent_at": "2026-09-30T15:50:45Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
    "event_ts": "2026-09-19T21:00:00Z",
    "sent_at": null,
@@ -281,6 +286,11 @@
    "sent_at": "2026-09-29T15:07:48Z",
    "delivered": true
   },
+  "BTCUSDT|1h|ma60_turn|2026-09-30T12:00:00Z": {
+   "event_ts": "2026-09-30T12:00:00Z",
+   "sent_at": "2026-09-30T15:50:45Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|stoch_db|2026-09-02T02:00:00Z": {
    "event_ts": "2026-09-02T02:00:00Z",
    "sent_at": null,
@@ -354,6 +364,11 @@
   "BTCUSDT|1h|stoch_db|2026-09-29T08:00:00Z": {
    "event_ts": "2026-09-29T08:00:00Z",
    "sent_at": "2026-09-29T15:07:48Z",
+   "delivered": true
+  },
+  "BTCUSDT|1h|stoch_db|2026-09-30T12:00:00Z": {
+   "event_ts": "2026-09-30T12:00:00Z",
+   "sent_at": "2026-09-30T15:50:45Z",
    "delivered": true
   },
   "BTCUSDT|1h|structure_ll|2026-09-15T14:00:00Z": {
@@ -663,6 +678,11 @@
   },
   "ETHUSDT|1h|structure_ll|2026-09-30T02:00:00Z": {
    "event_ts": "2026-09-30T02:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|structure_ll|2026-09-30T06:00:00Z": {
+   "event_ts": "2026-09-30T06:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -1100,6 +1120,32 @@
     "pattern_low": 753.81,
     "already_up": false,
     "recorded_at": "2026-09-30T08:56:37Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-30T12:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 0,
+    "turn_ts": "2026-09-30T12:00:00Z",
+    "turn_price": 85290.32,
+    "pattern_low": 82956.11,
+    "already_up": true,
+    "recorded_at": "2026-09-30T15:50:45Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-09-29T12:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 2637.38,
+    "already_up": true,
+    "recorded_at": "2026-09-30T15:50:45Z"
    }
   ]
  }
