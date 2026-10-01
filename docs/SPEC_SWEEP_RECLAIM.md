@@ -2,7 +2,8 @@
 
 작성일: 2026-09-23 / 확정: 김박사 / 상태: **동결 스펙** (기록 전용 관측 검출기, experiment 브랜치)
 개정: 2026-09-27 — §6·§7·§8 부록 추가; 스윕·합류 이벤트를 앱 알람 탭 표시 행으로 승계
-(alarm_signals 경유, 표시 전용 — Pushbullet 발송 대상·판정 규칙 불변)
+(alarm_signals 경유, 표시 전용 — Pushbullet 발송 대상·판정 규칙 불변);
+2026-10-01 — §12 데이터 저장소 추가 (데이터 계층 — 판정·알람 입력 불변)
 
 ## 0. 배경과 목적
 
@@ -274,3 +275,34 @@ TF 1w(2017~, ~476봉)·3d·1d·6h(각 최근 1000봉). 월봉은 표본 부족�
 도달률의 보완이 아니라는 것**(피격 후 도달 = 롱 실패)이 규칙 채택의 관문이다. 피격률이
 높으면 "3파가 60 에 닿는다"는 맞아도 "롱으로 대응 가능"은 틀린 것으로 판정한다.
 구현: `validation/wave_reach_after_pullback.py` → `validation/REPORT_REACH_PULLBACK.md`.
+
+## 12. 부록 — 데이터 저장소 (2026-10-01, 데이터 계층 — 판정 불변)
+
+목적: 앱(`data/binance.fetch_klines`·`fetch_klines_paginated`)과 스캔 스크립트
+(`scripts/sweep_scan_report.py`, `--deep` 포함)가 같은 OHLCV 를 매번 전량 재수신하던 것을 TF 별 로컬
+저장본 + 꼬리 갱신으로 바꾼다. (1) 재수신 제거 — 앱 캐시 만료 후 TF 당 요청 1회, `--deep` 재실행 TF 당
+≤ 2회, (2) 네트워크 실패 시 저장본 표시, (3) 검증 스냅숏 재현성 — 같은 저장본이면 같은 입력.
+
+| 항목 | 규칙 |
+|---|---|
+| 파일 | `data/cache/ohlcv_<SYMBOL>_<interval>.csv` (`1M` 은 `1mo`) — raw kline 12칸 그대로, 키 open_time(ms, UTC). git 추적 제외 |
+| 꼬리 | 마지막 저장 봉의 open_time 부터 재요청 → 그 봉(미완성일 수 있음) 덮어쓰기 + 뒤 붙이기 |
+| 백필 | 저장 봉 수 < 요청 봉 수면 첫 봉 앞을 endTime 커서로 페이지 보충 (상장 시작에서 중단) |
+| 틈 | 이번에 새로 들어온 봉 주변만 재요청(상한 `max_gap_requests`), 남는 틈(거래소 다운타임)은 보고만 |
+| 쓰기 | 임시파일 → `os.replace` (원자적, 마지막 쓰기 승). 쓰기 실패 시 받은 행은 저장 없이 그대로 반환 |
+| 실패 | 저장본 있으면 저장본 + stale 표시, 없으면 종전 오류 경로(앱: None + 오류 화면, 스크립트: 예외) |
+| 파라미터 | `config.settings.OHLCV_STORE_PARAMS` — dir `data/cache`, ttl_sec 600, page_limit 1000, max_gap_requests 5 |
+
+불변 조건:
+
+- 호출자가 받는 것은 종전과 같다 — 바이낸스 `/api/v3/klines` 모양의 행, open_time 오름차순, 길이 ≤ limit
+  (UI·지표 워밍업 봉 수 동일). `build_dataframe` 이후 판정·지표·알람·레이더 입력이 같고, 검출기·파라미터·
+  Pushbullet 발송 규칙은 손대지 않는다.
+- stale 은 표시로만 — 메인 차트 경고("바이낸스 수신 실패 — 저장본 표시 · 마지막 수신 N분 전"), TF 레이더
+  한 줄("저장본 표시: 1h(12분 전), …"). 알람 행에 섞지 않는다.
+- 푸시 폴러(`scripts/push_alarms.py`)는 stale 저장본으로 판정하지 않는다 — 저장본 마지막 봉이 저장 시점의
+  미완성 값일 수 있으므로 종전처럼 그 셀을 이번 순회에서 건너뛴다.
+- 가공본 덤프 `logs/ohlcv_*.csv`(검증 스크립트 입력)는 종전대로 유지한다.
+
+구현: `data/ohlcv_store.py`(streamlit·requests 무의존, 전송 계층 주입). 테스트 `tests/test_ohlcv_store.py`,
+`tests/test_binance_store_wiring.py`.

@@ -23,3 +23,6 @@ validation/keychart/_state_cache/
 logs/*
 !logs/.gitkeep
 /*_ma_chart.png
+
+# OHLCV 로컬 저장소(data/ohlcv_store.py) — 바이낸스 raw kline 보관본, 재수신으로 재생성 가능
+data/cache/

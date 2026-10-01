@@ -1,24 +1,21 @@
 # data/binance.py
+import functools
 import logging
+import os
 import time
 
 import requests
 import streamlit as st
 
-from config.settings import BINANCE_BASE_URL, BINANCE_FALLBACK_STATUS, BINANCE_FALLBACK_URL
+from config.settings import (
+    BINANCE_BASE_URL, BINANCE_FALLBACK_STATUS, BINANCE_FALLBACK_URL, OHLCV_STORE_PARAMS,
+)
+from data import ohlcv_store
 
 logger = logging.getLogger(__name__)
 
-_PAGE_SIZE = 1000
 _PAGE_SLEEP_SEC = 0.2
-
-# Binance kline interval → expected spacing (ms) for gap detection
-_INTERVAL_MS = {
-    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
-    "1h": 3_600_000, "2h": 7_200_000, "3h": 10_800_000, "4h": 14_400_000,
-    "6h": 21_600_000, "8h": 28_800_000, "12h": 43_200_000,
-    "1d": 86_400_000, "3d": 259_200_000, "1w": 604_800_000,
-}
+_PAGE_ATTEMPTS = 2      # fetch_klines_paginated 페이지당 시도 횟수 (1회 재시도)
 
 
 @st.cache_data(ttl=600)
@@ -127,8 +124,14 @@ def _request_klines(params: dict):
     return response, url
 
 
+class _BadPayload(ValueError):
+    """HTTP 200 이지만 list 가 아닌 응답(오류 JSON 등)."""
+
+
 def _describe_error(exc: Exception, url: str) -> str:
-    """오류 메시지용 — 'HTTP <code> <url>' 또는 '<ExceptionType> <url>'."""
+    """오류 메시지용 — 'HTTP <code> <url>' 또는 '<ExceptionType> <url>' (비정상 응답은 '빈/비정상 응답 <url>')."""
+    if isinstance(exc, _BadPayload):
+        return f"빈/비정상 응답 {url}"
     resp = getattr(exc, "response", None)
     code = getattr(resp, "status_code", None)
     if code is not None:
@@ -136,128 +139,151 @@ def _describe_error(exc: Exception, url: str) -> str:
     return f"{type(exc).__name__} {url}"
 
 
-@st.cache_data(ttl=600)
-def fetch_klines(symbol: str, interval: str, limit: int):
-    """Fetches raw OHLCV data from the Binance public API."""
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+# ---------------------------------------------------------------------------
+# OHLCV 로컬 저장소 (data/ohlcv_store.py, SPEC §12) — TF 별 raw kline CSV 를 두고 꼬리만 받는다.
+# 스캔 스크립트(scripts/sweep_scan_report.py)와 같은 파일을 쓴다. 호출자가 받는 것은 종전과 같다(바이낸스
+# 응답 모양의 행, open_time 오름차순, 길이 ≤ limit) → build_dataframe 이후 판정·지표 입력 동일.
+# 수신 실패: 저장본이 있으면 저장본 + stale 표시(캡션 전용), 없으면 종전처럼 None + last_fetch_error.
+# ---------------------------------------------------------------------------
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 마지막 실제 저장소 갱신 상태 (symbol, interval) → dict. _LAST_FETCH_AT 처럼 캐시 미스일 때만 기록된다(표시용).
+_STORE_STATUS: dict = {}
+
+
+def _store_dir() -> str:
+    """저장소 경로 — 호출 시점에 읽는다(테스트가 OHLCV_STORE_PARAMS["dir"] 를 임시 폴더로 바꾼다)."""
+    return os.path.normpath(os.path.join(_ROOT, OHLCV_STORE_PARAMS["dir"]))
+
+
+def _fetch_klines_page(symbol: str, interval: str, limit: int, start_time=None, end_time=None, tried=None):
+    """단일 요청(캐시 없음) — 저장소에 주입하는 전송 계층. startTime/endTime 은 바이낸스 규약(open_time ms).
+
+    tried(dict) 가 있으면 시도한 주소(대체 전환 반영)와 실패 사유를 남긴다 — 화면 오류 문구가 종전과 같도록.
+    """
+    params = {"symbol": symbol, "interval": interval, "limit": int(limit)}
+    if start_time is not None:
+        params["startTime"] = int(start_time)
+    if end_time is not None:
+        params["endTime"] = int(end_time)
     url = active_data_url()
     try:
         response, url = _request_klines(params)
         response.raise_for_status()
         data = response.json()
-        if not isinstance(data, list) or not data:
-            _LAST_ERROR[(symbol, interval)] = f"빈/비정상 응답 {url}"
-            return None
-        _LAST_FETCH_AT[(symbol, interval)] = time.time()
-        _LAST_ERROR.pop((symbol, interval), None)
-        return data
+        if data and not isinstance(data, list):
+            raise _BadPayload(f"{type(data).__name__} 응답")
+    except Exception as exc:
+        if tried is not None:
+            tried["url"], tried["error"] = url, _describe_error(exc, url)
+        raise
+    if tried is not None:
+        tried["url"] = url
+    return data or []
+
+
+def _fetch_page_with_retry(symbol: str, interval: str, limit: int, start_time=None, end_time=None):
+    """fetch_klines_paginated 의 전송 계층 — 페이지마다 대기 후 요청, 실패 시 1회 재시도 (종전 페이지 루프 그대로)."""
+    last_err = None
+    for attempt in range(_PAGE_ATTEMPTS):
+        time.sleep(_PAGE_SLEEP_SEC)
+        try:
+            return _fetch_klines_page(symbol, interval, limit, start_time=start_time, end_time=end_time)
+        except Exception as exc:  # noqa: BLE001 — 재시도 후에도 실패면 저장소가 진행분으로 버틴다
+            last_err = exc
+            logger.warning(
+                "pagination page attempt %s failed for %s %s: %s",
+                attempt + 1, symbol, interval, exc,
+            )
+    raise last_err
+
+
+def _refresh_store(symbol: str, interval: str, min_bars: int, fetch_page) -> ohlcv_store.RefreshResult:
+    """저장소 갱신 + 상태 기록. 저장본 없이 수신 실패면 예외가 그대로 올라온다."""
+    p = OHLCV_STORE_PARAMS
+    res = ohlcv_store.refresh(symbol, interval, fetch_page, min_bars, base_dir=_store_dir(),
+                              page_limit=p["page_limit"], max_gap_requests=p["max_gap_requests"])
+    _STORE_STATUS[(symbol, interval)] = {
+        "stale": res.stale, "error": res.error, "fetched": res.fetched,
+        "last_success_ms": res.last_success_ms, "last_open_time": res.last_open_time,
+        "added": res.added, "requests": res.requests, "gaps": len(res.gaps), "bars": len(res.rows),
+        "path": res.path,
+    }
+    return res
+
+
+def store_status(symbol: str, interval: str):
+    """마지막 실제 저장소 갱신 상태(dict: requests·added·stale 등). 캐시 히트는 갱신하지 않는다. 없으면 None."""
+    return _STORE_STATUS.get((symbol, interval))
+
+
+def stale_age(symbol: str, interval: str):
+    """저장본 표시 중이면 마지막 수신 후 경과('12분 전', 모르면 '?'), 아니면 None."""
+    status = store_status(symbol, interval)
+    if not status or not status["stale"]:
+        return None
+    if status["last_success_ms"] is None:
+        return "?"
+    return f"{max(0.0, time.time() * 1000 - status['last_success_ms']) / 60_000:.0f}분 전"
+
+
+def stale_caption(symbol: str, interval: str):
+    """메인 차트 경고 한 줄 — stale 일 때만. 끝 봉 시각은 사이드바 신선도 캡션이 이미 보여준다(시각 표기는 표시 계층 몫)."""
+    age = stale_age(symbol, interval)
+    if age is None:
+        return None
+    return f"바이낸스 수신 실패 — 저장본 표시 · 마지막 수신 {age}"
+
+
+@st.cache_data(ttl=OHLCV_STORE_PARAMS["ttl_sec"])
+def fetch_klines(symbol: str, interval: str, limit: int):
+    """Binance OHLCV raw 행 — 로컬 저장소 경유(꼬리만 수신), 마지막 limit 봉.
+
+    수신 실패 시 저장본이 있으면 저장본(stale_caption 으로 표시), 없으면 None + last_fetch_error (종전 경로).
+    """
+    tried = {"url": active_data_url(), "error": None}
+    try:
+        res = _refresh_store(symbol, interval, limit, functools.partial(_fetch_klines_page, tried=tried))
     except Exception as exc:  # noqa: BLE001 — 실패는 None, 사유는 last_fetch_error 로 노출
-        _LAST_ERROR[(symbol, interval)] = _describe_error(exc, url)
+        _LAST_ERROR[(symbol, interval)] = tried["error"] or _describe_error(exc, tried["url"])
         logger.warning("fetch_klines failed for %s %s: %s", symbol, interval, _LAST_ERROR[(symbol, interval)])
         return None
+    if not res.rows:
+        _LAST_ERROR[(symbol, interval)] = f"빈/비정상 응답 {tried['url']}"
+        return None
+    if res.stale:
+        _LAST_ERROR[(symbol, interval)] = tried["error"] or res.error
+        logger.warning("fetch_klines %s %s: 수신 실패 (%s) → 저장본 %s봉 표시",
+                       symbol, interval, _LAST_ERROR[(symbol, interval)], len(res.rows))
+    else:
+        _LAST_FETCH_AT[(symbol, interval)] = time.time()
+        _LAST_ERROR.pop((symbol, interval), None)
+    return ohlcv_store.tail(res.rows, limit)
 
 
-def _fetch_klines_page(symbol: str, interval: str, limit: int, end_time=None):
-    """Single-page kline request (uncached — pagination orchestrator calls this)."""
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
-    if end_time is not None:
-        params["endTime"] = int(end_time)
-    response, _ = _request_klines(params)
-    response.raise_for_status()
-    data = response.json()
-    if not data:
-        return []
-    return data
-
-
-def _merge_klines(rows, interval: str):
-    """open_time 기준 정렬·중복 제거·단조 증가 assert·갭 경고."""
-    if not rows:
-        return []
-
-    by_open = {}
-    for row in rows:
-        by_open[row[0]] = row
-    merged = [by_open[k] for k in sorted(by_open)]
-
-    opens = [r[0] for r in merged]
-    for i in range(len(opens) - 1):
-        if opens[i] >= opens[i + 1]:
-            raise AssertionError(
-                f"klines open_time not strictly increasing: {opens[i]} >= {opens[i + 1]}"
-            )
-
-    step = _INTERVAL_MS.get(interval)
-    if step:
-        for i in range(len(opens) - 1):
-            gap = opens[i + 1] - opens[i]
-            if gap > step * 1.5:
-                logger.warning(
-                    "klines gap detected: interval=%s between %s and %s (gap_ms=%s expected=%s)",
-                    interval, opens[i], opens[i + 1], gap, step,
-                )
-    return merged
-
-
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=OHLCV_STORE_PARAMS["ttl_sec"])
 def fetch_klines_paginated(symbol: str, interval: str, total_limit: int):
-    """endTime 커서로 과거 페이지를 병합해 total_limit봉까지 수집한다.
+    """total_limit봉까지 — 저장소가 모자란 과거만 endTime 커서로 페이지를 받아 채운다(충분하면 꼬리만).
 
     total_limit <= 1000이면 fetch_klines와 동일 경로.
-    페이지 실패(1회 재시도 후) 시 부분 결과 반환 + 경고 로그. 갭 보간 없음.
+    페이지 실패(1회 재시도 후) 시 진행분 반환 + 경고 로그. 저장본 없이 첫 페이지부터 실패하면 None.
     """
     if total_limit <= 0:
         return None
-    if total_limit <= _PAGE_SIZE:
+    if total_limit <= OHLCV_STORE_PARAMS["page_limit"]:
         return fetch_klines(symbol, interval, total_limit)
-
-    collected = []
-    end_time = None
-    partial_reason = None
-
-    while len(collected) < total_limit:
-        batch_limit = min(_PAGE_SIZE, total_limit - len(collected))
-        batch = None
-        last_err = None
-        for attempt in range(2):
-            try:
-                if attempt > 0:
-                    time.sleep(_PAGE_SLEEP_SEC)
-                else:
-                    time.sleep(_PAGE_SLEEP_SEC)
-                batch = _fetch_klines_page(symbol, interval, batch_limit, end_time)
-                break
-            except Exception as exc:
-                last_err = exc
-                logger.warning(
-                    "pagination page attempt %s failed for %s %s: %s",
-                    attempt + 1, symbol, interval, exc,
-                )
-        if batch is None:
-            partial_reason = f"page failed after retry: {last_err}"
-            logger.warning(
-                "fetch_klines_paginated partial return for %s %s: %s (collected=%s)",
-                symbol, interval, partial_reason, len(collected),
-            )
-            break
-        if not batch:
-            break
-
-        collected = batch + collected
-        end_time = batch[0][0] - 1
-
-        if len(collected) >= total_limit:
-            break
-
-    if not collected:
+    try:
+        res = _refresh_store(symbol, interval, total_limit, _fetch_page_with_retry)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("fetch_klines_paginated failed for %s %s: %s", symbol, interval, exc)
         return None
-
-    merged = _merge_klines(collected, interval)
-    if len(merged) > total_limit:
-        merged = merged[-total_limit:]
-    if partial_reason:
+    if not res.rows:
+        return None
+    rows = ohlcv_store.tail(res.rows, total_limit)
+    if res.error:
         logger.warning(
-            "fetch_klines_paginated returning %s/%s bars for %s %s (%s)",
-            len(merged), total_limit, symbol, interval, partial_reason,
+            "fetch_klines_paginated partial return for %s %s: %s (%s/%s bars%s)",
+            symbol, interval, res.error, len(rows), total_limit, ", stale" if res.stale else "",
         )
-    return merged
+    if res.gaps:
+        logger.warning("klines gap detected: interval=%s %s gaps (first %s)", interval, len(res.gaps), res.gaps[0])
+    return rows

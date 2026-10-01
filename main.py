@@ -18,6 +18,7 @@ from charts.theme import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT
 from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
 from data.binance import (
     clear_klines_cache, data_source_line, fetch_klines, get_auto_limit, last_fetch_at, last_fetch_error,
+    stale_caption,
 )
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
@@ -199,6 +200,10 @@ def main():
     cfg["freshness_slot"].caption(
         data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
     )
+    # 수신 실패로 저장본(data/cache)을 그리는 중이면 경고 한 줄 — 표시 전용(판정·알람 입력 불변, SPEC §12).
+    stale = stale_caption(symbol, get_fetch_interval(interval))
+    if stale:
+        st.warning(stale)
 
     # 본문 2탭: [차트](기본) / [알람]. 사이드바 위젯은 공통. st.tabs 는 비활성 탭도 렌더한다(프론트에서 숨김).
     tab_chart, tab_alarm = st.tabs(MAIN_TABS)

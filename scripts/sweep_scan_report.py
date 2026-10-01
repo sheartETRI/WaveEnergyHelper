@@ -9,10 +9,13 @@
     python scripts/sweep_scan_report.py --symbol BTCUSDT --intervals 1d,6h --since 2025-10-01
     python scripts/sweep_scan_report.py --deep          # 2017~ 전체 역사 (페이지네이션)
 
---deep: data/binance.fetch_klines_paginated 로 DEEP_LIMITS 봉까지 과거 페이지를 병합한다
-(endTime 커서·재시도·부분 반환은 그쪽 구현 그대로 — 단일 출처). 대파동 이벤트가 TF 당
-4~8건뿐이라 §11 급4 층화가 판정 불가였던 표본 문제를 푸는 용도. 앱 모듈이 streamlit 을
-끌고 오므로 그 환경에서만 동작하며, 임포트 실패 시 단일 호출(1000봉)로 조용히 물러난다.
+--deep: DEEP_LIMITS 봉까지 과거를 채운다. 대파동 이벤트가 TF 당 4~8건뿐이라 §11 급4 층화가
+판정 불가였던 표본 문제를 푸는 용도.
+
+수신은 OHLCV 로컬 저장소(data/ohlcv_store.py → data/cache/ohlcv_<SYMBOL>_<tf>.csv, 앱과 같은
+파일) 경유 — 저장된 봉은 다시 받지 않고 꼬리만 갱신, 모자란 과거만 endTime 커서로 채운다(SPEC §12).
+수신 실패 시 저장본이 있으면 그것으로 진행하고 콘솔에 표시, 없으면 예외. 실행 끝에 TF 별
+요청 수·새 봉·저장 봉·틈을 한 줄씩 출력한다.
 
 출력:
     · 콘솔 — since 이후 이벤트 요약표 (+ 합류 이벤트, SPEC §6)
@@ -21,14 +24,15 @@
       가능 환경에서만 — indicators.stochastic 임포트 실패 시 그 부분만 건너뜀)
 
 streamlit 무의존 — data/binance.py 를 임포트하지 않고 같은 엔드포인트를 직접
-두드린다(그쪽은 st.cache_data 데코레이터 때문에 streamlit 이 따라온다). 요청 주소
-자동 대체(api.binance.com -> data-api.binance.vision)는 data/binance.py 와 같은 순서.
+두드린다(그쪽은 st.cache_data 데코레이터 때문에 streamlit 이 따라온다; data/ohlcv_store.py 는
+무의존). 요청 주소 자동 대체(api.binance.com -> data-api.binance.vision)는 data/binance.py 와 같은 순서.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,6 +40,14 @@ import pandas as pd
 import requests
 
 from analysis.sweep_reclaim import events_to_frame, scan_sweep_events
+from config.settings import OHLCV_STORE_PARAMS
+from data import ohlcv_store
+
+# OHLCV 로컬 저장소 — 앱(data/binance)과 같은 경로 (SPEC §12)
+STORE_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), OHLCV_STORE_PARAMS["dir"]
+))
+_PAGE_SLEEP_SEC = 0.2       # 요청 간 대기 — data/binance 페이지네이션과 같은 값
 
 _URLS = [
     "https://api.binance.com/api/v3/klines",
@@ -54,15 +66,17 @@ _SHOW_COLUMNS = [
 ]
 
 
-def fetch_klines(symbol: str, interval: str, limit: int = 1000) -> list:
+def fetch_klines(symbol: str, interval: str, limit: int = 1000,
+                 start_time: int | None = None, end_time: int | None = None) -> list:
+    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    if start_time is not None:
+        params["startTime"] = int(start_time)
+    if end_time is not None:
+        params["endTime"] = int(end_time)
     last_err: Exception | None = None
     for url in _URLS:
         try:
-            resp = requests.get(
-                url,
-                params={"symbol": symbol, "interval": interval, "limit": limit},
-                timeout=20,
-            )
+            resp = requests.get(url, params=params, timeout=20)
             resp.raise_for_status()
             return resp.json()
         except Exception as err:  # 다음 주소로 대체
@@ -70,20 +84,30 @@ def fetch_klines(symbol: str, interval: str, limit: int = 1000) -> list:
     raise RuntimeError(f"klines 수신 실패 ({symbol} {interval}): {last_err}")
 
 
+def _fetch_page(symbol: str, interval: str, limit: int,
+                start_time: int | None = None, end_time: int | None = None) -> list:
+    """저장소에 주입하는 전송 계층 — 요청 간 대기 후 fetch_klines (두 주소 대체 그대로)."""
+    time.sleep(_PAGE_SLEEP_SEC)
+    return fetch_klines(symbol, interval, limit, start_time=start_time, end_time=end_time)
+
+
+# 이번 실행의 저장소 갱신 결과 [(interval, RefreshResult)] — 실행 끝 요약용
+_STORE_RESULTS: list = []
+
+
 def fetch_history(symbol: str, interval: str, limit: int, deep: bool) -> list:
-    """단일 호출(≤1000봉) 또는 --deep 페이지네이션. 페이지네이션은 앱 모듈을 재사용한다."""
-    if not deep:
-        return fetch_klines(symbol, interval, limit)
-    total = DEEP_LIMITS.get(interval, limit)
-    try:
-        from data.binance import fetch_klines_paginated
-    except Exception as err:  # streamlit 없는 환경 등 — 단일 호출로 물러남
-        print(f"(--deep 생략 — data.binance 임포트 실패: {err}; 단일 호출 {limit}봉)")
-        return fetch_klines(symbol, interval, limit)
-    raw = fetch_klines_paginated(symbol, interval, total)
-    if not raw:
-        raise RuntimeError(f"페이지네이션 수신 실패 ({symbol} {interval}, 목표 {total}봉)")
-    return raw
+    """로컬 저장소 경유 수신 — deep 이면 DEEP_LIMITS 봉, 아니면 limit 봉 (마지막 N봉, 오름차순 raw 행).
+
+    저장된 봉은 다시 받지 않는다(꼬리 + 모자란 과거만). 수신 실패 시 저장본이 있으면 그것으로 진행, 없으면 예외.
+    """
+    min_bars = DEEP_LIMITS.get(interval, limit) if deep else limit
+    res = ohlcv_store.refresh(symbol, interval, _fetch_page, min_bars, base_dir=STORE_DIR)
+    _STORE_RESULTS.append((interval, res))
+    if res.error:
+        print(f"({interval} 수신 오류: {res.error} — 저장본 {len(res.rows)}봉{' · stale' if res.stale else ''})")
+    if not res.rows:
+        raise RuntimeError(f"klines 수신 실패 ({symbol} {interval}): 빈 응답")
+    return ohlcv_store.tail(res.rows, min_bars)
 
 
 def build_dataframe(raw: list) -> pd.DataFrame:
@@ -182,7 +206,7 @@ def main() -> int:
     parser.add_argument("--since", default="2025-10-01", help="콘솔 요약 시작일 (CSV 는 전 구간)")
     parser.add_argument("--limit", type=int, default=1000, help="인터벌당 수신 봉 수 (최대 1000)")
     parser.add_argument("--deep", action="store_true",
-                        help="DEEP_LIMITS 봉까지 과거 페이지 병합 (data.binance.fetch_klines_paginated)")
+                        help="DEEP_LIMITS 봉까지 과거를 저장소에 채움 (data/ohlcv_store, 저장된 봉은 재수신 안 함)")
     args = parser.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -260,7 +284,7 @@ def main() -> int:
     try:
         from analysis.monthly_context import monthly_context_frame
 
-        ctx = monthly_context_frame(build_dataframe(fetch_klines(args.symbol, "1M", args.limit)))
+        ctx = monthly_context_frame(build_dataframe(fetch_history(args.symbol, "1M", args.limit, False)))
         ctx_path = os.path.join(logs_dir, f"monthly_context_{args.symbol}.csv")
         ctx.to_csv(ctx_path, encoding="utf-8-sig")
         print(f"\n===== 월봉 맥락 ({args.symbol}) — {len(ctx)}개월 -> {os.path.relpath(ctx_path, root)} =====")
@@ -269,6 +293,11 @@ def main() -> int:
             print(tail.round(2).to_string())
     except Exception as err:
         print(f"(월봉 맥락 생략 — {err})")
+
+    print(f"\n===== OHLCV 저장소 ({os.path.relpath(STORE_DIR, root)}) =====")
+    for interval, res in _STORE_RESULTS:
+        print(f"{interval}: 요청 {res.requests}회 · 새 봉 {res.added} · 저장 {len(res.rows)}봉 · 틈 {len(res.gaps)}"
+              + (" · stale" if res.stale else ""))
 
     return 0
 

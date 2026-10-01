@@ -296,3 +296,13 @@ TF_RADAR_PARAMS = {
     "near_level_pct": 1.0,
     "fresh_bars": 3,
 }
+
+# OHLCV 로컬 저장소 (data/ohlcv_store.py ← data/binance.py · scripts/sweep_scan_report.py) — 데이터 계층.
+#   TF 별 raw kline CSV 보관·꼬리 갱신. 판정·지표 무관 — 호출자가 받는 봉은 종전과 같다.
+#   docs/SPEC_SWEEP_RECLAIM.md §12.
+OHLCV_STORE_PARAMS = {
+    "dir": "data/cache",       # 저장소 경로 (저장소 루트 기준 상대경로)
+    "ttl_sec": 600,            # fetch_klines 의 st.cache_data ttl — 종전 600 그대로
+    "page_limit": 1000,        # 바이낸스 1회 최대
+    "max_gap_requests": 5,     # 한 번의 갱신에서 틈 메우기 요청 상한
+}

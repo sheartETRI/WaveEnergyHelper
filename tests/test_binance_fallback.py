@@ -70,9 +70,9 @@ def test_blocked_primary_switches_to_fallback_and_stays(monkeypatch, blocked):
     calls = _install(monkeypatch, {BINANCE_BASE_URL: blocked, BINANCE_FALLBACK_URL: 200})
 
     assert B.fetch_klines("BTCUSDT", "1h", 5) == PAYLOAD
-    # 원래 주소 1회 → 같은 params 로 대체 주소 1회
+    # 원래 주소 1회 → 같은 params 로 대체 주소 1회 (빈 저장소의 첫 적재는 한 페이지 1000봉 단위로 받는다)
     assert [u for u, _ in calls] == [BINANCE_BASE_URL, BINANCE_FALLBACK_URL]
-    assert calls[0][1] == calls[1][1] == {"symbol": "BTCUSDT", "interval": "1h", "limit": 5}
+    assert calls[0][1] == calls[1][1] == {"symbol": "BTCUSDT", "interval": "1h", "limit": 1000}
     assert B.active_data_url() == BINANCE_FALLBACK_URL
     assert B.fallback_reason() == f"api.binance.com HTTP {blocked}"
     assert B.last_fetch_error("BTCUSDT", "1h") is None

@@ -54,7 +54,7 @@ streamlit.logger.set_log_level("error")   # 런타임 없이 cache_data 를 쓰�
 
 from analysis.alarm_signals import SEV_CONFIRMED, AlarmSignal, scan_alarm_signals  # noqa: E402
 from config.settings import CUSTOM_INTERVAL_BASE, CUSTOM_INTERVALS, PUSH_PARAMS, PUSH_WATCHLIST  # noqa: E402
-from data.binance import clear_klines_cache, fetch_klines, get_auto_limit  # noqa: E402
+from data.binance import clear_klines_cache, fetch_klines, get_auto_limit, store_status  # noqa: E402
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe  # noqa: E402
 import display.ma60_down_tracker as MD  # noqa: E402
 import display.ma60_turn_tracker as MT  # noqa: E402
@@ -161,10 +161,21 @@ def load_closed_frame(symbol: str, interval: str, now: Optional[pd.Timestamp] = 
     return add_stochastic_slow_layers(df)
 
 
+def served_from_stale_store(symbol: str, interval: str) -> bool:
+    """방금 적재가 수신 실패로 저장본(data/cache)을 돌려받은 것인지 (SPEC §12).
+
+    저장본의 마지막 봉은 저장 시점의 미완성 값일 수 있어 닫힌 봉 판정·발송에 쓰지 않는다 — 종전처럼
+    수신 실패 = 데이터 없음으로 그 셀(대상)을 이번 순회에서 건너뛴다.
+    """
+    status = store_status(symbol, get_fetch_interval(interval))
+    return bool(status and status["stale"])
+
+
 def default_fetch_frame(symbol: str, interval: str) -> Optional[pd.DataFrame]:
-    """순회마다 OHLCV 캐시를 비워 최신 봉까지 받는다(data.binance cache_data ttl=600 우회)."""
+    """순회마다 OHLCV 캐시를 비워 최신 봉까지 받는다(data.binance cache_data ttl=600 우회). 저장본이면 None."""
     clear_klines_cache()
-    return load_closed_frame(symbol, interval)
+    frame = load_closed_frame(symbol, interval)
+    return None if served_from_stale_store(symbol, interval) else frame
 
 
 # ---------------------------------------------------------------- 이력 (notify.history 형식) · 예전 형식 이관
@@ -594,7 +605,8 @@ def default_loader(symbol: str, interval: str):
     """(예전 경로) 앱과 같은 파이프라인(main.load_frame). 폴링마다 OHLCV 캐시를 비워 최신 봉까지 받는다."""
     import main as app
     clear_klines_cache()
-    return app.load_frame(symbol, interval, with_macd=True)
+    frame = app.load_frame(symbol, interval, with_macd=True)
+    return None if served_from_stale_store(symbol, interval) else frame
 
 
 def run_once(targets: Iterable[Tuple[str, str]], state: PushState, token: Optional[str], loader: Callable = default_loader,

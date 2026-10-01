@@ -16,7 +16,7 @@ import streamlit as st
 
 from analysis.tf_radar import RadarRow, STATUS_BATTLE, build_tf_radar, pick_focus
 from config.settings import TF_RADAR_PARAMS
-from data.binance import fetch_klines, get_auto_limit
+from data.binance import fetch_klines, get_auto_limit, stale_age
 from data.processor import build_dataframe
 
 
@@ -81,3 +81,7 @@ def render_tf_radar_section(symbol: str) -> None:
     else:
         st.markdown(_headline(focus))
     st.dataframe(radar_table(rows), hide_index=True, width="stretch")
+    # 수신 실패로 저장본(data/cache)을 쓴 TF — 표시 전용 한 줄 (SPEC §12)
+    stale = [f"{tf}({age})" for tf in TF_RADAR_PARAMS["intervals"] if (age := stale_age(symbol, tf))]
+    if stale:
+        st.caption("저장본 표시: " + ", ".join(stale))
