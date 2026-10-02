@@ -19,6 +19,11 @@ from config.settings import TF_RADAR_PARAMS
 from data.binance import fetch_klines, get_auto_limit, stale_age
 from data.processor import build_dataframe
 
+# 섹션 제목·고정 캡션 — 화면과 전체 복사용 텍스트(display.alarm_copy_text)가 같은 문자열을 쓴다
+SECTION_TITLE = "TF 레이더"
+FIXED_CAPTION = ("어느 TF의 뻔한 레벨에서 전투(이탈 에피소드)가 벌어지는지 교차 TF 요약 — "
+                 "표시 전용 관측 편의(판정·게이팅·푸시 아님), SPEC §9")
+
 
 def _radar_frame(symbol: str, interval: str) -> Optional[pd.DataFrame]:
     """레이더용 OHLCV 적재 — 실패는 None (그 TF 행만 '데이터 없음')."""
@@ -50,6 +55,19 @@ def _headline(focus: Optional[RadarRow]) -> str:
     return line
 
 
+def headline_line(focus: Optional[RadarRow]) -> str:
+    """화면 헤드라인 한 줄(마크다운) — 전투 중이면 🔔 를 앞에 붙인다. 화면·전체 복사용 텍스트 공통."""
+    if focus is not None and focus.status == STATUS_BATTLE:
+        return f"🔔 {_headline(focus)}"
+    return _headline(focus)
+
+
+def stale_line(symbol: str) -> Optional[str]:
+    """수신 실패로 저장본(data/cache)을 쓴 TF 한 줄 — 없으면 None (표시 전용, SPEC §12)."""
+    stale = [f"{tf}({age})" for tf in TF_RADAR_PARAMS["intervals"] if (age := stale_age(symbol, tf))]
+    return ("저장본 표시: " + ", ".join(stale)) if stale else None
+
+
 def radar_table(rows: list[RadarRow]) -> pd.DataFrame:
     """표시용 표 — 우선순위 내림차순 그대로."""
     return pd.DataFrame([
@@ -66,22 +84,22 @@ def radar_table(rows: list[RadarRow]) -> pd.DataFrame:
     ])
 
 
-def render_tf_radar_section(symbol: str) -> None:
-    """알람 탭 상단 섹션 — 헤드라인 + 교차 TF 표."""
-    st.subheader("TF 레이더")
-    st.caption(
-        "어느 TF의 뻔한 레벨에서 전투(이탈 에피소드)가 벌어지는지 교차 TF 요약 — "
-        "표시 전용 관측 편의(판정·게이팅·푸시 아님), SPEC §9"
-    )
+def render_tf_radar_section(symbol: str) -> dict:
+    """알람 탭 상단 섹션 — 헤드라인 + 교차 TF 표.
+
+    반환값은 화면에 그린 값(view) — 전체 복사용 텍스트(display.alarm_copy_text)가 재계산 없이 옮긴다:
+    headline(마크다운 한 줄) · table(표시용 표) · stale(저장본 표시 줄, 없으면 None).
+    """
+    st.subheader(SECTION_TITLE)
+    st.caption(FIXED_CAPTION)
     with st.spinner(f"{symbol} 전 TF 스캔 중..."):
         rows = build_tf_radar(load_radar_frames(symbol))
-    focus = pick_focus(rows)
-    if focus is not None and focus.status == STATUS_BATTLE:
-        st.markdown(f"🔔 {_headline(focus)}")
-    else:
-        st.markdown(_headline(focus))
-    st.dataframe(radar_table(rows), hide_index=True, width="stretch")
+    headline = headline_line(pick_focus(rows))
+    st.markdown(headline)
+    table = radar_table(rows)
+    st.dataframe(table, hide_index=True, width="stretch")
     # 수신 실패로 저장본(data/cache)을 쓴 TF — 표시 전용 한 줄 (SPEC §12)
-    stale = [f"{tf}({age})" for tf in TF_RADAR_PARAMS["intervals"] if (age := stale_age(symbol, tf))]
+    stale = stale_line(symbol)
     if stale:
-        st.caption("저장본 표시: " + ", ".join(stale))
+        st.caption(stale)
+    return {"headline": headline, "table": table, "stale": stale}

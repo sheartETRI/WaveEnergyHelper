@@ -24,6 +24,11 @@ import pandas as pd
 import display.ma60_down_tracker as _down
 import display.ma60_turn_tracker as _up
 
+# 섹션 제목·고정 캡션 — 화면과 전체 복사용 텍스트(display.alarm_copy_text)가 같은 문자열을 쓴다
+SECTION_TITLE = "기준 TF 레이더 — 쌍바닥/쌍봉 × 60MA 관찰"
+FIXED_CAPTION = ("대파동 쌍바닥(쌍봉) 확정 후 60MA 전환 관찰 창(20봉)이 열려 있는 TF — "
+                 "기준 TF 후보. 표시 전용(판정·게이팅·푸시 아님), SPEC §10")
+
 
 @dataclass(frozen=True)
 class BasisRow:
@@ -104,6 +109,13 @@ def pick_basis_focus(rows: list[BasisRow]) -> Optional[BasisRow]:
     return None
 
 
+def headline_line(focus: Optional[BasisRow]) -> str:
+    """화면 헤드라인 한 줄(마크다운) — 화면·전체 복사용 텍스트 공통."""
+    if focus is None:
+        return "기준 TF 관찰 대상: **없음** — 열려 있는 60MA 관찰 창 없음"
+    return f"📌 기준 TF 관찰: **{focus.interval}** — {focus.detail}"
+
+
 def basis_table(rows: list[BasisRow]) -> pd.DataFrame:
     return pd.DataFrame([
         {"TF": r.interval, "쌍바닥→상방": r.up_text, "쌍봉→하방": r.down_text}
@@ -111,19 +123,20 @@ def basis_table(rows: list[BasisRow]) -> pd.DataFrame:
     ])
 
 
-def render_basis_radar_section(symbol: str) -> None:
-    """알람 탭 섹션 — TF 레이더 아래. 적재는 TF 레이더와 같은 캐시를 공유한다."""
+def render_basis_radar_section(symbol: str) -> dict:
+    """알람 탭 섹션 — TF 레이더 아래. 적재는 TF 레이더와 같은 캐시를 공유한다.
+
+    반환값은 화면에 그린 값(view) — 전체 복사용 텍스트(display.alarm_copy_text)가 재계산 없이 옮긴다:
+    headline(마크다운 한 줄) · table(표시용 표).
+    """
     import streamlit as st
 
     from display.tf_radar_panel import load_radar_frames
     from indicators.moving_averages import add_moving_averages
     from indicators.stochastic import add_stochastic_slow_layers
 
-    st.subheader("기준 TF 레이더 — 쌍바닥/쌍봉 × 60MA 관찰")
-    st.caption(
-        "대파동 쌍바닥(쌍봉) 확정 후 60MA 전환 관찰 창(20봉)이 열려 있는 TF — "
-        "기준 TF 후보. 표시 전용(판정·게이팅·푸시 아님), SPEC §10"
-    )
+    st.subheader(SECTION_TITLE)
+    st.caption(FIXED_CAPTION)
     with st.spinner(f"{symbol} 전 TF 기준 관찰 스캔 중..."):
         frames: dict[str, Optional[pd.DataFrame]] = {}
         for interval, df in load_radar_frames(symbol).items():
@@ -135,9 +148,8 @@ def render_basis_radar_section(symbol: str) -> None:
             except Exception:
                 frames[interval] = None
         rows = build_basis_rows(frames)
-    focus = pick_basis_focus(rows)
-    if focus is None:
-        st.markdown("기준 TF 관찰 대상: **없음** — 열려 있는 60MA 관찰 창 없음")
-    else:
-        st.markdown(f"📌 기준 TF 관찰: **{focus.interval}** — {focus.detail}")
-    st.dataframe(basis_table(rows), hide_index=True, width="stretch")
+    headline = headline_line(pick_basis_focus(rows))
+    st.markdown(headline)
+    table = basis_table(rows)
+    st.dataframe(table, hide_index=True, width="stretch")
+    return {"headline": headline, "table": table}

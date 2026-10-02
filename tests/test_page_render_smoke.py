@@ -124,11 +124,13 @@ def test_tracker_table_matches_direct_computation_on_same_frame(app):
 
 def test_alarm_tab_copy_text_block_has_every_section_with_on_screen_values(app):
     """알람 탭 맨 아래 접힌 상자 '전체 복사용 텍스트' — st.code 블록 하나에 탭 섹션이 화면 순서대로 빠짐없이 있고, 메트릭·표·집계
-    줄은 렌더된 화면 값과 글자 그대로 같다(재계산 경로가 끼면 어긋난다). TF 레이더 2종은 대상 밖."""
+    줄은 렌더된 화면 값과 글자 그대로 같다(재계산 경로가 끼면 어긋난다). 탭 상단 TF 레이더 2종 포함."""
     import display.alarm_copy_text as CT
     import display.alarm_panel as AP
     import display.ma60_slope as SL
+    import display.tf_radar_panel as RD
     import display.trend_structure as TS
+    import display.wave_basis_radar as BR
 
     tab = app.tabs[1]
     assert tab.label == "알람"
@@ -137,24 +139,34 @@ def test_alarm_tab_copy_text_block_has_every_section_with_on_screen_values(app):
     assert getattr(list(tab.children.values())[-1], "label", None) == CT.EXPANDER_LABEL      # 탭 맨 아래
     text = boxes[0].code[0].value
     sym, iv = "BTCUSDT", "1h"
-    heads = [f"# {AP.build_header(sym, iv)}", f"## {AP.CURRENT_TITLE}", f"## {AP.history_title(AP.DEFAULT_HISTORY_BARS)}",
+    heads = [f"# {CT.DOC_TITLE.format(symbol=sym, interval=iv)}",
+             f"## {RD.SECTION_TITLE} · {sym}", f"## {BR.SECTION_TITLE} · {sym}",
+             f"## {AP.build_header(sym, iv)}", f"### {AP.CURRENT_TITLE}", f"### {AP.history_title(AP.DEFAULT_HISTORY_BARS)}",
              f"## {T.SECTION_TITLE} · {sym} {iv}", f"### {SL.BLOCK_TITLE} · {sym}", f"## {D.SECTION_TITLE} · {sym} {iv}",
              f"## {TS.SECTION_TITLE} · {sym} {iv}"]
-    pos = [text.find(h) for h in heads]
-    assert min(pos) >= 0, [h for h, p in zip(heads, pos) if p < 0]
+    lines = text.splitlines()
+    assert not [h for h in heads if h not in lines], [h for h in heads if h not in lines]   # 제목 줄(수준 포함) 그대로
+    pos = [lines.index(h) for h in heads]
     assert pos == sorted(pos)                                                     # 화면 순서
+    # 화면 소제목(레이더 2종)·레이더 헤드라인 줄이 그대로
+    assert [s.value for s in tab.subheader] == [RD.SECTION_TITLE, BR.SECTION_TITLE]
+    headlines = [m.value for m in tab.markdown if "볼 TF" in m.value or "기준 TF 관찰" in m.value]
+    assert len(headlines) == 2 and all(h in lines for h in headlines), headlines
     # 메트릭 — 탭의 모든 메트릭(레이더는 메트릭 없음)이 '- 라벨: 값' 으로
     assert len(tab.metric) == 3 + 5 + 5 + 4
     for m in tab.metric:
         assert f"- {m.label}: {m.value}" in text, (m.label, m.value)
-    # 표 — 렌더된 표를 같은 텍스트 변환에 넣은 결과가 그대로 들어 있다(이력·기울기·상방·하방·구조)
+    # 표 — 탭에 렌더된 표 전부(레이더 2·이력·기울기·상방·하방, 구조는 스윙이 있을 때)를 같은 텍스트 변환에 넣은 결과가 그대로
     frames = {tuple(d.value.columns): d.value for d in tab.dataframe}
+    assert len(tab.dataframe) == 6 + (TS.COLUMNS in frames)
+    to_text = {tuple(AP.HISTORY_COLUMN_WIDTHS): lambda f: CT.text_table(AP.history_text_frame(f)),
+               T.COLUMNS: lambda f: CT.text_table(f, T.DISPLAY_HEADERS), D.COLUMNS: lambda f: CT.text_table(f, D.DISPLAY_HEADERS)}
+    for d in tab.dataframe:
+        table = to_text.get(tuple(d.value.columns), CT.text_table)(d.value)
+        assert table and table in text, table.splitlines()[0]
+    if TS.COLUMNS not in frames:
+        assert TS.NO_SWING_CAPTION in text
     history = frames[tuple(AP.HISTORY_COLUMN_WIDTHS)]
-    tables = [CT.text_table(AP.history_text_frame(history)), CT.text_table(frames[SL.COLUMNS]),
-              CT.text_table(frames[T.COLUMNS], T.DISPLAY_HEADERS), CT.text_table(frames[D.COLUMNS], D.DISPLAY_HEADERS)]
-    for table in tables:
-        assert table in text, table.splitlines()[0]
-    assert (CT.text_table(frames[TS.COLUMNS]) in text) if TS.COLUMNS in frames else (TS.NO_SWING_CAPTION in text)
     # 집계 줄 — 이력 건수, 상방·하방 '최근 120봉' 집계, 다이버전스 코호트
     assert AP.history_counts(history) in text
     captions = [c.value for c in tab.caption]

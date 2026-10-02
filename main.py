@@ -211,9 +211,9 @@ def main():
 
     with tab_alarm:
         # TF 레이더 — 어느 TF에서 전투(레벨 이탈 에피소드)가 벌어지는지 교차 TF 요약 (표시 전용, SPEC §9).
-        render_tf_radar_section(symbol)
+        tf_radar_view = render_tf_radar_section(symbol)
         # 기준 TF 레이더 — 대파동 쌍바닥/쌍봉 후 60MA 전환 관찰이 열린 TF (표시 전용, SPEC §10).
-        render_basis_radar_section(symbol)
+        basis_radar_view = render_basis_radar_section(symbol)
         alarm_view = render_alarm_panel(
             df, symbol, interval,
             history_bars=cfg["history_bars"],
@@ -229,8 +229,10 @@ def main():
         # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
         structure_result = render_structure_section(df, symbol, interval)
         # 전체 복사용 텍스트 (탭 맨 아래, 접힘) — 위 섹션들이 화면에 그린 값(반환값)만 마크다운 텍스트로 옮긴다(재계산 없음).
-        render_copy_expander(build_copy_text(symbol, interval, alarm_view, tracker_frame, slope_rows, down_frame,
-                                             structure_result))
+        render_copy_expander(build_copy_text(
+            symbol, interval, tf_radar=tf_radar_view, basis_radar=basis_radar_view, alarm=alarm_view,
+            tracker=tracker_frame, slope_rows=slope_rows, down=down_frame, structure=structure_result,
+        ))
 
     with tab_chart:
         # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
