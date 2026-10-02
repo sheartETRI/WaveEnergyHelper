@@ -14,6 +14,7 @@
 
 수신은 OHLCV 로컬 저장소(data/ohlcv_store.py → data/cache/ohlcv_<SYMBOL>_<tf>.csv, 앱과 같은
 파일) 경유 — 저장된 봉은 다시 받지 않고 꼬리만 갱신, 모자란 과거만 endTime 커서로 채운다(SPEC §12).
+경로는 앱과 같은 해석(ohlcv_store.resolve_store_dir — 환경변수 WEH_OHLCV_STORE_DIR 최우선).
 수신 실패 시 저장본이 있으면 그것으로 진행하고 콘솔에 표시, 없으면 예외. 실행 끝에 TF 별
 요청 수·새 봉·저장 봉·틈을 한 줄씩 출력한다.
 
@@ -40,13 +41,8 @@ import pandas as pd
 import requests
 
 from analysis.sweep_reclaim import events_to_frame, scan_sweep_events
-from config.settings import OHLCV_STORE_PARAMS
 from data import ohlcv_store
 
-# OHLCV 로컬 저장소 — 앱(data/binance)과 같은 경로 (SPEC §12)
-STORE_DIR = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), OHLCV_STORE_PARAMS["dir"]
-))
 _PAGE_SLEEP_SEC = 0.2       # 요청 간 대기 — data/binance 페이지네이션과 같은 값
 
 _URLS = [
@@ -101,13 +97,22 @@ def fetch_history(symbol: str, interval: str, limit: int, deep: bool) -> list:
     저장된 봉은 다시 받지 않는다(꼬리 + 모자란 과거만). 수신 실패 시 저장본이 있으면 그것으로 진행, 없으면 예외.
     """
     min_bars = DEEP_LIMITS.get(interval, limit) if deep else limit
-    res = ohlcv_store.refresh(symbol, interval, _fetch_page, min_bars, base_dir=STORE_DIR)
+    res = ohlcv_store.refresh(symbol, interval, _fetch_page, min_bars, base_dir=ohlcv_store.resolve_store_dir())
     _STORE_RESULTS.append((interval, res))
     if res.error:
         print(f"({interval} 수신 오류: {res.error} — 저장본 {len(res.rows)}봉{' · stale' if res.stale else ''})")
     if not res.rows:
         raise RuntimeError(f"klines 수신 실패 ({symbol} {interval}): 빈 응답")
     return ohlcv_store.tail(res.rows, min_bars)
+
+
+def _shown_store_dir(root: str) -> str:
+    """요약 줄용 저장 경로 — 저장소 루트 기준 상대경로 (다른 드라이브면 절대경로)."""
+    store_dir = ohlcv_store.resolve_store_dir()
+    try:
+        return os.path.relpath(store_dir, root)
+    except ValueError:          # Windows: 다른 드라이브
+        return store_dir
 
 
 def build_dataframe(raw: list) -> pd.DataFrame:
@@ -294,7 +299,7 @@ def main() -> int:
     except Exception as err:
         print(f"(월봉 맥락 생략 — {err})")
 
-    print(f"\n===== OHLCV 저장소 ({os.path.relpath(STORE_DIR, root)}) =====")
+    print(f"\n===== OHLCV 저장소 ({_shown_store_dir(root)}) =====")
     for interval, res in _STORE_RESULTS:
         print(f"{interval}: 요청 {res.requests}회 · 새 봉 {res.added} · 저장 {len(res.rows)}봉 · 틈 {len(res.gaps)}"
               + (" · stale" if res.stale else ""))

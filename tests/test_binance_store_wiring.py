@@ -1,6 +1,7 @@
 """data/binance ↔ OHLCV 저장소 연결 — 요청 수·반환 모양·stale·종전 오류 경로 (SPEC §12). 네트워크·런타임 없음.
 
-가짜 _request_klines 를 주입한다(폴백 로직 바깥). 저장소 경로는 conftest 가 테스트마다 임시 폴더로 돌린다.
+가짜 _request_klines 를 주입한다(폴백 로직 바깥). 저장소 경로는 conftest 가 테스트마다 임시 폴더로 돌린다
+(WEH_OHLCV_STORE_DIR — 앱·스캔 스크립트·푸시 폴러 공용 해석).
 """
 import os
 import sys
@@ -11,7 +12,6 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import data.binance as B  # noqa: E402
-from config import settings  # noqa: E402
 from config.settings import BINANCE_BASE_URL  # noqa: E402
 from data import ohlcv_store  # noqa: E402
 
@@ -80,7 +80,8 @@ def test_first_fetch_is_one_request_and_creates_store_file(ex):
     assert len(rows[0]) == 12 and isinstance(rows[0][0], int) and isinstance(rows[0][4], str)
     path = ohlcv_store.store_path("BTCUSDT", "1h", B._store_dir())
     assert os.path.basename(path) == "ohlcv_BTCUSDT_1h.csv" and os.path.exists(path)
-    assert B._store_dir() == os.path.normpath(settings.OHLCV_STORE_PARAMS["dir"])     # 임시 폴더 (작업 트리 아님)
+    assert B._store_dir() == os.path.normpath(os.environ[ohlcv_store.STORE_DIR_ENV])  # 임시 폴더 (작업 트리 아님)
+    assert os.path.normcase(B._store_dir()) != os.path.normcase(os.path.normpath(ohlcv_store.REAL_STORE_DIR))
     assert B.store_status("BTCUSDT", "1h")["requests"] == 1
     assert B.stale_caption("BTCUSDT", "1h") is None
 
@@ -208,7 +209,7 @@ def test_scan_script_deep_rerun_requests_at_most_two_pages(monkeypatch, tmp_path
         return fake.page(params)
 
     monkeypatch.setattr(S, "_fetch_page", page)
-    monkeypatch.setattr(S, "STORE_DIR", str(tmp_path / "store"))
+    monkeypatch.setenv(ohlcv_store.STORE_DIR_ENV, str(tmp_path / "store"))
     monkeypatch.setitem(S.DEEP_LIMITS, "1h", 2000)                          # 상장 이후 전체(1500)보다 큼
     first = S.fetch_history("BTCUSDT", "1h", 1000, deep=True)
     assert len(first) == 1500 and len(fake.calls) == 2
@@ -217,3 +218,35 @@ def test_scan_script_deep_rerun_requests_at_most_two_pages(monkeypatch, tmp_path
     assert len(fake.calls) - 2 <= 2
     assert len(second) == 1502 and second[:1499] == first[:1499]
     assert os.path.exists(os.path.join(str(tmp_path / "store"), "ohlcv_BTCUSDT_1h.csv"))
+
+
+def test_app_scan_script_and_poller_share_one_store_dir(ex, monkeypatch, tmp_path):
+    """저장 경로 해석은 한 곳 — WEH_OHLCV_STORE_DIR 하나로 앱·스캔 스크립트·푸시 폴러가 같은 폴더를 쓴다."""
+    from scripts import push_alarms as P
+    from scripts import sweep_scan_report as S
+
+    shared = str(tmp_path / "shared_store")
+    monkeypatch.setenv(ohlcv_store.STORE_DIR_ENV, shared)
+    monkeypatch.setattr(S, "_fetch_page", lambda symbol, interval, limit, start_time=None, end_time=None:
+                        ex.page({"limit": limit, "startTime": start_time, "endTime": end_time}))
+    B.fetch_klines("BTCUSDT", "1h", 1000)                                   # 앱
+    S.fetch_history("ETHUSDT", "1h", 1000, deep=False)                      # 스캔 스크립트
+    assert P.default_fetch_frame("SOLUSDT", "1h") is not None               # 푸시 폴러 (data/binance 경유)
+    assert {"ohlcv_BTCUSDT_1h.csv", "ohlcv_ETHUSDT_1h.csv", "ohlcv_SOLUSDT_1h.csv"} <= set(os.listdir(shared))
+    assert os.path.dirname(B.store_status("SOLUSDT", "1h")["path"]) == os.path.normpath(shared)
+
+
+def test_tripwire_is_not_swallowed_by_app_fetch(ex, monkeypatch):
+    """pytest 중 실제 data/cache 로 향하면 fetch_klines 가 '수신 실패(None)'로 삼키지 않고 RuntimeError 를 올린다."""
+    monkeypatch.setenv(ohlcv_store.STORE_DIR_ENV, ohlcv_store.REAL_STORE_DIR)
+    path = ohlcv_store.store_path("TRIPWIREUSDT", "1h")
+    assert not os.path.exists(path)                                         # 실제 저장소에 없는 심볼 — 읽을 것도 없다
+    try:
+        with pytest.raises(RuntimeError, match="실제 OHLCV 저장소"):
+            B.fetch_klines("TRIPWIREUSDT", "1h", 1000)
+        with pytest.raises(RuntimeError, match="실제 OHLCV 저장소"):
+            B.fetch_klines_paginated("TRIPWIREUSDT", "1h", 2500)
+        assert not os.path.exists(path)
+    finally:                                                                # 트립와이어가 고장 났을 때만 남는 흔적
+        if os.path.exists(path):
+            os.remove(path)

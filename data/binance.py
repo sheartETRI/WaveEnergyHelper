@@ -141,18 +141,18 @@ def _describe_error(exc: Exception, url: str) -> str:
 
 # ---------------------------------------------------------------------------
 # OHLCV 로컬 저장소 (data/ohlcv_store.py, SPEC §12) — TF 별 raw kline CSV 를 두고 꼬리만 받는다.
-# 스캔 스크립트(scripts/sweep_scan_report.py)와 같은 파일을 쓴다. 호출자가 받는 것은 종전과 같다(바이낸스
+# 스캔 스크립트(scripts/sweep_scan_report.py)와 같은 파일을 쓴다 — 경로는 ohlcv_store.resolve_store_dir()
+# (환경변수 WEH_OHLCV_STORE_DIR 최우선, 없으면 settings). 호출자가 받는 것은 종전과 같다(바이낸스
 # 응답 모양의 행, open_time 오름차순, 길이 ≤ limit) → build_dataframe 이후 판정·지표 입력 동일.
 # 수신 실패: 저장본이 있으면 저장본 + stale 표시(캡션 전용), 없으면 종전처럼 None + last_fetch_error.
 # ---------------------------------------------------------------------------
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 마지막 실제 저장소 갱신 상태 (symbol, interval) → dict. _LAST_FETCH_AT 처럼 캐시 미스일 때만 기록된다(표시용).
 _STORE_STATUS: dict = {}
 
 
 def _store_dir() -> str:
-    """저장소 경로 — 호출 시점에 읽는다(테스트가 OHLCV_STORE_PARAMS["dir"] 를 임시 폴더로 바꾼다)."""
-    return os.path.normpath(os.path.join(_ROOT, OHLCV_STORE_PARAMS["dir"]))
+    """저장소 경로 — 호출 시점에 읽는다(테스트는 conftest 가 WEH_OHLCV_STORE_DIR 를 임시 폴더로 바꾼다)."""
+    return ohlcv_store.resolve_store_dir()
 
 
 def _fetch_klines_page(symbol: str, interval: str, limit: int, start_time=None, end_time=None, tried=None):
@@ -243,6 +243,8 @@ def fetch_klines(symbol: str, interval: str, limit: int):
     tried = {"url": active_data_url(), "error": None}
     try:
         res = _refresh_store(symbol, interval, limit, functools.partial(_fetch_klines_page, tried=tried))
+    except ohlcv_store.RealStoreWriteError:
+        raise                   # 테스트 격리 위반(트립와이어)은 수신 실패로 삼키지 않는다
     except Exception as exc:  # noqa: BLE001 — 실패는 None, 사유는 last_fetch_error 로 노출
         _LAST_ERROR[(symbol, interval)] = tried["error"] or _describe_error(exc, tried["url"])
         logger.warning("fetch_klines failed for %s %s: %s", symbol, interval, _LAST_ERROR[(symbol, interval)])
@@ -273,6 +275,8 @@ def fetch_klines_paginated(symbol: str, interval: str, total_limit: int):
         return fetch_klines(symbol, interval, total_limit)
     try:
         res = _refresh_store(symbol, interval, total_limit, _fetch_page_with_retry)
+    except ohlcv_store.RealStoreWriteError:
+        raise                   # 테스트 격리 위반(트립와이어)은 수신 실패로 삼키지 않는다
     except Exception as exc:  # noqa: BLE001
         logger.warning("fetch_klines_paginated failed for %s %s: %s", symbol, interval, exc)
         return None

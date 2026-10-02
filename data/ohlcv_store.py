@@ -5,6 +5,9 @@
 `/api/v3/klines` 응답과 같은 모양의 행 리스트(12칸, open_time 오름차순)뿐이다.
 
   · 파일    <base_dir>/ohlcv_<SYMBOL>_<interval>.csv  (1M 은 1mo — 대소문자 무시 파일시스템에서 1m 과 충돌 방지)
+  · 경로    resolve_store_dir() 한 곳 — 환경변수 WEH_OHLCV_STORE_DIR 최우선, 없으면 settings 의 dir(저장소 루트 기준).
+            앱·스캔 스크립트·푸시 폴러(data/binance 경유)가 모두 이것을 쓴다. 테스트·가짜 응답 검증은 반드시
+            임시 폴더로 — pytest 실행 중 실제 data/cache 에 쓰려 하면 RuntimeError (트립와이어).
   · 꼬리    마지막 저장 봉의 open_time 부터 재요청 → 그 봉(미완성일 수 있음)은 덮어쓰고 뒤를 붙인다.
             마감된 봉은 거래소에서 바뀌지 않으므로 이것으로 충분하다.
   · 백필    저장 봉 수 < min_bars 면 첫 봉 앞을 endTime 커서로 페이지 단위 보충 (상장 시작에 닿으면 중단).
@@ -31,6 +34,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from config.settings import OHLCV_STORE_PARAMS
+
 logger = logging.getLogger(__name__)
 
 COLUMNS = (
@@ -48,12 +53,23 @@ _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 _HEAD_REACHED: dict[str, int] = {}     # 저장 경로 → 상장 시작에 닿았을 때의 첫 봉 open_time (프로세스 동안)
 
+STORE_DIR_ENV = "WEH_OHLCV_STORE_DIR"  # 저장 경로 재지정 — 테스트·가짜 응답 검증 실행은 반드시 임시 폴더로
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REAL_STORE_DIR = os.path.join(_ROOT, "data", "cache")   # 운영 저장소 — pytest 중 쓰기 금지 (트립와이어)
+
 FetchPage = Callable[..., list]
 
 
-def default_base_dir() -> str:
-    """기본 저장 위치 — 이 모듈 옆 data/cache/ (logs/ 처럼 git 추적 제외)."""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+def resolve_store_dir() -> str:
+    """저장 경로 — 환경변수 WEH_OHLCV_STORE_DIR 최우선, 없으면 settings.OHLCV_STORE_PARAMS["dir"](저장소 루트 기준).
+
+    앱(data/binance)·스캔 스크립트·푸시 폴러(data/binance 경유)가 모두 이 함수로 경로를 정한다. 호출 시점에
+    읽는다 — tests/conftest 가 환경변수를 임시 폴더로 바꾸면 서브프로세스까지 따라간다.
+    """
+    override = os.environ.get(STORE_DIR_ENV, "").strip()
+    if override:
+        return os.path.normpath(os.path.abspath(override))
+    return os.path.normpath(os.path.join(_ROOT, OHLCV_STORE_PARAMS["dir"]))
 
 
 def interval_ms(interval: str) -> Optional[int]:
@@ -74,8 +90,30 @@ def interval_slug(interval: str) -> str:
 
 
 def store_path(symbol: str, interval: str, base_dir: Optional[str] = None) -> str:
-    return os.path.join(base_dir or default_base_dir(),
+    return os.path.join(base_dir or resolve_store_dir(),
                         f"ohlcv_{symbol.upper()}_{interval_slug(interval)}.csv")
+
+
+class RealStoreWriteError(RuntimeError):
+    """pytest 실행 중 실제 저장소(<repo>/data/cache)에 쓰려 함 — 호출자가 '수신 실패'로 삼키지 않는다."""
+
+
+def _norm_dir(path: str) -> str:
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _refuse_real_store(path: str) -> None:
+    """트립와이어 — PYTEST_CURRENT_TEST 가 있는데 path 가 실제 <repo>/data/cache 안이면 RealStoreWriteError.
+
+    2026-10-02 가짜 바이낸스 응답 실행이 운영 저장소를 덮은 사고의 재발 방지. Windows 대소문자·구분자는
+    정규화해 비교한다. pytest 밖(앱·스크립트·폴러)에서는 아무것도 하지 않는다.
+    """
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    target, real = _norm_dir(os.path.dirname(os.path.abspath(path))), _norm_dir(REAL_STORE_DIR)
+    if target == real or target.startswith(real.rstrip(os.sep) + os.sep):
+        raise RealStoreWriteError(
+            f"테스트 중 실제 OHLCV 저장소에 쓰기 시도: {path} — {STORE_DIR_ENV} 를 임시 폴더로 지정할 것")
 
 
 def _lock_for(path: str) -> threading.Lock:
@@ -115,7 +153,8 @@ def load_rows(path: str) -> list:
 
 
 def save_rows(path: str, rows: list) -> None:
-    """원자적 쓰기 — 같은 디렉터리의 임시파일에 쓰고 os.replace."""
+    """원자적 쓰기 — 같은 디렉터리의 임시파일에 쓰고 os.replace. pytest 중 실제 저장소면 쓰기 전에 RuntimeError."""
+    _refuse_real_store(path)
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".ohlcv_", suffix=".tmp", dir=directory)

@@ -1,5 +1,6 @@
 """OHLCV 저장소 테스트 — 꼬리 갱신·백필·틈·실패 시 저장본 계약. 전송은 가짜 거래소로 주입."""
 import os
+import subprocess
 import sys
 
 import pytest
@@ -241,3 +242,57 @@ def test_merge_prefers_new_and_sorts():
     new = [[2, "b"], [3, "b"]]
     merged = store.merge_rows(old, new)
     assert [r[0] for r in merged] == [1, 2, 3] and merged[1][1] == "b"
+
+
+# ── 경로·격리 (2026-10-02 오염 사고 재발 방지) ─────────────────────────────────
+def test_store_dir_env_takes_priority_over_settings(monkeypatch, tmp_path):
+    from config import settings
+
+    env_dir, settings_dir = str(tmp_path / "env_dir"), str(tmp_path / "settings_dir")
+    monkeypatch.setenv(store.STORE_DIR_ENV, env_dir)
+    monkeypatch.setitem(settings.OHLCV_STORE_PARAMS, "dir", settings_dir)
+    assert store.resolve_store_dir() == os.path.normpath(env_dir)
+    assert os.path.dirname(store.store_path("BTCUSDT", "1h")) == os.path.normpath(env_dir)
+    monkeypatch.delenv(store.STORE_DIR_ENV)
+    assert store.resolve_store_dir() == os.path.normpath(settings_dir)
+    monkeypatch.setitem(settings.OHLCV_STORE_PARAMS, "dir", "data/cache")          # 운영 기본값 — 저장소 루트 기준
+    assert store.resolve_store_dir() == os.path.normpath(store.REAL_STORE_DIR)     # 경로 해석만 (쓰지 않음)
+
+
+def test_store_dir_env_reaches_subprocesses():
+    """conftest 가 지정한 저장 경로·pytest 표지는 자식 프로세스까지 간다 — 자식의 쓰기도 임시 폴더·트립와이어 아래."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = ("import os, sys; sys.path.insert(0, sys.argv[1]); from data import ohlcv_store as s; "
+            "print(s.resolve_store_dir()); print(bool(os.environ.get('PYTEST_CURRENT_TEST')))")
+    out = subprocess.run([sys.executable, "-c", code, root], capture_output=True, text=True, timeout=120, check=True)
+    resolved, under_pytest = out.stdout.splitlines()[-2:]
+    assert resolved == os.path.normpath(os.environ[store.STORE_DIR_ENV]) and under_pytest == "True"
+    assert os.path.normcase(resolved) != os.path.normcase(os.path.normpath(store.REAL_STORE_DIR))
+
+
+def test_tripwire_refuses_real_store_during_pytest():
+    real, name = store.REAL_STORE_DIR, "ohlcv_TRIPWIRE_1h.csv"
+    variants = [os.path.join(real, name), real.replace(os.sep, "/") + "/" + name,
+                os.path.join(real, "sub", name)]                                   # 안쪽 폴더도
+    if os.name == "nt":                                                            # 대소문자 무시 파일시스템
+        variants += [os.path.join(real.upper(), name), os.path.join(real.lower(), name)]
+    listing = sorted(os.listdir(real)) if os.path.isdir(real) else None
+    try:
+        for path in variants:
+            with pytest.raises(RuntimeError, match="실제 OHLCV 저장소"):
+                store.save_rows(path, [])
+        assert (sorted(os.listdir(real)) if os.path.isdir(real) else None) == listing   # 쓰기 전에 막힘 — 임시파일도 없음
+    finally:                                                                         # 트립와이어가 고장 났을 때만 남는 흔적
+        for leftover in (os.path.join(real, name), os.path.join(real, "sub", name)):
+            if os.path.exists(leftover):
+                os.remove(leftover)
+        if os.path.isdir(os.path.join(real, "sub")) and not os.listdir(os.path.join(real, "sub")):
+            os.rmdir(os.path.join(real, "sub"))
+
+
+def test_tripwire_is_quiet_for_temp_dirs_and_outside_pytest(monkeypatch, tmp_path):
+    path = str(tmp_path / "ohlcv_BTCUSDT_1h.csv")
+    store.save_rows(path, [[1, "1", "1", "1", "1", "1", 2, "1", 1, "1", "1", "0"]])  # 임시 폴더 — pytest 중에도 쓴다
+    assert len(store.load_rows(path)) == 1
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    store._refuse_real_store(os.path.join(store.REAL_STORE_DIR, "ohlcv_BTCUSDT_1h.csv"))   # pytest 밖 — 검사 안 함 (쓰지는 않음)
