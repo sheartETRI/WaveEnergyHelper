@@ -42,7 +42,7 @@ class RadarRow:
     status: str
     side: str            # "하단" | "상단" | "상·하단" | "―"
     level: Optional[float]
-    dist_pct: Optional[float]   # 현재가 vs 레벨 부호 있는 거리 % (하단: +위/-아래, 상단: +아래/-위)
+    dist_pct: Optional[float]   # '레벨 대비' — (현재가 − 레벨) / 레벨 × 100, 모든 상태·쪽 같은 부호 (+ 레벨 위 / − 아래)
     detail: str
     last_event: str      # 마지막 확정 이벤트 요약 ("" 가능)
 
@@ -98,7 +98,7 @@ def _radar_row(interval: str, df: Optional[pd.DataFrame], p: dict) -> RadarRow:
             ep = live[0]
             side = _SIDE_KO[ep["side"]]
         level = float(ep["level"])
-        dist = (close - level) / level * 100.0 if ep["side"] == "low" else (level - close) / level * 100.0
+        dist = (close - level) / level * 100.0
         detail = f"체류 {ep['dwell_bars']}봉 · 깊이 {ep['depth_pct']:.1f}%"
         if ep["pending_confirm"]:
             detail += " · 재탈환 확정 대기"
@@ -125,8 +125,9 @@ def _radar_row(interval: str, df: Optional[pd.DataFrame], p: dict) -> RadarRow:
         if 0.0 <= d <= near:
             cands.append(("상단", lvl_high, d))
     if cands:
-        side, level, d = min(cands, key=lambda c: c[2])
-        return RadarRow(interval, 1, STATUS_NEAR, side, level, d, f"레벨까지 {d:.2f}%", last_event)
+        side, level, d = min(cands, key=lambda c: c[2])            # 선택·비고는 절대 거리
+        dist = (close - level) / level * 100.0                       # 표의 '레벨 대비'는 다른 상태와 같은 부호
+        return RadarRow(interval, 1, STATUS_NEAR, side, level, dist, f"레벨까지 {d:.2f}%", last_event)
 
     # 0 — 조용 (참고로 가까운 경계까지 거리만 표기).
     detail = ""

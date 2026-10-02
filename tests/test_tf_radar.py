@@ -96,3 +96,46 @@ def test_no_data_and_all_quiet():
     assert rows[0].status == STATUS_NO_DATA
     assert pick_focus(rows) is None
     assert pick_focus(build_tf_radar({"1d": QUIET})) is None
+
+
+# '레벨 대비' 부호 — 모든 상태 (현재가 − 레벨) / 레벨 × 100 (+ = 레벨 위). 같은 레벨·같은 가격이면 상태와 무관하게 같은 값.
+# 하단 레벨 100, 종가 101 (레벨 1% 위)
+LOW_SAME = {
+    STATUS_BATTLE: _frame(WARM + [(104, 98, 101)]),                    # 봉내 스윕 — 재탈환 확정 대기
+    STATUS_FRESH: _frame(WARM + [(104, 98, 101), (104, 100.5, 101)]),  # 다음 봉 확정 → 판정 직후
+    STATUS_NEAR: _frame(WARM + [(104, 100.3, 101)]),                   # 이탈 없이 1% 이내
+}
+# 상단 레벨 105, 종가 104 (레벨 0.95% 아래)
+HIGH_SAME = {
+    STATUS_BATTLE: _frame(WARM + [(106, 103, 104)]),
+    STATUS_FRESH: _frame(WARM + [(106, 103, 104), (104.5, 103, 104)]),
+    STATUS_NEAR: _frame(WARM + [(104.9, 103, 104)]),
+}
+
+
+@pytest.mark.parametrize("frames,level,close", [(LOW_SAME, 100.0, 101.0), (HIGH_SAME, 105.0, 104.0)])
+def test_level_distance_sign_is_same_for_every_state(frames, level, close):
+    rows = {status: build_tf_radar({"6h": df})[0] for status, df in frames.items()}
+    assert {s: r.status for s, r in rows.items()} == {s: s for s in frames}
+    expected = (close - level) / level * 100.0
+    for row in rows.values():
+        assert row.level == pytest.approx(level) and row.dist_pct == pytest.approx(expected)
+
+
+def test_upper_battle_above_level_is_positive():
+    row = build_tf_radar({"6h": _frame(WARM + [(106, 104, 106)])})[0]      # 상단 돌파 진행 중 — 종가가 레벨 위
+    assert row.status == STATUS_BATTLE and row.side == "상단"
+    assert row.dist_pct == pytest.approx((106 - 105) / 105 * 100) and row.dist_pct > 0
+
+
+def test_lower_battle_below_support_is_negative():
+    row = build_tf_radar({"6h": BATTLE})[0]                                 # 하단 이탈 진행 중 — 종가가 지지선 아래
+    assert row.status == STATUS_BATTLE and row.side == "하단"
+    assert row.dist_pct == pytest.approx(-1.0) and row.dist_pct < 0
+
+
+def test_near_row_keeps_absolute_distance_in_detail():
+    row = build_tf_radar({"6h": _frame(WARM + [(104.6, 101, 104.5)])})[0]  # 상단 0.48% 아래 — 접근
+    assert row.status == STATUS_NEAR and row.side == "상단"
+    assert row.dist_pct == pytest.approx((104.5 - 105) / 105 * 100) and row.dist_pct < 0
+    assert row.detail == "레벨까지 0.48%"                                   # 비고는 부호 없는 거리 그대로
