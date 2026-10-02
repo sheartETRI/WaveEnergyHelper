@@ -40,6 +40,9 @@ _ROLE_KO = {"Top": "대", "Mid": "중", "Bot": "소"}
 _LAYER_CHOICES = {f"{_ROLE_KO.get(l['name'], l['name'])}{l['label']}": l["label"] for l in STOCH_LAYERS}
 
 DEFAULT_INTERVAL = "1h"
+# 사이드바 심볼·TF 위젯 key — scripts/alarm_cli.py 가 AppTest 에서 같은 위젯 값을 넣어 실행한다(화면 동작 불변).
+SYMBOL_KEY = "sidebar_symbol"
+INTERVAL_KEY = "sidebar_interval"
 
 # "MACD 패널" 토글이 기본 꺼지는 TF. 15m 은 크로스 채터링이 가장 잦아 기본 꺼짐 — 켜면 다른 TF와
 # 정의·동작이 같다(정의 차등 없음). 토글은 MACD 계산·알람·차트 패널을 함께 켜고 끈다.
@@ -128,11 +131,12 @@ def render_sidebar() -> dict:
     """전역 필터만 사이드바에 둔다(본문은 메인 영역)."""
     freshness_slot = render_refresh_button()
     st.sidebar.header("대상")
-    symbol = st.sidebar.selectbox("심볼", options=SUPPORTED_SYMBOLS, index=0)
+    symbol = st.sidebar.selectbox("심볼", options=SUPPORTED_SYMBOLS, index=0, key=SYMBOL_KEY)
     interval = st.sidebar.selectbox(
         "타임프레임",
         options=TIMEFRAMES,
         index=TIMEFRAMES.index(DEFAULT_INTERVAL) if DEFAULT_INTERVAL in TIMEFRAMES else 0,
+        key=INTERVAL_KEY,
     )
 
     st.sidebar.divider()
