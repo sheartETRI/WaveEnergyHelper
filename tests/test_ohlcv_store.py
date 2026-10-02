@@ -80,7 +80,8 @@ def test_tail_refresh_overwrites_open_bar_and_appends(tmp_path):
     old_last = first.rows[-1][0]
     ex.advance(5)
     res = _refresh(ex, tmp_path, min_bars=1000)
-    assert res.requests == 1 and ex.calls[-1] == (1000, old_last, None)   # 마지막 봉 포함 재요청
+    assert res.requests == 1 and ex.calls[-1] == (1000, first.rows[-2][0], None)   # 끝에서 두 번째(확정) 봉부터 — 겹쳐 대조
+    assert res.rebuilt is None
     assert res.added == 5 and len(res.rows) == len(first.rows) + 5
     overwritten = next(r for r in res.rows if r[0] == old_last)
     assert overwritten[4] == "100.7"                                      # 미완성 봉 덮어쓰기
@@ -92,7 +93,7 @@ def test_tail_paginates_when_many_new_bars(tmp_path):
     _refresh(ex, tmp_path, min_bars=1000)
     ex.advance(2500)
     res = _refresh(ex, tmp_path, min_bars=1000)
-    assert res.requests == 3 and res.added == 2500 and _contiguous(res.rows)   # 1000, 1000, 501
+    assert res.requests == 3 and res.added == 2500 and _contiguous(res.rows)   # 1000, 1000, 502 (겹친 확정 봉 포함)
 
 
 def test_no_backfill_when_store_already_deep(tmp_path):
@@ -242,6 +243,133 @@ def test_merge_prefers_new_and_sorts():
     new = [[2, "b"], [3, "b"]]
     merged = store.merge_rows(old, new)
     assert [r[0] for r in merged] == [1, 2, 3] and merged[1][1] == "b"
+
+
+# ── 오염 복구 (2026-10-02 사고 모양 — 가짜 응답이 실제 저장소에 섞인 파일) ──────────────
+WEEK = 7 * 86_400_000
+MONDAY = 1_600_041_600_000          # 2020-09-14 00:00 UTC (월) — 바이낸스 주봉 시작. epoch 정렬 주봉은 목요일 시작
+
+
+class BtcLikeExchange(FakeExchange):
+    """가격대가 실제 BTC 수준인 거래소 — 100 대에서 시작하는 가짜와 이어 붙으면 이음매가 3배 넘게 벌어진다."""
+
+    def _row(self, t, version=0):
+        return [t, "60000.0", "60100.0", "59900.0", f"60000.{version}", "10.0", t + self.step - 1,
+                "1000.0", 5, "5.0", "500.0", "0"]
+
+
+def _fake_rows(open_times, step):
+    """사고의 가짜 응답 모양 — 100.2285 에서 매끈하게 오르는 소수 4자리 수열, 거래량 "1.0", 체결 0."""
+    rows = []
+    for i, t in enumerate(open_times):
+        c = 100.2285 + 0.0285 * i
+        rows.append([t, f"{c - 0.0285:.4f}", f"{c + 0.01:.4f}", f"{c - 0.04:.4f}", f"{c:.4f}", "1.0",
+                     t + step - 1, "0", 0, "0", "0", "0"])
+    return rows
+
+
+def _exchange_copy(rows, ex):
+    """rows 가 전부 거래소 봉 그대로(가짜 없음)이고, 빈틈 없이 거래소 최신 봉까지 이어지는지."""
+    return (bool(rows) and rows[-1][0] == max(ex.bars) and _contiguous(rows, ex.step)
+            and all(r[0] in ex.bars and r == store._coerce(ex.bars[r[0]]) for r in rows))
+
+
+def test_aligned_fake_over_tail_is_rebuilt_in_one_refresh(tmp_path):
+    """(i) 정렬된 가짜가 꼬리를 덮은 파일 — 겹친 확정 봉의 OHLC 가 거래소와 달라 (b) 로 한 번에 재구축."""
+    ex = BtcLikeExchange(3000)
+    first = _refresh(ex, tmp_path, min_bars=2000)
+    res = _refresh(ex, tmp_path, min_bars=2000)                       # 정상 파일 — 처음 읽어도 꼬리 1회 그대로
+    assert res.requests == 1 and res.rebuilt is None and not os.path.exists(res.path + ".corrupt")
+    fake = _fake_rows([r[0] for r in first.rows[-1000:]], STEP)
+    store.save_rows(first.path, store.merge_rows(first.rows, fake))  # 끝 1000봉을 가짜로 덮음
+    res = _refresh(ex, tmp_path, min_bars=2000)
+    assert res.rebuilt and "OHLC 불일치" in res.rebuilt, res.rebuilt
+    assert res.requests == 1 + 2                                      # 꼬리 대조 1 + 빈 상태에서 2000봉 (1000 × 2)
+    assert len(res.rows) == 2000 and _exchange_copy(res.rows, ex) and store.load_rows(res.path) == res.rows
+    assert store.load_rows(res.path + ".corrupt")[-1][4] == fake[-1][4]          # 오염본은 .corrupt 로 보관
+    nxt = _refresh(ex, tmp_path, min_bars=2000)
+    assert nxt.requests == 1 and nxt.rebuilt is None                  # 다음 갱신은 다시 꼬리 1회
+
+
+def test_thursday_fake_interleaved_in_weekly_file_is_rebuilt(tmp_path):
+    """(ii) 목요일 시작 가짜 1000봉이 월요일 시작 실제 주봉 사이에 끼어든 1w 파일 — 인접 간격 < 1주 (c) 로 재구축."""
+    ex = BtcLikeExchange(300, step=WEEK, t0=MONDAY)                   # 역사 300주 < 1000 → 상장 시작까지 한 페이지
+    first = store.refresh("BTCUSDT", "1w", ex.fetch_page, 1000, base_dir=str(tmp_path))
+    last_thursday = max(ex.bars) - max(ex.bars) % WEEK
+    assert (last_thursday - MONDAY) % WEEK == 3 * 86_400_000          # 목요일 — 실제 주봉 사이
+    fake = _fake_rows([last_thursday - (999 - i) * WEEK for i in range(1000)], WEEK)
+    store.save_rows(first.path, store.merge_rows(first.rows, fake))
+    res = store.refresh("BTCUSDT", "1w", ex.fetch_page, 1000, base_dir=str(tmp_path))
+    assert res.rebuilt and "인접 봉 간격" in res.rebuilt, res.rebuilt
+    assert res.requests == 1 and len(res.rows) == 300 and _exchange_copy(res.rows, ex)
+    assert store._HEAD_REACHED[res.path] == MONDAY and os.path.exists(res.path + ".corrupt")
+
+
+@pytest.mark.parametrize("interval,step,t0,reason_part", [
+    ("1h", STEP, T0, "OHLC 불일치"),                  # 정렬이 같은 가짜 — 겹친 확정 봉 값이 다름 (b)
+    ("1w", WEEK, MONDAY, "요청 startTime"),           # 목요일 시작 가짜 — 응답 첫 봉이 요청 시각과 다름 (a)
+])
+def test_fake_only_file_is_rebuilt(tmp_path, interval, step, t0, reason_part):
+    """(iii) 가짜만 찬 파일 — 이음매가 없어 (d) 는 조용하지만 꼬리 대조가 잡아 한 번에 재구축."""
+    ex = BtcLikeExchange(1500, step=step, t0=t0)
+    last = max(ex.bars)
+    last_fake = last if interval == "1h" else last - last % WEEK     # 1w: epoch 정렬 = 목요일
+    path = store.store_path("BTCUSDT", interval, str(tmp_path))
+    store.save_rows(path, _fake_rows([last_fake - (999 - i) * step for i in range(1000)], step))
+    res = store.refresh("BTCUSDT", interval, ex.fetch_page, 1000, base_dir=str(tmp_path))
+    assert res.rebuilt and reason_part in res.rebuilt, res.rebuilt
+    assert res.requests == 2 and len(res.rows) == 1000 and _exchange_copy(res.rows, ex)
+    assert store.load_rows(path) == res.rows and os.path.exists(path + ".corrupt")
+
+
+def test_fake_block_followed_by_real_bars_is_rebuilt_on_first_read(tmp_path):
+    """(iv) 가짜 블록 뒤에 실제 봉이 이미 붙은 파일 — 꼬리는 실제라 대조를 통과하므로, 새 프로세스에서 파일을
+    처음 읽을 때 이음매 (d) 로 재구축한다."""
+    ex = BtcLikeExchange(3000)
+    first = _refresh(ex, tmp_path, min_bars=2000)
+    _refresh(ex, tmp_path, min_bars=2000)                             # 이 프로세스는 이미 한 번 읽었다
+    block = [r[0] for r in first.rows[-1200:-200]]                    # 가짜 1000봉 뒤에 실제 200봉
+    store.save_rows(first.path, store.merge_rows(first.rows, _fake_rows(block, STEP)))
+    same = _refresh(ex, tmp_path, min_bars=2000)
+    assert same.rebuilt is None and same.requests == 1                # 같은 프로세스 — (d) 는 처음 읽을 때만
+    store._SCANNED.clear()                                            # 새 프로세스
+    store._HEAD_REACHED.clear()
+    res = _refresh(ex, tmp_path, min_bars=2000)
+    assert res.rebuilt and "직전 종가" in res.rebuilt, res.rebuilt
+    assert res.requests == 2 and len(res.rows) == 2000 and _exchange_copy(res.rows, ex)
+    assert store.load_rows(res.path) == res.rows and os.path.exists(res.path + ".corrupt")
+
+
+def test_rebuild_forgets_listing_start_memory(tmp_path):
+    """재구축하면 그 경로의 '상장 첫 봉 도달' 기억을 지운다 — 남아 있으면 다음 갱신의 백필을 건너뛴다."""
+    ex = BtcLikeExchange(3000)
+    first = _refresh(ex, tmp_path, min_bars=1000)
+    store._HEAD_REACHED[first.path] = first.rows[0][0]                # 오염 시절에 생긴 기억이라고 하자
+    store.save_rows(first.path, store.merge_rows(first.rows, _fake_rows([r[0] for r in first.rows[-10:]], STEP)))
+    res = _refresh(ex, tmp_path, min_bars=1000)
+    assert res.rebuilt and res.rows[0][0] == first.rows[0][0] and first.path not in store._HEAD_REACHED
+    deeper = _refresh(ex, tmp_path, min_bars=2000)
+    assert deeper.requests == 2 and len(deeper.rows) == 2000          # 꼬리 + 백필 1페이지
+
+
+def test_rebuilt_rows_are_not_rechecked_in_the_same_call(tmp_path):
+    """다시 받은 행은 같은 호출에서 재검사하지 않는다 — 거래소 역사 자체에 큰 가격대 변화가 있어도 재구축은 한 번."""
+    ex = BtcLikeExchange(1500)
+    for t in sorted(ex.bars)[:900]:                                   # 거래소 역사 자체의 가격대 변화 (60배)
+        ex.bars[t] = [t, "1000.0", "1001.0", "999.0", "1000.0"] + ex.bars[t][5:]
+    path = store.store_path("BTCUSDT", "1h", str(tmp_path))
+    store.save_rows(path, [ex.bars[T0 + 1400 * STEP], [T0 + 1400 * STEP + STEP // 2] + ex.bars[T0][1:]])  # 끼어든 행
+    res = _refresh(ex, tmp_path, min_bars=1000)
+    assert res.rebuilt and "인접 봉 간격" in res.rebuilt and res.requests == 1 and _exchange_copy(res.rows, ex)
+    nxt = _refresh(ex, tmp_path, min_bars=1000)
+    assert nxt.rebuilt is None and nxt.requests == 1
+
+
+def test_monthly_interleave_threshold_is_28_days():
+    day = 86_400_000
+    row = ["1"] * 5 + ["1", 0, "1", 1, "1", "1", "0"]
+    assert store._interleaved([[0] + row[1:], [28 * day] + row[1:]], "1M") is None
+    assert store._interleaved([[0] + row[1:], [27 * day] + row[1:]], "1M")
 
 
 # ── 경로·격리 (2026-10-02 오염 사고 재발 방지) ─────────────────────────────────

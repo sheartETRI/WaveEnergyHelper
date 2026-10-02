@@ -94,7 +94,7 @@ def test_after_cache_expiry_only_the_tail_is_requested(ex):
     ex.advance(3)
     B.fetch_klines.clear()                                                  # TTL 만료와 같다
     rows = B.fetch_klines("BTCUSDT", "1h", 1000)
-    assert len(ex.calls) == 2 and ex.calls[1]["startTime"] == last_open     # 꼬리 1회 — 마지막 저장 봉부터
+    assert len(ex.calls) == 2 and ex.calls[1]["startTime"] == last_open - H  # 꼬리 1회 — 끝에서 두 번째(확정) 봉부터
     status = B.store_status("BTCUSDT", "1h")
     assert status["requests"] == 1 and status["added"] == 3 and status["bars"] == 1003
     assert len(rows) == 1000 and rows[-1][0] == max(ex.bars)
