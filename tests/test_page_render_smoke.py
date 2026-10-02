@@ -1,5 +1,6 @@
 """페이지 렌더 스모크 — main.py 를 Streamlit AppTest 로 실제 실행해 알람 탭 "60MA 상방 전환 추적" 표에 '다이버전스' 열과
 있음/없음 코호트 집계 캡션이 **렌더 결과물**에 존재함을 단언한다(단위 테스트가 통과해도 화면에 없던 사례의 재발 방지).
+알람 탭 맨 아래 '전체 복사용 텍스트' 블록도 같은 렌더 결과물에서 섹션 누락이 없고 값이 화면과 같은지 대조한다.
 
 네트워크는 data/binance.requests.get 을 합성 kline 으로 대체한다(모든 심볼·TF 동일 합성 시계열). 검증 대상은 렌더 트리이지
 수치가 아니다.
@@ -119,3 +120,43 @@ def test_tracker_table_matches_direct_computation_on_same_frame(app):
     assert list(got[DV.DIVERGENCE_COL]) == list(expected[DV.DIVERGENCE_COL])
     assert list(got["확정 시각"]) == list(expected["확정 시각"])
     assert list(got["상태"]) == list(expected["상태"])                      # 상태 분리(해당 없음)도 렌더 경로에서 그대로
+
+
+def test_alarm_tab_copy_text_block_has_every_section_with_on_screen_values(app):
+    """알람 탭 맨 아래 접힌 상자 '전체 복사용 텍스트' — st.code 블록 하나에 탭 섹션이 화면 순서대로 빠짐없이 있고, 메트릭·표·집계
+    줄은 렌더된 화면 값과 글자 그대로 같다(재계산 경로가 끼면 어긋난다). TF 레이더 2종은 대상 밖."""
+    import display.alarm_copy_text as CT
+    import display.alarm_panel as AP
+    import display.ma60_slope as SL
+    import display.trend_structure as TS
+
+    tab = app.tabs[1]
+    assert tab.label == "알람"
+    boxes = [e for e in tab.expander if e.label == CT.EXPANDER_LABEL]
+    assert len(boxes) == 1 and len(boxes[0].code) == 1
+    assert getattr(list(tab.children.values())[-1], "label", None) == CT.EXPANDER_LABEL      # 탭 맨 아래
+    text = boxes[0].code[0].value
+    sym, iv = "BTCUSDT", "1h"
+    heads = [f"# {AP.build_header(sym, iv)}", f"## {AP.CURRENT_TITLE}", f"## {AP.history_title(AP.DEFAULT_HISTORY_BARS)}",
+             f"## {T.SECTION_TITLE} · {sym} {iv}", f"### {SL.BLOCK_TITLE} · {sym}", f"## {D.SECTION_TITLE} · {sym} {iv}",
+             f"## {TS.SECTION_TITLE} · {sym} {iv}"]
+    pos = [text.find(h) for h in heads]
+    assert min(pos) >= 0, [h for h, p in zip(heads, pos) if p < 0]
+    assert pos == sorted(pos)                                                     # 화면 순서
+    # 메트릭 — 탭의 모든 메트릭(레이더는 메트릭 없음)이 '- 라벨: 값' 으로
+    assert len(tab.metric) == 3 + 5 + 5 + 4
+    for m in tab.metric:
+        assert f"- {m.label}: {m.value}" in text, (m.label, m.value)
+    # 표 — 렌더된 표를 같은 텍스트 변환에 넣은 결과가 그대로 들어 있다(이력·기울기·상방·하방·구조)
+    frames = {tuple(d.value.columns): d.value for d in tab.dataframe}
+    history = frames[tuple(AP.HISTORY_COLUMN_WIDTHS)]
+    tables = [CT.text_table(AP.history_text_frame(history)), CT.text_table(frames[SL.COLUMNS]),
+              CT.text_table(frames[T.COLUMNS], T.DISPLAY_HEADERS), CT.text_table(frames[D.COLUMNS], D.DISPLAY_HEADERS)]
+    for table in tables:
+        assert table in text, table.splitlines()[0]
+    assert (CT.text_table(frames[TS.COLUMNS]) in text) if TS.COLUMNS in frames else (TS.NO_SWING_CAPTION in text)
+    # 집계 줄 — 이력 건수, 상방·하방 '최근 120봉' 집계, 다이버전스 코호트
+    assert AP.history_counts(history) in text
+    captions = [c.value for c in tab.caption]
+    summaries = [c for c in captions if c.startswith("최근 120봉: ") or " 있음: " in c]
+    assert len(summaries) == 4 and all(c in text for c in summaries), summaries

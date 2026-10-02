@@ -21,6 +21,7 @@ from data.binance import (
     stale_caption,
 )
 from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
+from display.alarm_copy_text import build_copy_text, render_copy_expander
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.tf_radar_panel import render_tf_radar_section
 from display.wave_basis_radar import render_basis_radar_section
@@ -213,20 +214,23 @@ def main():
         render_tf_radar_section(symbol)
         # 기준 TF 레이더 — 대파동 쌍바닥/쌍봉 후 60MA 전환 관찰이 열린 TF (표시 전용, SPEC §10).
         render_basis_radar_section(symbol)
-        render_alarm_panel(
+        alarm_view = render_alarm_panel(
             df, symbol, interval,
             history_bars=cfg["history_bars"],
             include_candidates=cfg["include_candidates"],
             layers=cfg["layers"] or None,
         )
         # 60MA 전환 추적 (미검증) — 별도 섹션. 검출은 validation/wave_ma60_turn_probe 를 import 해 소비.
-        # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님).
-        tracker_frame = render_tracker_section(df, symbol, interval)
+        # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님). 기울기 목록은 복사용 텍스트로.
+        tracker_frame, slope_rows = render_tracker_section(df, symbol, interval)
         # 60MA 하방 전환 추적 (미검증) — 상승 쪽의 거울상(대파동 쌍봉 → 20봉 안 60MA 하방 전환). 현물 보유 시 참고용 관측.
         # 차트 가격선·알람 푸시 연동 없음(표시 전용).
         down_frame = render_down_tracker_section(df, symbol, interval)
         # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
         structure_result = render_structure_section(df, symbol, interval)
+        # 전체 복사용 텍스트 (탭 맨 아래, 접힘) — 위 섹션들이 화면에 그린 값(반환값)만 마크다운 텍스트로 옮긴다(재계산 없음).
+        render_copy_expander(build_copy_text(symbol, interval, alarm_view, tracker_frame, slope_rows, down_frame,
+                                             structure_result))
 
     with tab_chart:
         # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산

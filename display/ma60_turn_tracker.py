@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -77,6 +77,7 @@ COLUMNS = (TF_COL, "상태", "확정 시각", "경과/소요", "60MA 현재", "�
            "패턴 저점", "기준선(×0.995)", "소멸 시각")
 TIME_COLUMNS = ("확정 시각", "전환 시각", "소멸 시각")
 DISPLAY_HEADERS = {c: f"{c} {KST_LABEL}" for c in TIME_COLUMNS}   # 표 헤더 라벨만 KST 표기(컬럼 키 불변)
+EMPTY_CAPTION = "해당 구간에 대파동 쌍바닥 후보 없음"   # 후보 없음 — 화면·build_lines·전체 복사용 텍스트 공통
 
 
 # ------------------------------------------------------------------ 계산
@@ -238,11 +239,24 @@ def divergence_summary_line(frame: pd.DataFrame) -> str:
             f"{UNVERIFIED[:-1]}, 표본 적음)")
 
 
+def metric_items(s: dict) -> List[tuple]:
+    """메트릭 5칸 (라벨, 값, 도움말) — summarize 결과로. 화면 메트릭과 전체 복사용 텍스트(display.alarm_copy_text)가 같은 목록."""
+    return [
+        (f"대기 중 {UNVERIFIED}", f"{s['waiting']}건", None),
+        (f"전환 발생 {UNVERIFIED}", f"{s['turned']}건", None),
+        (f"소멸 {UNVERIFIED}", f"{s['expired']}건", None),
+        ("전환율(종료 건)", "—" if s["rate"] is None else f"{s['rate'] * 100:.0f}%",
+         "전환 발생 ÷ (전환 발생 + 소멸). 대기 중·이미 상방(해당 없음)은 제외. 미검증 표시."),
+        (f"{ALREADY_UP_MARK} {UNVERIFIED}", f"{s['already_up']}건",
+         f"확정 시 60MA 가 이미 상방이던 후보 — 상태 '{STATUS_ALREADY_UP}'. 대기·소멸·전환율에 들지 않음(건수만)."),
+    ]
+
+
 def build_lines(frame: pd.DataFrame, recent_bars: int = RECENT_BARS) -> List[str]:
     """텍스트 요약(테스트·검수용): 캡션, 상태별 한 줄, 집계."""
     lines = [SECTION_TITLE, FIXED_CAPTION]
     if frame is None or frame.empty:
-        lines.append("해당 구간에 대파동 쌍바닥 후보 없음")
+        lines.append(EMPTY_CAPTION)
     for d in (frame if frame is not None else pd.DataFrame()).to_dict("records"):
         if d["상태"] == STATUS_TURNED:
             tail = f"전환 {to_kst(d['전환 시각']):%m-%d %H:%M} @ {d['전환 시 가격']:,.8g} · 소요 {d[ELAPSED_COL]}"
@@ -333,8 +347,9 @@ def display_frame(frame: pd.DataFrame, symbol: str = "", interval: str = "") -> 
 
 # ------------------------------------------------------------------ streamlit
 def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
-                           recent_bars: int = RECENT_BARS) -> pd.DataFrame:
-    """알람 탭 별도 섹션. 반환값은 후보 표(차트 연동에 재사용)."""
+                           recent_bars: int = RECENT_BARS) -> Tuple[pd.DataFrame, list]:
+    """알람 탭 별도 섹션. 반환값은 (후보 표, 기울기 (tf, snapshot) 목록) — 후보 표는 차트 연동에, 둘 다 전체 복사용
+    텍스트(display.alarm_copy_text)에 재사용(재계산 없음)."""
     import streamlit as st
 
     from display.ma60_slope import render_slope_block   # 기울기 실측(표시 전용, 판정 없음) — 섹션 상단 블록
@@ -343,18 +358,12 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
     with st.container(border=True):
         st.markdown(f"**{SECTION_TITLE} · {symbol} {interval}**")
         st.caption(FIXED_CAPTION)
-        render_slope_block(df, symbol, interval)
-        s = summarize(frame)
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric(f"대기 중 {UNVERIFIED}", f"{s['waiting']}건")
-        c2.metric(f"전환 발생 {UNVERIFIED}", f"{s['turned']}건")
-        c3.metric(f"소멸 {UNVERIFIED}", f"{s['expired']}건")
-        c4.metric("전환율(종료 건)", "—" if s["rate"] is None else f"{s['rate'] * 100:.0f}%",
-                  help="전환 발생 ÷ (전환 발생 + 소멸). 대기 중·이미 상방(해당 없음)은 제외. 미검증 표시.")
-        c5.metric(f"{ALREADY_UP_MARK} {UNVERIFIED}", f"{s['already_up']}건",
-                  help=f"확정 시 60MA 가 이미 상방이던 후보 — 상태 '{STATUS_ALREADY_UP}'. 대기·소멸·전환율에 들지 않음(건수만).")
+        slope_rows = render_slope_block(df, symbol, interval)
+        items = metric_items(summarize(frame))
+        for col, (label, value, help_) in zip(st.columns(len(items)), items):
+            col.metric(label, value, help=help_)
         if frame.empty:
-            st.caption("해당 구간에 대파동 쌍바닥 후보 없음")
+            st.caption(EMPTY_CAPTION)
         else:
             st.caption(bar_unit_caption(interval))
             st.dataframe(
@@ -371,4 +380,4 @@ def render_tracker_section(df: pd.DataFrame, symbol: str, interval: str,
                    f"확정 시 60MA '이미 상방' 은 상태 '{STATUS_ALREADY_UP}'(창 진행 중이든 끝났든 같음) — 대기·소멸·전환율에 들지 않고 건수만 별도 · "
                    f"{DIVERGENCE_COL} = 스토캐(20,10,10) 둘째 저점 > 첫째 저점(HL) 이면서 두 피봇 봉의 저가는 둘째 < 첫째 "
                    "(단일 정의, docs/CANDIDATES_POST_2027_03).")
-    return frame
+    return frame, slope_rows

@@ -54,6 +54,10 @@ MARKER_COLORS = {CLS_HH: "#C62828", CLS_HL: "#0B8F45", CLS_LH: "#EF6C00", CLS_LL
                  KIND_TURN: "#7E57C2"}
 MARKER_TEXT_MAX = 40   # 이보다 많으면 텍스트 생략(점만) — 밀집 방지
 
+# 빈 상태 문구 — 화면·build_lines·전체 복사용 텍스트(display.alarm_copy_text) 공통
+NO_BASE_CAPTION = "대파동 쌍바닥 후보 없음 — 기준점 없음"
+NO_SWING_CAPTION = "기준점 이후 확정된 스윙 없음"
+
 
 # ------------------------------------------------------------------ 계산 (순수 함수)
 def _cls(cur: float, prev: Optional[float], is_high: bool) -> str:
@@ -211,7 +215,7 @@ def build_lines(result: Optional[dict]) -> List[str]:
     """텍스트 요약(테스트·검수용)."""
     lines = [SECTION_TITLE, FIXED_CAPTION]
     if result is None:
-        lines.append("대파동 쌍바닥 후보 없음 — 기준점 없음")
+        lines.append(NO_BASE_CAPTION)
         return lines
     b = result["base"]
     lines.append(f"기준 저점 {_fmt_ts(b['ts'])} · {_fmt_px(b['low'])} (쌍바닥 둘째 바닥 {_fmt_ts(b['p2_ts'])} · "
@@ -236,6 +240,36 @@ def build_lines(result: Optional[dict]) -> List[str]:
         pct = "" if r["pct"] is None else f" {r['pct']:+.2f}%"
         lines.append(f"  {_fmt_ts(r['ts'])} {r['kind']} {_fmt_px(r['price'])} {r['cls']}{pct}")
     return lines
+
+
+def metric_items(result: dict) -> List[tuple]:
+    """메트릭 4칸 (라벨, 값, 도움말) — 화면 메트릭과 전체 복사용 텍스트가 같은 목록."""
+    b, rt = result["base"], result["retrace"]
+    return [
+        (f"기준 저점 {UNVERIFIED}", _fmt_px(b["low"]),
+         f"쌍바닥 구간 최저가 봉 {_fmt_ts(b['ts'])} · 둘째 바닥 {_fmt_ts(b['p2_ts'])} · 확정 {_fmt_ts(b['confirm_ts'])}"),
+        (f"현재 구조 {UNVERIFIED}", result["state"]["state"],
+         "유지 = 최근 고점 HH·최근 저점 HL / 경고 = 최근 고점 LH / 훼손 = 저점 LL 발생"),
+        ("기준 저점 대비 현재가", "—" if result["gain_pct"] is None else f"{result['gain_pct']:+.2f}%", None),
+        ("되돌림 실측(직전 상승폭 대비)", "—" if rt is None else f"{rt['pct']:.1f}%",
+         "최근 고점→그 뒤 최근 저점. 참고선 38.2 / 50 / 61.8% 는 표시만, 판정에 쓰지 않음."),
+    ]
+
+
+def detail_captions(result: dict) -> List[str]:
+    """메트릭 아래 캡션 — 기준점 시각, 마지막 훼손(있으면), 60MA 상방 전환. 화면·전체 복사용 텍스트 공통."""
+    b, stt = result["base"], result["state"]
+    out = [f"기준 저점 봉 {_fmt_ts(b['ts'])} (쌍바닥 구간 최저가) · 둘째 바닥 {_fmt_ts(b['p2_ts'])} · "
+           f"쌍바닥 확정 {_fmt_ts(b['confirm_ts'])}"]
+    if stt["last_ll_at"] is not None:
+        out.append(f"마지막 훼손(저점 LL): {_fmt_ts(stt['last_ll_at'])}")
+    t = result.get("turn") or {}
+    if t.get("pos") is not None:
+        out.append(f"60MA 상방 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄의 {t['swings_before']}번째 스윙 뒤 "
+                   f"(60MA 상방 전환 추적 섹션과 같은 후보)")
+    else:
+        out.append(f"60MA 상방 전환 없음 — 60MA 상방 전환 추적 상태: {t.get('status', '—')}")
+    return out
 
 
 def structure_markers(result: Optional[dict]) -> List[dict]:
@@ -271,30 +305,16 @@ def render_structure_section(df: pd.DataFrame, symbol: str, interval: str) -> Op
         st.markdown(f"**{SECTION_TITLE} · {symbol} {interval}**")
         st.caption(FIXED_CAPTION)
         if result is None:
-            st.caption("대파동 쌍바닥 후보 없음 — 기준점 없음")
+            st.caption(NO_BASE_CAPTION)
             return None
-        b, stt = result["base"], result["state"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"기준 저점 {UNVERIFIED}", _fmt_px(b["low"]),
-                  help=f"쌍바닥 구간 최저가 봉 {_fmt_ts(b['ts'])} · 둘째 바닥 {_fmt_ts(b['p2_ts'])} · 확정 {_fmt_ts(b['confirm_ts'])}")
-        c2.metric(f"현재 구조 {UNVERIFIED}", stt["state"],
-                  help="유지 = 최근 고점 HH·최근 저점 HL / 경고 = 최근 고점 LH / 훼손 = 저점 LL 발생")
-        c3.metric("기준 저점 대비 현재가", "—" if result["gain_pct"] is None else f"{result['gain_pct']:+.2f}%")
-        rt = result["retrace"]
-        c4.metric("되돌림 실측(직전 상승폭 대비)", "—" if rt is None else f"{rt['pct']:.1f}%",
-                  help="최근 고점→그 뒤 최근 저점. 참고선 38.2 / 50 / 61.8% 는 표시만, 판정에 쓰지 않음.")
-        st.caption(f"기준 저점 봉 {_fmt_ts(b['ts'])} (쌍바닥 구간 최저가) · 둘째 바닥 {_fmt_ts(b['p2_ts'])} · 쌍바닥 확정 {_fmt_ts(b['confirm_ts'])}")
-        if stt["last_ll_at"] is not None:
-            st.caption(f"마지막 훼손(저점 LL): {_fmt_ts(stt['last_ll_at'])}")
-        t = result.get("turn") or {}
-        if t.get("pos") is not None:
-            st.caption(f"60MA 상방 전환 {_fmt_ts(t['ts'])} @ {_fmt_px(t['price'])} — 연쇄의 {t['swings_before']}번째 스윙 뒤 "
-                       f"(60MA 상방 전환 추적 섹션과 같은 후보)")
-        else:
-            st.caption(f"60MA 상방 전환 없음 — 60MA 상방 전환 추적 상태: {t.get('status', '—')}")
+        items = metric_items(result)
+        for col, (label, value, help_) in zip(st.columns(len(items)), items):
+            col.metric(label, value, help=help_)
+        for line in detail_captions(result):
+            st.caption(line)
         frame = chain_frame(result)
         if frame.empty:
-            st.caption("기준점 이후 확정된 스윙 없음")
+            st.caption(NO_SWING_CAPTION)
         else:
             st.dataframe(frame, hide_index=True, width="stretch",
                          column_config={c: st.column_config.TextColumn(c) for c in COLUMNS})

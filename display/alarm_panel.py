@@ -10,7 +10,7 @@ analysis.alarm_signals 가 담당하고 여기서는 표시만 한다.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import pandas as pd
 
@@ -41,6 +41,19 @@ HISTORY_GROUP_COLORS = ("#FFF4E5", "#EAF2FF")
 HISTORY_TIME_HEADER = f"시각 {KST_LABEL}"   # 표 헤더 라벨만 — 프레임 컬럼 키 "시각" 은 그대로(필터·묶음 로직 불변)
 HISTORY_COLUMN_WIDTHS = {"시각": "medium", "신호": "medium", "레이어": "small", "구분": "small",
                          "지표값": "small", "비고": "large"}   # 비고가 우측에서 잘리지 않게
+HISTORY_TIME_FORMAT = "YYYY-MM-DD HH:mm"   # 시각 열 표기(st.column_config, moment 형식)
+HISTORY_TIME_STRFTIME = "%Y-%m-%d %H:%M"   # 같은 표기의 strftime — 전체 복사용 텍스트
+HISTORY_VALUE_FORMAT = "%.1f"              # 지표값 열 표기(화면 NumberColumn · 복사용 텍스트 공통)
+
+# 소제목·빈 상태 문구 — 화면과 전체 복사용 텍스트(display.alarm_copy_text)가 같은 문자열을 쓴다
+CURRENT_TITLE = "마지막 봉 알람"
+NO_CURRENT_CAPTION = "마지막 봉에 새 신호 없음"
+NO_HISTORY_CAPTION = "해당 구간에 신호 없음"
+NO_FILTER_MATCH_CAPTION = "필터에 맞는 신호 없음"
+
+
+def history_title(history_bars: int) -> str:
+    return f"최근 {history_bars}봉 신호 이력"
 
 
 def history_frame_kst(frame: pd.DataFrame) -> pd.DataFrame:
@@ -109,6 +122,20 @@ def style_history_frame(frame: pd.DataFrame):
     )
 
 
+def history_text_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """이력 표의 문자열 사본 — 화면 열 형식과 같은 표기(시각 HISTORY_TIME_STRFTIME · 지표값 HISTORY_VALUE_FORMAT),
+    시각 헤더는 화면 라벨(HISTORY_TIME_HEADER). 전체 복사용 텍스트가 쓴다 — 값 계산·필터 없음."""
+    out = frame.copy()
+    out["시각"] = out["시각"].map(lambda v: "" if pd.isna(v) else f"{pd.Timestamp(v):{HISTORY_TIME_STRFTIME}}")
+    out["지표값"] = out["지표값"].map(lambda v: "" if v is None or pd.isna(v) else HISTORY_VALUE_FORMAT % float(v))
+    return out.rename(columns={"시각": HISTORY_TIME_HEADER})
+
+
+def history_counts(frame: pd.DataFrame) -> str:
+    """'확정 X건 · 후보 Y건' — 이력 표 아래 캡션 앞부분(화면·복사용 텍스트 공통)."""
+    return f"확정 {int((frame['구분'] == '확정').sum())}건 · 후보 {int((frame['구분'] == '후보').sum())}건"
+
+
 def signal_icon(signal: AlarmSignal) -> str:
     """방향·확정 여부를 한 글자로. 확정은 채운 표식, 후보는 빈 표식."""
     if signal.severity == SEV_CONFIRMED:
@@ -173,6 +200,17 @@ def build_current_bar_lines(signals: List[AlarmSignal], last_ts) -> List[str]:
     return [format_signal_line(s) for s in signals if s.timestamp == last_ts]
 
 
+def metric_items(df: pd.DataFrame, zone: str, history_bars: int,
+                 n_signals: int) -> List[Tuple[str, str, Optional[str]]]:
+    """상단 메트릭 3칸 (라벨, 값, 도움말) — 화면 메트릭과 전체 복사용 텍스트가 같은 목록을 쓴다."""
+    return [
+        ("RSI 구역", f"{_ZONE_ICON.get(zone, '⚪')} {zone}", None),
+        (f"마지막 봉 {KST_LABEL}", f"{to_kst(df.index[-1]):%m-%d %H:%M}",
+         "미확정(진행 중) 봉일 수 있음 · 시각은 KST 표시(데이터는 UTC)"),
+        (f"최근 {history_bars}봉 신호", f"{n_signals}건", None),
+    ]
+
+
 def render_alarm_panel(
     df: pd.DataFrame,
     symbol: str,
@@ -180,16 +218,23 @@ def render_alarm_panel(
     history_bars: int = DEFAULT_HISTORY_BARS,
     include_candidates: bool = True,
     layers: Optional[List[str]] = None,
-) -> None:
-    """알람 패널 렌더. df는 add_stochastic_slow_layers / add_rsi / add_macd 를 거친 프레임."""
+) -> dict:
+    """알람 패널 렌더. df는 add_stochastic_slow_layers / add_rsi / add_macd 를 거친 프레임.
+
+    반환값은 화면에 그린 값(view) — 전체 복사용 텍스트(display.alarm_copy_text)가 재계산 없이 옮긴다:
+    metrics(라벨·값·도움말) · captions(마지막 봉·MACD 안내) · current(마지막 봉 알람 줄) ·
+    history(표시 필터 뒤 표, KST) · history_total(필터 전 건수) · history_bars.
+    """
     import streamlit as st
 
+    view = {"metrics": [], "captions": [], "current": [], "history": None, "history_total": 0,
+            "history_bars": history_bars}
     with st.container(border=True):
         st.markdown(f"**{build_header(symbol, interval)}**")
 
         if df is None or df.empty:
             st.caption("데이터 없음")
-            return
+            return view
 
         signals = recent_signals(
             df, bars=history_bars, layers=layers, include_candidates=include_candidates
@@ -197,26 +242,25 @@ def render_alarm_panel(
         current = build_current_bar_lines(signals, df.index[-1])
         zone = rsi_zone(df)
 
-        col_zone, col_bar, col_count = st.columns(3)
-        col_zone.metric("RSI 구역", f"{_ZONE_ICON.get(zone, '⚪')} {zone}")
-        col_bar.metric(f"마지막 봉 {KST_LABEL}", f"{to_kst(df.index[-1]):%m-%d %H:%M}",
-                       help="미확정(진행 중) 봉일 수 있음 · 시각은 KST 표시(데이터는 UTC)")
-        col_count.metric(f"최근 {history_bars}봉 신호", f"{len(signals)}건")
-        st.caption(build_bar_caption(df))
-        if has_macd(df):
-            st.caption(MACD_DELAY_NOTE)
+        items = metric_items(df, zone, history_bars, len(signals))
+        for col, (label, value, help_) in zip(st.columns(len(items)), items):
+            col.metric(label, value, help=help_)
+        captions = [build_bar_caption(df)] + ([MACD_DELAY_NOTE] if has_macd(df) else [])
+        for line in captions:
+            st.caption(line)
+        view.update(metrics=items, captions=captions, current=current)
 
-        st.markdown("**마지막 봉 알람**")
+        st.markdown(f"**{CURRENT_TITLE}**")
         if current:
             for line in current:
                 st.warning(line)
         else:
-            st.caption("마지막 봉에 새 신호 없음")
+            st.caption(NO_CURRENT_CAPTION)
 
-        st.markdown(f"**최근 {history_bars}봉 신호 이력**")
+        st.markdown(f"**{history_title(history_bars)}**")
         frame = history_frame_kst(signals_to_frame(signals))   # 표시 직전 1회 KST 변환(정의 계층 프레임은 UTC)
         if frame.empty:
-            st.caption("해당 구간에 신호 없음")
+            st.caption(NO_HISTORY_CAPTION)
         else:
             # 표시 필터(기본 전체) — 신호 산출은 위 recent_signals 그대로, 표에서만 거른다
             col_layer, col_kind = st.columns([3, 2])
@@ -227,25 +271,24 @@ def render_alarm_panel(
             kind_pick = col_kind.multiselect("구분 필터", options=list(HISTORY_KINDS), default=list(HISTORY_KINDS),
                                              help="비우면 전체")
             shown = filter_history_frame(frame, layers=layer_pick, kinds=kind_pick)
+            view.update(history=shown, history_total=len(frame))
             if shown.empty:
-                st.caption("필터에 맞는 신호 없음")
+                st.caption(NO_FILTER_MATCH_CAPTION)
             else:
                 st.dataframe(
                     style_history_frame(shown),
                     hide_index=True,
                     width="stretch",
                     column_config={
-                        "시각": st.column_config.DatetimeColumn(HISTORY_TIME_HEADER, format="YYYY-MM-DD HH:mm",
+                        "시각": st.column_config.DatetimeColumn(HISTORY_TIME_HEADER, format=HISTORY_TIME_FORMAT,
                                                                   width=HISTORY_COLUMN_WIDTHS["시각"]),
                         "신호": st.column_config.TextColumn("신호", width=HISTORY_COLUMN_WIDTHS["신호"]),
                         "레이어": st.column_config.TextColumn("레이어", width=HISTORY_COLUMN_WIDTHS["레이어"]),
                         "구분": st.column_config.TextColumn("구분", width=HISTORY_COLUMN_WIDTHS["구분"]),
-                        "지표값": st.column_config.NumberColumn("지표값", format="%.1f",
+                        "지표값": st.column_config.NumberColumn("지표값", format=HISTORY_VALUE_FORMAT,
                                                                 width=HISTORY_COLUMN_WIDTHS["지표값"]),
                         "비고": st.column_config.TextColumn("비고", width=HISTORY_COLUMN_WIDTHS["비고"]),
                     },
                 )
-                st.caption(
-                    f"확정 {int((shown['구분'] == '확정').sum())}건 · "
-                    f"후보 {int((shown['구분'] == '후보').sum())}건 · 같은 시각 묶음은 배경색으로 표시"
-                )
+                st.caption(f"{history_counts(shown)} · 같은 시각 묶음은 배경색으로 표시")
+    return view
