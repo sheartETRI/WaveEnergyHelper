@@ -31,6 +31,11 @@
    "sent_at": "2026-09-30T20:20:40Z",
    "delivered": true
   },
+  "BNBUSDT|1h|ma60_turn|2026-10-03T11:00:00Z": {
+   "event_ts": "2026-10-03T11:00:00Z",
+   "sent_at": "2026-10-03T12:36:43Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|stoch_db|2026-09-04T23:00:00Z": {
    "event_ts": "2026-09-04T23:00:00Z",
    "sent_at": null,
@@ -89,6 +94,11 @@
   "BNBUSDT|1h|stoch_db|2026-10-01T17:00:00Z": {
    "event_ts": "2026-10-01T17:00:00Z",
    "sent_at": "2026-10-01T21:58:14Z",
+   "delivered": true
+  },
+  "BNBUSDT|1h|stoch_db|2026-10-03T10:00:00Z": {
+   "event_ts": "2026-10-03T10:00:00Z",
+   "sent_at": "2026-10-03T12:36:43Z",
    "delivered": true
   },
   "BNBUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
@@ -171,11 +181,6 @@
    "sent_at": null,
    "delivered": false
   },
-  "BNBUSDT|4h|ma60_turn|2026-09-03T08:00:00Z": {
-   "event_ts": "2026-09-03T08:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|4h|ma60_turn|2026-09-14T04:00:00Z": {
    "event_ts": "2026-09-14T04:00:00Z",
    "sent_at": null,
@@ -226,6 +231,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|4h|structure_ll|2026-10-02T16:00:00Z": {
+   "event_ts": "2026-10-02T16:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BTCUSDT|1d|structure_ll|2026-09-11T00:00:00Z": {
    "event_ts": "2026-09-11T00:00:00Z",
    "sent_at": null,
@@ -270,11 +280,6 @@
    "event_ts": "2026-10-03T00:00:00Z",
    "sent_at": "2026-10-03T01:52:03Z",
    "delivered": true
-  },
-  "BTCUSDT|1h|ma60_turn|2026-09-03T12:00:00Z": {
-   "event_ts": "2026-09-03T12:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BTCUSDT|1h|ma60_turn|2026-09-07T00:00:00Z": {
    "event_ts": "2026-09-07T00:00:00Z",
@@ -778,6 +783,11 @@
   },
   "ETHUSDT|4h|structure_ll|2026-09-28T04:00:00Z": {
    "event_ts": "2026-09-28T04:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|4h|structure_ll|2026-10-02T16:00:00Z": {
+   "event_ts": "2026-10-02T16:00:00Z",
    "sent_at": null,
    "delivered": false
   }
@@ -1436,6 +1446,19 @@
     "pattern_high": 86912.75,
     "already_down": false,
     "recorded_at": "2026-10-03T01:52:03Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-03T10:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 1,
+    "turn_ts": "2026-10-03T11:00:00Z",
+    "turn_price": 770.25,
+    "pattern_low": 764.83,
+    "already_up": false,
+    "recorded_at": "2026-10-03T12:36:43Z"
    }
   ]
  }
