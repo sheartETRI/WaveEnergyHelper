@@ -196,11 +196,6 @@
    "sent_at": "2026-09-29T02:14:45Z",
    "delivered": true
   },
-  "BNBUSDT|4h|stoch_db|2026-09-03T00:00:00Z": {
-   "event_ts": "2026-09-03T00:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|4h|stoch_db|2026-09-12T20:00:00Z": {
    "event_ts": "2026-09-12T20:00:00Z",
    "sent_at": null,
@@ -274,6 +269,11 @@
   "BTCUSDT|1h|ma60_down|2026-09-27T22:00:00Z": {
    "event_ts": "2026-09-27T22:00:00Z",
    "sent_at": "2026-09-27T23:50:07Z",
+   "delivered": true
+  },
+  "BTCUSDT|1h|ma60_down|2026-10-03T00:00:00Z": {
+   "event_ts": "2026-10-03T00:00:00Z",
+   "sent_at": "2026-10-03T01:52:03Z",
    "delivered": true
   },
   "BTCUSDT|1h|ma60_turn|2026-09-03T12:00:00Z": {
@@ -1432,6 +1432,20 @@
     "pattern_high": 2777.33,
     "already_down": false,
     "recorded_at": "2026-10-02T23:01:31Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-02T23:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 1,
+    "turn_ts": "2026-10-03T00:00:00Z",
+    "turn_price": 84660.11,
+    "direction": "down",
+    "pattern_high": 86912.75,
+    "already_down": false,
+    "recorded_at": "2026-10-03T01:52:03Z"
    }
   ]
  }
