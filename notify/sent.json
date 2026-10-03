@@ -31,11 +31,6 @@
    "sent_at": "2026-09-30T20:20:40Z",
    "delivered": true
   },
-  "BNBUSDT|1h|stoch_db|2026-09-03T04:00:00Z": {
-   "event_ts": "2026-09-03T04:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|1h|stoch_db|2026-09-04T23:00:00Z": {
    "event_ts": "2026-09-04T23:00:00Z",
    "sent_at": null,
@@ -605,11 +600,6 @@
    "event_ts": "2026-10-02T02:00:00Z",
    "sent_at": "2026-10-02T07:28:38Z",
    "delivered": true
-  },
-  "ETHUSDT|1h|stoch_db|2026-09-03T03:00:00Z": {
-   "event_ts": "2026-09-03T03:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "ETHUSDT|1h|stoch_db|2026-09-05T03:00:00Z": {
    "event_ts": "2026-09-05T03:00:00Z",
