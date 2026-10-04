@@ -466,11 +466,6 @@
    "sent_at": null,
    "delivered": false
   },
-  "BTCUSDT|4h|ma60_turn|2026-09-04T16:00:00Z": {
-   "event_ts": "2026-09-04T16:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BTCUSDT|4h|ma60_turn|2026-09-18T12:00:00Z": {
    "event_ts": "2026-09-18T12:00:00Z",
    "sent_at": null,
