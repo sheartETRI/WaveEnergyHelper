@@ -746,11 +746,6 @@
    "sent_at": "2026-10-01T17:30:37Z",
    "delivered": true
   },
-  "ETHUSDT|4h|ma60_turn|2026-09-04T20:00:00Z": {
-   "event_ts": "2026-09-04T20:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "ETHUSDT|4h|ma60_turn|2026-10-02T04:00:00Z": {
    "event_ts": "2026-10-02T04:00:00Z",
    "sent_at": "2026-10-02T14:04:09Z",
