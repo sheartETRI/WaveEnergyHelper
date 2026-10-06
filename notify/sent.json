@@ -1539,6 +1539,34 @@
     "pattern_low": 82563.0,
     "already_up": true,
     "recorded_at": "2026-10-05T20:49:50Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-05T04:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 86999.11,
+    "already_down": false,
+    "recorded_at": "2026-10-06T01:32:24Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-05T04:00:00Z",
+    "divergence": true,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 2739.5,
+    "already_down": false,
+    "recorded_at": "2026-10-06T01:32:24Z"
    }
   ]
  }
