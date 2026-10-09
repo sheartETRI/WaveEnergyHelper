@@ -101,6 +101,11 @@
    "sent_at": "2026-10-07T21:38:30Z",
    "delivered": true
   },
+  "BNBUSDT|1h|stoch_db|2026-10-09T15:00:00Z": {
+   "event_ts": "2026-10-09T15:00:00Z",
+   "sent_at": "2026-10-09T19:02:25Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
    "event_ts": "2026-09-19T21:00:00Z",
    "sent_at": null,
@@ -818,11 +823,6 @@
   },
   "ETHUSDT|1h|structure_ll|2026-10-08T17:00:00Z": {
    "event_ts": "2026-10-08T17:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
-  "ETHUSDT|4h|ma60_down|2026-09-09T16:00:00Z": {
-   "event_ts": "2026-09-09T16:00:00Z",
    "sent_at": null,
    "delivered": false
   },
