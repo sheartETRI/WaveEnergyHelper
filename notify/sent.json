@@ -361,11 +361,6 @@
    "sent_at": "2026-09-30T15:50:45Z",
    "delivered": true
   },
-  "BTCUSDT|1h|stoch_db|2026-09-10T20:00:00Z": {
-   "event_ts": "2026-09-10T20:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BTCUSDT|1h|stoch_db|2026-09-11T07:00:00Z": {
    "event_ts": "2026-09-11T07:00:00Z",
    "sent_at": null,
