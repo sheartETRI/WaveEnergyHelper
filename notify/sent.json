@@ -11,6 +11,11 @@
    "sent_at": "2026-10-02T23:01:31Z",
    "delivered": true
   },
+  "BNBUSDT|1h|ma60_down|2026-10-12T16:00:00Z": {
+   "event_ts": "2026-10-12T16:00:00Z",
+   "sent_at": "2026-10-12T17:47:36Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|ma60_turn|2026-09-16T23:00:00Z": {
    "event_ts": "2026-09-16T23:00:00Z",
    "sent_at": null,
@@ -341,6 +346,11 @@
    "sent_at": "2026-10-07T02:44:50Z",
    "delivered": true
   },
+  "BTCUSDT|1h|ma60_down|2026-10-12T14:00:00Z": {
+   "event_ts": "2026-10-12T14:00:00Z",
+   "sent_at": "2026-10-12T17:47:36Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|ma60_turn|2026-09-13T00:00:00Z": {
    "event_ts": "2026-09-13T00:00:00Z",
    "sent_at": null,
@@ -365,11 +375,6 @@
    "event_ts": "2026-09-30T12:00:00Z",
    "sent_at": "2026-09-30T15:50:45Z",
    "delivered": true
-  },
-  "BTCUSDT|1h|stoch_db|2026-09-12T13:00:00Z": {
-   "event_ts": "2026-09-12T13:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BTCUSDT|1h|stoch_db|2026-09-13T17:00:00Z": {
    "event_ts": "2026-09-13T17:00:00Z",
@@ -2051,6 +2056,48 @@
     "pattern_high": 83210.01,
     "already_down": false,
     "recorded_at": "2026-10-12T08:06:01Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-12T08:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 8,
+    "turn_ts": "2026-10-12T16:00:00Z",
+    "turn_price": 744.44,
+    "direction": "down",
+    "pattern_high": 758.03,
+    "already_down": false,
+    "recorded_at": "2026-10-12T17:47:36Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-12T01:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 13,
+    "turn_ts": "2026-10-12T14:00:00Z",
+    "turn_price": 82592.01,
+    "direction": "down",
+    "pattern_high": 83986.55,
+    "already_down": false,
+    "recorded_at": "2026-10-12T17:47:36Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-12T10:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 4,
+    "turn_ts": "2026-10-12T14:00:00Z",
+    "turn_price": 82592.01,
+    "direction": "down",
+    "pattern_high": 84352.0,
+    "already_down": false,
+    "recorded_at": "2026-10-12T17:47:36Z"
    }
   ]
  }
