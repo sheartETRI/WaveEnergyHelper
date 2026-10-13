@@ -116,6 +116,11 @@
    "sent_at": "2026-10-09T19:02:25Z",
    "delivered": true
   },
+  "BNBUSDT|1h|stoch_db|2026-10-13T02:00:00Z": {
+   "event_ts": "2026-10-13T02:00:00Z",
+   "sent_at": "2026-10-13T03:55:53Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|structure_ll|2026-09-19T21:00:00Z": {
    "event_ts": "2026-09-19T21:00:00Z",
    "sent_at": null,
@@ -350,11 +355,6 @@
    "event_ts": "2026-10-12T14:00:00Z",
    "sent_at": "2026-10-12T17:47:36Z",
    "delivered": true
-  },
-  "BTCUSDT|1h|ma60_turn|2026-09-13T00:00:00Z": {
-   "event_ts": "2026-09-13T00:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BTCUSDT|1h|ma60_turn|2026-09-13T21:00:00Z": {
    "event_ts": "2026-09-13T21:00:00Z",
