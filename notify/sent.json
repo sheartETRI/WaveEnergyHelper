@@ -2176,6 +2176,19 @@
     "pattern_low": 80393.56,
     "already_up": false,
     "recorded_at": "2026-10-14T06:44:31Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-11T04:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 80914.23,
+    "already_up": false,
+    "recorded_at": "2026-10-14T17:32:22Z"
    }
   ]
  }
