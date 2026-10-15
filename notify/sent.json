@@ -46,11 +46,6 @@
    "sent_at": "2026-10-06T15:01:26Z",
    "delivered": true
   },
-  "BNBUSDT|1h|stoch_db|2026-09-15T15:00:00Z": {
-   "event_ts": "2026-09-15T15:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|1h|stoch_db|2026-09-16T16:00:00Z": {
    "event_ts": "2026-09-16T16:00:00Z",
    "sent_at": null,
@@ -251,6 +246,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-15T13:00:00Z": {
+   "event_ts": "2026-10-15T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
@@ -318,6 +318,11 @@
   },
   "BNBUSDT|4h|structure_ll|2026-10-13T00:00:00Z": {
    "event_ts": "2026-10-13T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|4h|structure_ll|2026-10-15T00:00:00Z": {
+   "event_ts": "2026-10-15T00:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -426,10 +431,10 @@
    "sent_at": "2026-10-09T06:35:26Z",
    "delivered": true
   },
-  "BTCUSDT|1h|structure_ll|2026-09-15T14:00:00Z": {
-   "event_ts": "2026-09-15T14:00:00Z",
-   "sent_at": null,
-   "delivered": false
+  "BTCUSDT|1h|stoch_db|2026-10-15T14:00:00Z": {
+   "event_ts": "2026-10-15T14:00:00Z",
+   "sent_at": "2026-10-15T17:24:04Z",
+   "delivered": true
   },
   "BTCUSDT|1h|structure_ll|2026-09-15T18:00:00Z": {
    "event_ts": "2026-09-15T18:00:00Z",
@@ -866,6 +871,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|1h|structure_ll|2026-10-15T13:00:00Z": {
+   "event_ts": "2026-10-15T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|4h|ma60_down|2026-10-01T08:00:00Z": {
    "event_ts": "2026-10-01T08:00:00Z",
    "sent_at": "2026-10-01T17:30:37Z",
@@ -923,6 +933,11 @@
   },
   "ETHUSDT|4h|structure_ll|2026-10-13T00:00:00Z": {
    "event_ts": "2026-10-13T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|4h|structure_ll|2026-10-15T00:00:00Z": {
+   "event_ts": "2026-10-15T00:00:00Z",
    "sent_at": null,
    "delivered": false
   }
