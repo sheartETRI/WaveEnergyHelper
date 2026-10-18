@@ -266,11 +266,6 @@
    "sent_at": "2026-10-07T09:22:15Z",
    "delivered": true
   },
-  "BNBUSDT|4h|ma60_turn|2026-09-18T00:00:00Z": {
-   "event_ts": "2026-09-18T00:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|4h|ma60_turn|2026-09-28T20:00:00Z": {
    "event_ts": "2026-09-28T20:00:00Z",
    "sent_at": "2026-09-29T02:14:45Z",
