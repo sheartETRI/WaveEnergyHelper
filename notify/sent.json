@@ -2644,6 +2644,34 @@
     "pattern_low": 2329.0,
     "already_up": true,
     "recorded_at": "2026-10-19T14:02:03Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "6h",
+    "confirm_ts": "2026-10-14T12:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 750.72,
+    "already_down": true,
+    "recorded_at": "2026-10-19T19:47:05Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-18T19:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 82295.47,
+    "already_down": true,
+    "recorded_at": "2026-10-19T19:47:05Z"
    }
   ]
  }
