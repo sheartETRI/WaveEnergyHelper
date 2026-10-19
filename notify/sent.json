@@ -306,6 +306,11 @@
    "sent_at": "2026-10-01T17:30:37Z",
    "delivered": true
   },
+  "BNBUSDT|4h|stoch_db|2026-10-19T00:00:00Z": {
+   "event_ts": "2026-10-19T00:00:00Z",
+   "sent_at": "2026-10-19T06:45:26Z",
+   "delivered": true
+  },
   "BNBUSDT|4h|structure_ll|2026-09-23T16:00:00Z": {
    "event_ts": "2026-09-23T16:00:00Z",
    "sent_at": null,
