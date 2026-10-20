@@ -391,6 +391,11 @@
    "sent_at": "2026-10-18T05:12:24Z",
    "delivered": true
   },
+  "BTCUSDT|1h|ma60_down|2026-10-20T07:00:00Z": {
+   "event_ts": "2026-10-20T07:00:00Z",
+   "sent_at": "2026-10-20T12:17:36Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|ma60_turn|2026-09-26T15:00:00Z": {
    "event_ts": "2026-09-26T15:00:00Z",
    "sent_at": "2026-09-26T18:38:13Z",
@@ -2683,6 +2688,20 @@
     "pattern_low": 80684.36,
     "already_up": true,
     "recorded_at": "2026-10-20T06:41:20Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-20T00:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 7,
+    "turn_ts": "2026-10-20T07:00:00Z",
+    "turn_price": 81567.39,
+    "direction": "down",
+    "pattern_high": 83158.0,
+    "already_down": false,
+    "recorded_at": "2026-10-20T12:17:36Z"
    }
   ]
  }
