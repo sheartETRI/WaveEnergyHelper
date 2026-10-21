@@ -691,6 +691,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|1d|ma60_down|2026-10-20T00:00:00Z": {
+   "event_ts": "2026-10-20T00:00:00Z",
+   "sent_at": "2026-10-21T01:56:33Z",
+   "delivered": true
+  },
   "ETHUSDT|1d|structure_ll|2026-10-08T00:00:00Z": {
    "event_ts": "2026-10-08T00:00:00Z",
    "sent_at": null,
@@ -2749,6 +2754,20 @@
     "pattern_high": 730.75,
     "already_down": false,
     "recorded_at": "2026-10-20T20:40:00Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1d",
+    "confirm_ts": "2026-10-07T00:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 13,
+    "turn_ts": "2026-10-20T00:00:00Z",
+    "turn_price": 2449.2,
+    "direction": "down",
+    "pattern_high": 2777.33,
+    "already_down": false,
+    "recorded_at": "2026-10-21T01:56:33Z"
    }
   ]
  }
