@@ -2768,6 +2768,20 @@
     "pattern_high": 2777.33,
     "already_down": false,
     "recorded_at": "2026-10-21T01:56:33Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-20T07:00:00Z",
+    "divergence": true,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 733.64,
+    "already_down": false,
+    "recorded_at": "2026-10-21T07:27:02Z"
    }
   ]
  }
