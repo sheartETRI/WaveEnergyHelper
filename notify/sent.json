@@ -2818,6 +2818,34 @@
     "pattern_low": 81331.97,
     "already_up": true,
     "recorded_at": "2026-10-21T13:08:59Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-21T06:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 2465.5,
+    "already_down": false,
+    "recorded_at": "2026-10-22T04:57:49Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-18T12:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 2441.66,
+    "already_down": true,
+    "recorded_at": "2026-10-22T04:57:49Z"
    }
   ]
  }
