@@ -6,6 +6,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1d|structure_ll|2026-10-18T00:00:00Z": {
+   "event_ts": "2026-10-18T00:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|1h|ma60_down|2026-10-02T22:00:00Z": {
    "event_ts": "2026-10-02T22:00:00Z",
    "sent_at": "2026-10-02T23:01:31Z",
