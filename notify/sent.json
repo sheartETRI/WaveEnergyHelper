@@ -26,6 +26,11 @@
    "sent_at": "2026-10-22T19:08:54Z",
    "delivered": true
   },
+  "BNBUSDT|1h|ma60_down|2026-10-24T21:00:00Z": {
+   "event_ts": "2026-10-24T21:00:00Z",
+   "sent_at": "2026-10-24T23:47:46Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|ma60_turn|2026-09-26T21:00:00Z": {
    "event_ts": "2026-09-26T21:00:00Z",
    "sent_at": "2026-09-26T23:51:14Z",
@@ -2961,6 +2966,20 @@
     "pattern_low": 80684.36,
     "already_up": false,
     "recorded_at": "2026-10-23T19:34:55Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-24T15:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 6,
+    "turn_ts": "2026-10-24T21:00:00Z",
+    "turn_price": 733.1,
+    "direction": "down",
+    "pattern_high": 751.0,
+    "already_down": true,
+    "recorded_at": "2026-10-24T23:47:46Z"
    }
   ]
  }
