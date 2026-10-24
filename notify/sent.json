@@ -801,11 +801,6 @@
    "sent_at": "2026-10-20T17:16:04Z",
    "delivered": true
   },
-  "ETHUSDT|1h|stoch_db|2026-09-24T21:00:00Z": {
-   "event_ts": "2026-09-24T21:00:00Z",
-   "sent_at": "2026-09-24T22:41:41Z",
-   "delivered": true
-  },
   "ETHUSDT|1h|stoch_db|2026-09-26T07:00:00Z": {
    "event_ts": "2026-09-26T07:00:00Z",
    "sent_at": "2026-09-26T11:51:40Z",
