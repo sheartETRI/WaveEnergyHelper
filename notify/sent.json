@@ -56,11 +56,6 @@
    "sent_at": "2026-10-18T05:12:24Z",
    "delivered": true
   },
-  "BNBUSDT|1h|stoch_db|2026-09-24T18:00:00Z": {
-   "event_ts": "2026-09-24T18:00:00Z",
-   "sent_at": "2026-09-24T19:27:58Z",
-   "delivered": true
-  },
   "BNBUSDT|1h|stoch_db|2026-09-26T07:00:00Z": {
    "event_ts": "2026-09-26T07:00:00Z",
    "sent_at": "2026-09-26T11:51:40Z",
@@ -281,6 +276,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-24T15:00:00Z": {
+   "event_ts": "2026-10-24T15:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
@@ -496,6 +496,11 @@
    "sent_at": "2026-10-20T17:16:04Z",
    "delivered": true
   },
+  "BTCUSDT|1h|stoch_db|2026-10-24T17:00:00Z": {
+   "event_ts": "2026-10-24T17:00:00Z",
+   "sent_at": "2026-10-24T19:23:48Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|structure_ll|2026-09-25T07:00:00Z": {
    "event_ts": "2026-09-25T07:00:00Z",
    "sent_at": null,
@@ -633,6 +638,11 @@
   },
   "BTCUSDT|1h|structure_ll|2026-10-24T09:00:00Z": {
    "event_ts": "2026-10-24T09:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|structure_ll|2026-10-24T15:00:00Z": {
+   "event_ts": "2026-10-24T15:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -1013,6 +1023,11 @@
   },
   "ETHUSDT|1h|structure_ll|2026-10-23T22:00:00Z": {
    "event_ts": "2026-10-23T22:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|structure_ll|2026-10-24T15:00:00Z": {
+   "event_ts": "2026-10-24T15:00:00Z",
    "sent_at": null,
    "delivered": false
   },
