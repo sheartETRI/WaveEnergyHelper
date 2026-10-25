@@ -131,11 +131,6 @@
    "sent_at": "2026-10-19T14:02:03Z",
    "delivered": true
   },
-  "BNBUSDT|1h|structure_ll|2026-09-25T07:00:00Z": {
-   "event_ts": "2026-09-25T07:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|1h|structure_ll|2026-09-25T14:00:00Z": {
    "event_ts": "2026-09-25T14:00:00Z",
    "sent_at": null,
@@ -505,11 +500,6 @@
    "event_ts": "2026-10-24T17:00:00Z",
    "sent_at": "2026-10-24T19:23:48Z",
    "delivered": true
-  },
-  "BTCUSDT|1h|structure_ll|2026-09-25T07:00:00Z": {
-   "event_ts": "2026-09-25T07:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BTCUSDT|1h|structure_ll|2026-09-25T14:00:00Z": {
    "event_ts": "2026-09-25T14:00:00Z",
@@ -881,10 +871,10 @@
    "sent_at": "2026-10-20T17:16:04Z",
    "delivered": true
   },
-  "ETHUSDT|1h|structure_ll|2026-09-25T07:00:00Z": {
-   "event_ts": "2026-09-25T07:00:00Z",
-   "sent_at": null,
-   "delivered": false
+  "ETHUSDT|1h|stoch_db|2026-10-25T07:00:00Z": {
+   "event_ts": "2026-10-25T07:00:00Z",
+   "sent_at": "2026-10-25T12:29:28Z",
+   "delivered": true
   },
   "ETHUSDT|1h|structure_ll|2026-09-26T09:00:00Z": {
    "event_ts": "2026-09-26T09:00:00Z",
@@ -1039,6 +1029,11 @@
   "ETHUSDT|4h|ma60_down|2026-10-01T08:00:00Z": {
    "event_ts": "2026-10-01T08:00:00Z",
    "sent_at": "2026-10-01T17:30:37Z",
+   "delivered": true
+  },
+  "ETHUSDT|4h|ma60_down|2026-10-25T04:00:00Z": {
+   "event_ts": "2026-10-25T04:00:00Z",
+   "sent_at": "2026-10-25T12:29:28Z",
    "delivered": true
   },
   "ETHUSDT|4h|ma60_turn|2026-10-02T04:00:00Z": {
@@ -2990,6 +2985,20 @@
     "pattern_high": 751.0,
     "already_down": true,
     "recorded_at": "2026-10-24T23:47:46Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-23T00:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 13,
+    "turn_ts": "2026-10-25T04:00:00Z",
+    "turn_price": 2347.99,
+    "direction": "down",
+    "pattern_high": 2526.62,
+    "already_down": true,
+    "recorded_at": "2026-10-25T12:29:28Z"
    }
   ]
  }
