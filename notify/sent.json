@@ -126,11 +126,6 @@
    "sent_at": "2026-10-19T14:02:03Z",
    "delivered": true
   },
-  "BNBUSDT|1h|structure_ll|2026-09-26T09:00:00Z": {
-   "event_ts": "2026-09-26T09:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|1h|structure_ll|2026-09-26T20:00:00Z": {
    "event_ts": "2026-09-26T20:00:00Z",
    "sent_at": null,
@@ -271,6 +266,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-26T08:00:00Z": {
+   "event_ts": "2026-10-26T08:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
@@ -289,11 +289,6 @@
   "BNBUSDT|4h|ma60_turn|2026-10-21T04:00:00Z": {
    "event_ts": "2026-10-21T04:00:00Z",
    "sent_at": "2026-10-21T13:08:59Z",
-   "delivered": true
-  },
-  "BNBUSDT|4h|stoch_db|2026-09-26T12:00:00Z": {
-   "event_ts": "2026-09-26T12:00:00Z",
-   "sent_at": "2026-09-26T18:38:13Z",
    "delivered": true
   },
   "BNBUSDT|4h|stoch_db|2026-09-27T08:00:00Z": {
@@ -751,11 +746,6 @@
    "sent_at": "2026-10-22T15:02:34Z",
    "delivered": true
   },
-  "ETHUSDT|1h|ma60_turn|2026-09-26T11:00:00Z": {
-   "event_ts": "2026-09-26T11:00:00Z",
-   "sent_at": "2026-09-26T15:08:57Z",
-   "delivered": true
-  },
   "ETHUSDT|1h|ma60_turn|2026-09-28T12:00:00Z": {
    "event_ts": "2026-09-28T12:00:00Z",
    "sent_at": "2026-09-28T16:59:16Z",
@@ -860,11 +850,6 @@
    "event_ts": "2026-10-25T07:00:00Z",
    "sent_at": "2026-10-25T12:29:28Z",
    "delivered": true
-  },
-  "ETHUSDT|1h|structure_ll|2026-09-26T09:00:00Z": {
-   "event_ts": "2026-09-26T09:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "ETHUSDT|1h|structure_ll|2026-09-26T20:00:00Z": {
    "event_ts": "2026-09-26T20:00:00Z",
@@ -3015,6 +3000,20 @@
     "pattern_low": 2282.46,
     "already_up": false,
     "recorded_at": "2026-10-26T07:03:13Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-22T20:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 84898.0,
+    "already_down": true,
+    "recorded_at": "2026-10-26T14:07:21Z"
    }
   ]
  }
