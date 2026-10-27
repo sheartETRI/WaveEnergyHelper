@@ -411,6 +411,11 @@
    "sent_at": "2026-10-17T15:53:20Z",
    "delivered": true
   },
+  "BTCUSDT|1h|ma60_turn|2026-10-27T18:00:00Z": {
+   "event_ts": "2026-10-27T18:00:00Z",
+   "sent_at": "2026-10-27T19:41:27Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|stoch_db|2026-09-29T08:00:00Z": {
    "event_ts": "2026-09-29T08:00:00Z",
    "sent_at": "2026-09-29T15:07:48Z",
@@ -479,6 +484,11 @@
   "BTCUSDT|1h|stoch_db|2026-10-24T17:00:00Z": {
    "event_ts": "2026-10-24T17:00:00Z",
    "sent_at": "2026-10-24T19:23:48Z",
+   "delivered": true
+  },
+  "BTCUSDT|1h|stoch_db|2026-10-27T18:00:00Z": {
+   "event_ts": "2026-10-27T18:00:00Z",
+   "sent_at": "2026-10-27T19:41:27Z",
    "delivered": true
   },
   "BTCUSDT|1h|structure_ll|2026-09-28T05:00:00Z": {
@@ -786,6 +796,11 @@
    "sent_at": "2026-10-20T17:16:04Z",
    "delivered": true
   },
+  "ETHUSDT|1h|ma60_turn|2026-10-27T18:00:00Z": {
+   "event_ts": "2026-10-27T18:00:00Z",
+   "sent_at": "2026-10-27T19:41:27Z",
+   "delivered": true
+  },
   "ETHUSDT|1h|stoch_db|2026-09-28T11:00:00Z": {
    "event_ts": "2026-09-28T11:00:00Z",
    "sent_at": "2026-09-28T16:59:16Z",
@@ -860,11 +875,6 @@
    "event_ts": "2026-10-27T13:00:00Z",
    "sent_at": "2026-10-27T14:38:16Z",
    "delivered": true
-  },
-  "ETHUSDT|1h|structure_ll|2026-09-27T15:00:00Z": {
-   "event_ts": "2026-09-27T15:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "ETHUSDT|1h|structure_ll|2026-09-29T02:00:00Z": {
    "event_ts": "2026-09-29T02:00:00Z",
@@ -3094,6 +3104,32 @@
     "pattern_high": 744.2,
     "already_down": false,
     "recorded_at": "2026-10-27T14:38:16Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-27T18:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 0,
+    "turn_ts": "2026-10-27T18:00:00Z",
+    "turn_price": 80624.0,
+    "pattern_low": 79451.35,
+    "already_up": true,
+    "recorded_at": "2026-10-27T19:41:27Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-10-27T13:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 5,
+    "turn_ts": "2026-10-27T18:00:00Z",
+    "turn_price": 2344.05,
+    "pattern_low": 2297.44,
+    "already_up": false,
+    "recorded_at": "2026-10-27T19:41:27Z"
    }
   ]
  }
