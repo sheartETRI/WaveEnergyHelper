@@ -56,11 +56,6 @@
    "sent_at": "2026-10-18T05:12:24Z",
    "delivered": true
   },
-  "BNBUSDT|1h|stoch_db|2026-09-28T16:00:00Z": {
-   "event_ts": "2026-09-28T16:00:00Z",
-   "sent_at": "2026-09-28T22:29:43Z",
-   "delivered": true
-  },
   "BNBUSDT|1h|stoch_db|2026-09-29T09:00:00Z": {
    "event_ts": "2026-09-29T09:00:00Z",
    "sent_at": "2026-09-29T15:07:48Z",
@@ -264,11 +259,6 @@
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
-   "delivered": true
-  },
-  "BNBUSDT|4h|ma60_turn|2026-09-28T20:00:00Z": {
-   "event_ts": "2026-09-28T20:00:00Z",
-   "sent_at": "2026-09-29T02:14:45Z",
    "delivered": true
   },
   "BNBUSDT|4h|ma60_turn|2026-10-03T12:00:00Z": {
@@ -621,6 +611,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BTCUSDT|1h|structure_ll|2026-10-28T13:00:00Z": {
+   "event_ts": "2026-10-28T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BTCUSDT|4h|ma60_down|2026-10-08T08:00:00Z": {
    "event_ts": "2026-10-08T08:00:00Z",
    "sent_at": "2026-10-08T14:52:02Z",
@@ -634,6 +629,11 @@
   "BTCUSDT|4h|ma60_turn|2026-10-18T20:00:00Z": {
    "event_ts": "2026-10-18T20:00:00Z",
    "sent_at": "2026-10-19T01:36:54Z",
+   "delivered": true
+  },
+  "BTCUSDT|4h|ma60_turn|2026-10-28T16:00:00Z": {
+   "event_ts": "2026-10-28T16:00:00Z",
+   "sent_at": "2026-10-28T20:30:15Z",
    "delivered": true
   },
   "BTCUSDT|4h|stoch_db|2026-09-30T08:00:00Z": {
@@ -991,6 +991,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "ETHUSDT|1h|structure_ll|2026-10-28T13:00:00Z": {
+   "event_ts": "2026-10-28T13:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "ETHUSDT|4h|ma60_down|2026-10-01T08:00:00Z": {
    "event_ts": "2026-10-01T08:00:00Z",
    "sent_at": "2026-10-01T17:30:37Z",
@@ -1004,6 +1009,11 @@
   "ETHUSDT|4h|ma60_turn|2026-10-02T04:00:00Z": {
    "event_ts": "2026-10-02T04:00:00Z",
    "sent_at": "2026-10-02T14:04:09Z",
+   "delivered": true
+  },
+  "ETHUSDT|4h|ma60_turn|2026-10-28T16:00:00Z": {
+   "event_ts": "2026-10-28T16:00:00Z",
+   "sent_at": "2026-10-28T20:30:15Z",
    "delivered": true
   },
   "ETHUSDT|4h|stoch_db|2026-10-02T04:00:00Z": {
@@ -3114,6 +3124,32 @@
     "pattern_high": 751.0,
     "already_down": false,
     "recorded_at": "2026-10-28T08:44:23Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-27T12:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 7,
+    "turn_ts": "2026-10-28T16:00:00Z",
+    "turn_price": 81585.39,
+    "pattern_low": 79220.74,
+    "already_up": false,
+    "recorded_at": "2026-10-28T20:30:15Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-27T16:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 6,
+    "turn_ts": "2026-10-28T16:00:00Z",
+    "turn_price": 2371.51,
+    "pattern_low": 2293.09,
+    "already_up": false,
+    "recorded_at": "2026-10-28T20:30:15Z"
    }
   ]
  }
