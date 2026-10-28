@@ -1,0 +1,124 @@
+# WaveEnergyHelper 앱 사용법 (11차 재구성 후)
+
+> 현행화 안내 (2026-10-27): 현재 `main.py`는 **차트 / 알람 2탭과 Lightweight Charts**를 사용합니다.
+> 아래의 3탭·상세 분석·패널 레지스트리·Plotly 설명은 이전 UI에 관한 기록입니다.
+> 현재 실행 방법과 기능은 [루트 README](../README.md), 문서와 코드의 정리 순서는 [정리 계획](정리_계획.md)을 참고하세요.
+> 이 문서 뒤쪽의 Pushbullet·CLI 운영 안내는 앞부분의 이전 UI 설명과 구분해 읽어야 합니다.
+
+관측·표시 도구입니다. 등급/추천/매매판정 문구는 없으며 전 구간 "관측" 라벨입니다.
+
+## 실행
+
+```bash
+# Windows: 콘솔 인코딩 고정 후 실행 (한글 라벨·경로)
+set PYTHONUTF8=1
+streamlit run main.py
+```
+
+브라우저가 자동으로 열립니다. 왼쪽 사이드바에서 **심볼**을 고르면 세 탭이 그 심볼로 갱신됩니다.
+
+서버 없이 알람 탭의 '전체 복사용 텍스트'만 뽑으려면 `scripts/alarm_cli.py` (`--symbol`·`--tf`·`--sections`·`--out`, 자세히는 `--help`):
+
+```bash
+python scripts\alarm_cli.py --tf 2h                               # Windows
+python3 scripts/alarm_cli.py --tf 1h,2h,4h --out /tmp/alarm.md    # apolo
+```
+
+## 화면 구성 (3탭)
+
+- **[탭1] 계기판** — 기본 진입 화면. 선택 심볼의 slope 계기판(1d·4d 60MA 3단 + 종합 라벨),
+  월봉 대파동 위치, 전조 채널 슬롯(§2.5 디스패처), TF 사다리별 캠페인 카드 +
+  형성 중 candidate/캔들 노트. (`display/v2_campaign_view.py`)
+- **[탭2] 상세 분석** — 45개 상세 패널을 카테고리 그룹으로 묶어 레지스트리 루프로 렌더.
+  사이드바에서 TF·기준시점(백트레이스)·차트 지표·패널을 카테고리별로 토글합니다.
+  파동에너지 요약·변곡 레이더·메인 차트는 항상 표시, 나머지는 체크 시 표시.
+  (`display/detail_tab.py` + `display/panel_registry.py`)
+- **[탭3] 저널** — 관측 계기판 저널·forward 저널의 최근 기록 표. (`display/journal_tab.py`)
+
+## 상세 분석 탭 카테고리
+
+| 카테고리 | 내용 |
+|---|---|
+| 핵심 분석 | 파동에너지 요약·변곡 레이더(항상), AI 해설·Debug 트레이스(옵트인) |
+| 파동 구조·추적 | survival/outcome/exit/expectancy/paths/branch/confluence/candidate_rules |
+| 관측 지표 | volume_energy/energy_divergence/money_flow/structure_*/quality_* |
+| 세그먼트 | wave/symbol/regime/survival segmentation |
+| 검증·강건성 | ruleset_robustness/cross_market/failure_trigger/robustness_validation |
+| 시뮬·정제 | exit_policy_simulation/entry_filter_refinement |
+| 라이브·포워드·종합 | live_watchlist/live_forward_journal/forward_observation/final_synthesis |
+| 파동 상태 (사전계산) | stability/wave_tracker/confirmation/lifecycle (심볼·TF당 1회 계산 공유) |
+| 레거시 | 전역 스윕(현재 심볼/TF 무시)·신패널로 대체된 v1 검증 시각화 9종 — 접힘 격리 |
+| 차트 | 메인 Plotly 차트(항상, 마지막) |
+
+## 구조 (개발자용)
+
+- `main.py` — 진입점(조립부만, ~50줄). 사이드바 + 3탭 배선.
+- `display/panel_registry.py` — 45패널을 `PanelSpec` 데이터로 선언(카테고리·레거시·어댑터).
+  Type A는 `render_xxx_panel(symbol, interval)`, 컨텍스트 패널은 `PanelContext` 어댑터.
+- `display/panel_context.py` — 심볼·TF당 1회 OHLCV·지표·분석 로드(패널 공유, 재수집 금지).
+- `display/core_panels.py` — 파동에너지 요약/레이더/역학/해설/디버그 렌더(구 main.py 이관).
+- `display/detail_tab.py`, `display/journal_tab.py` — 탭2·탭3 렌더.
+- `legacy_main.py`·`old/` — 11차 이전 v1 조립본과 초기 뷰어는 정리 라운드에서 삭제(필요 시 git 이력에서 복원).
+
+분석 모듈(`analysis/*`, `indicators/*`, `charts/*`)은 무수정. 표시 계층만 재구성했습니다.
+
+## 알림 Pushbullet 푸시 (scripts/push_alarms.py — notify 스캐너 통합판)
+
+앱은 자동 주기 갱신을 하지 않으므로, 무인 알림은 별도 폴러 스크립트가 맡습니다. 알림 종류·문구·판정·이력·ledger 는
+GitHub Actions 의 notify 스캐너와 같고(그 코드를 `notify/` 로 이식), 검출은 알람 탭의 표시 모듈
+(`display.ma60_turn_tracker` · `ma60_down_tracker` · `trend_structure` · `divergence_flag`)을 그대로 import 합니다.
+
+1. Pushbullet 계정 설정 → Access Token 발급 → 저장소 홈에 `token.txt` 로 저장(토큰 한 줄). `.gitignore` 에 등록돼
+   있어 커밋되지 않습니다(`pushbullet_state.json` 이력·ledger 도 동일).
+2. 대상은 스크립트 상수 `PUSH_TARGETS` — **BTCUSDT × 1h·2h·4h·6h·12h·1d·2d**(7셀). `--symbols`/`--intervals` 로 바꿀 수 있습니다.
+   (`config/settings.py` 의 `PUSH_WATCHLIST` 는 예전 경로 전용이며 건드리지 않습니다 — INTEGRITY 파일.)
+
+```bash
+set PYTHONUTF8=1
+python scripts/push_alarms.py --test                  # 토큰 확인용 테스트 푸시 1건
+python scripts/push_alarms.py                         # 1회 순회 후 종료
+python scripts/push_alarms.py --loop 300 --offset 60  # 300초 격자(:01, :06, …)로 반복 — 항상 켜 둔 서버는 아래 systemd 로
+python scripts/push_alarms.py --dry-run               # 판정·보낼 내용만 출력(전송·이력 기록 없음)
+python scripts/push_alarms.py --export-ledger ledger.csv   # 후보 생애주기 ledger CSV
+python scripts/push_alarms.py --legacy-signals        # (옵션, 기본 꺼짐) 예전 3층 확정·RSI·MACD 경로
+```
+
+- **알림 종류**: 대파동 쌍바닥 후보(★ 상승 다이버전스 표기) · 60MA 상방 전환 발생(다이버전스 줄) · 60MA 하방 전환 발생(하락
+  다이버전스 줄). 구조 훼손(LL)은 검출·기록만 하고 발송하지 않습니다(`notify/plan.py` 의 `SEND_DISABLED_KINDS`).
+  모든 제목에 "(미검증)", 권고 어휘 없음. 제목 = `[WEH] [BTCUSDT 4h] 60MA 상방 전환 발생 (미검증)`, 본문 = 나머지 줄.
+- **닫힌 봉만** 봅니다. 2d 는 1d 닫힌 봉을 config 리샘플 규칙으로 합성하되 창이 하루씩 밀려도 짝이 바뀌지 않게 정렬하고,
+  2봉이 안 찬 2d 봉은 뺍니다(앱의 2d 차트는 창 기준이라 홀수 날에는 짝이 다를 수 있음).
+- **폭탄 방지 2단**: 이력에 발송 성공이 없으면 최근 2봉만 발송 + 처음 스캔하는 종류는 그 실행에서 0건 발송·전량 기록.
+  첫 배포 실행은 따라서 발송 0건이고, 다음 실행부터 새 이벤트만 나갑니다.
+- **이력**: `pushbullet_state.json`(키 심볼|TF|종류|봉 UTC, 30일 회전, 20일 스캔 창) 안에 ledger(상승·하방 후보 생애주기,
+  `direction` 필드)도 같이 둡니다. 예전 형식 파일은 `pushbullet_state.legacy.json` 으로 옮겨 두고 새로 시작합니다.
+- 종료 코드: 전송 실패나 셀 적재 오류가 있으면 1(스케줄러에서 실패로 표시).
+- **일일 요약**: 매일 09:00 KST(00:00 UTC) 이후 그날 첫 순회에 1건(`--loop 300 --offset 60` 이면 09:01). 이력 `daily` 에 UTC 날짜 키로
+  기록해 같은 날 두 번 가지 않고, 서버가 늦게 켜져도 그날 첫 순회에 나갑니다. 첫 줄은 오늘 상태 한 문장(우선순위 기계적: 지난 24h 60MA
+  상방·하방 전환 → 대기 중 후보(★ 우선, 경과 짧은 순) → "특이 사항 없음"), 아래에 지난 24h 발송 건수 · 대기 중 · 60MA 방향 · 스캐너 상태.
+  확정 시 60MA 가 이미 상방이던 후보는 앱 알람 탭 60MA 상방 전환 추적 표(메트릭 5개: 대기 중 · 전환 발생 · 소멸 · 전환율 · 이미 상방)와 같은 규칙으로
+  상태가 '해당 없음 (이미 상방)' 이라 대기 집계·첫 줄에 들지 않고 "대기 중: 없음 (이미 상방 1건 별도)" 처럼 건수만 붙습니다(하방 추적 표도 '이미 하방' 거울상).
+  "볼 TF" 는 사건이 있는 TF 를 가리킬 뿐 매매 판단이 아니며 사건 종류를 항상 병기합니다. `--dry-run` 은 요약 샘플 1건을 함께 출력합니다.
+
+**항상 켜 둔 리눅스 서버**에서는 `deploy/push_alarms.service`(systemd)로 `--loop 300 --offset 60` 을 상주시킵니다 —
+매시 :01, :06, … 에 순회하며(봉이 정각에 닫히므로 1분 뒤), 죽으면 30초 뒤 자동 재시작(`Restart=always`).
+
+```bash
+# 파일 안의 USER·경로를 서버에 맞게 고친 뒤
+sudo cp deploy/push_alarms.service /etc/systemd/system/weh-push.service
+sudo systemctl daemon-reload && sudo systemctl enable --now weh-push
+systemctl status weh-push ; journalctl -u weh-push -f
+```
+
+cron 을 쓰려면(1회 순회 모드) 분을 `1-59/5` 로 두고 `flock` 으로 겹침을 막습니다:
+`1-59/5 * * * * cd /home/USER/WaveEnergyHelper && PYTHONUTF8=1 flock -n /tmp/weh_push.lock /home/USER/venv/bin/python scripts/push_alarms.py --log logs/push_alarms.log >> logs/push_alarms.cron.log 2>&1`
+
+## 스모크 테스트
+
+```bash
+set PYTHONUTF8=1
+python -m pytest tests/test_panel_smoke.py -q
+```
+
+레지스트리 정합 + Type A 38패널 오프라인 렌더는 네트워크 없이 통과합니다. 컨텍스트 패널
+테스트는 OHLCV fetch가 필요하며 네트워크 불가 시 자동 skip됩니다.

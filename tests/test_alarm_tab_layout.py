@@ -69,5 +69,6 @@ def test_main_has_two_tabs_chart_first():
     assert M.MAIN_TABS == ("차트", "알람")
     with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as fh:
         body = fh.read()
-    assert "tab_chart, tab_alarm = st.tabs(MAIN_TABS)" in body
+    assert 'st.tabs(MAIN_TABS, key=ACTIVE_TAB_KEY, on_change="rerun")' in body
+    assert "if tab_alarm.open:" in body and "if tab_chart.open:" in body
     assert body.index("with tab_alarm:") < body.index("render_alarm_panel(") < body.index("with tab_chart:") < body.index("render_lw_chart(")

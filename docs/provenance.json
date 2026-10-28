@@ -1,0 +1,19 @@
+{
+  "restored_documents": [
+    {
+      "path": "docs/CANDIDATES_POST_2027_03.md",
+      "commit": "870f025",
+      "sha256": "bf735ce05d359fb8fcf36b45cca0b28b6c5c121b1213ba86eb10aeaf074267d5"
+    },
+    {
+      "path": "docs/SPEC_WAVE_MM_STOP_AUDIT.md",
+      "commit": "74fa4ad",
+      "sha256": "cfc97440ec0815dd8b4fbb7767d8ce95d81b58c82bb75da63b8657b92980b29a"
+    },
+    {
+      "path": "docs/SPEC_WAVE_MM_STRUCT_STOP.md",
+      "commit": "74fa4ad",
+      "sha256": "8564de36ff01ec09feeb60df71e6770e64081bfea7f84edd2e03875f5ace406c"
+    }
+  ]
+}

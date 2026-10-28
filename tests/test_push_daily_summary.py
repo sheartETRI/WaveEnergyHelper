@@ -9,7 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-import display.ma60_turn_tracker as MT  # noqa: E402
+import tracking.ma60_turn as MT  # noqa: E402
 from display.divergence_flag import DIVERGENCE_COL, NO as DIV_NO, YES as DIV_YES  # noqa: E402
 from notify import events as EV  # noqa: E402
 from notify import history as H  # noqa: E402

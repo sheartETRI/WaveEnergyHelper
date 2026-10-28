@@ -1,18 +1,18 @@
 """알림 이벤트 4종 — 검출 모듈 출력만 소비 (재구현 없음).
 
-- ``ma60_turn``   : 대파동 쌍바닥 확정 후 20봉 창 안 60MA 하방→상방 전환. ``display.ma60_turn_tracker.track_candidates``
+- ``ma60_turn``   : 대파동 쌍바닥 확정 후 20봉 창 안 60MA 하방→상방 전환. ``tracking.ma60_turn.track_candidates``
                     의 '전환 발생' 행 그대로(창·전환 규칙은 probe.simulate 와 동일, 그 모듈의 테스트가 단언). 행 선별은 원 생애주기 열
                     ``LIFECYCLE_COL`` — 확정 시 '이미 상방' 후보의 표 상태가 '해당 없음' 으로 분리돼도 발화·ledger 는 종전과 같다.
-- ``ma60_down``   : 대파동 쌍봉 확정 후 20봉 창 안 60MA 상방→하방 전환(상승 쪽의 거울상). ``display.ma60_down_tracker.track_candidates``
+- ``ma60_down``   : 대파동 쌍봉 확정 후 20봉 창 안 60MA 상방→하방 전환(상승 쪽의 거울상). ``tracking.ma60_down.track_candidates``
                     의 '전환 발생' 행 그대로(하락 다이버전스 열 = 그 모듈의 거울상 정의 ``bearish_divergence_flags`` 라벨; 행 선별은
                     ``LIFECYCLE_COL``, 위와 같다).
                     현물 보유 시 참고용 관측 — 숏·매도 신호가 아니며 하방 전환율은 측정된 바 없음.
 - ``stoch_db``    : 대파동(20,10,10) 쌍바닥 확정 후보(닫힌 봉 기준). ``track_candidates`` 의 후보 행 전부(상태 무관 — 발송 시점의
-                    60MA 상태를 본문에 적음). 다이버전스는 ``display.divergence_flag`` 단일 정의(main 870f025).
-- ``structure_ll``: 기준 저점 이후 추적 중인 고점·저점 연쇄에서 저점 LL. ``display.trend_structure.analyze`` 의
+                    60MA 상태를 본문에 적음). 다이버전스는 ``tracking.divergence`` 단일 정의(main 870f025).
+- ``structure_ll``: 기준 저점 이후 추적 중인 고점·저점 연쇄에서 저점 LL. ``tracking.structure.analyze`` 의
                     chain 행 중 cls == LL 그대로(기준점 = 최신 대파동 쌍바닥 후보, 스윙 = 기존 swing 검출기).
 
-입력 프레임은 **닫힌 봉만** 담아야 한다(notify.fetch 가 보장). 두 모듈은 프레임의 마지막 봉을 현재로 보므로,
+입력 프레임은 **닫힌 봉만** 담아야 한다(notify.closed_bars가 보장). 두 모듈은 프레임의 마지막 봉을 현재로 보므로,
 진행 중 봉을 넣지 않으면 진행 중 봉으로는 발화하지 않는다.
 
 이벤트의 ``known_pos`` = 그 이벤트를 알 수 있게 된 확정봉 위치: 전환 = 전환봉, LL = 스윙봉 + PIVOT(스윙 확정 후행).
@@ -25,11 +25,11 @@ from typing import List, Optional
 
 import pandas as pd
 
-from display import divergence_flag as DV
-from display import ma60_down_tracker as MD
-from display import ma60_turn_tracker as MT
-from display import trend_structure as TS
-from display.tz_label import to_kst
+from tracking import divergence as DV
+from tracking import ma60_down as MD
+from tracking import ma60_turn as MT
+from tracking import structure as TS
+from utils.time_display import to_kst
 
 KIND_MA60_TURN = "ma60_turn"
 KIND_MA60_DOWN = "ma60_down"

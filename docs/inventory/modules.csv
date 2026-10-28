@@ -1,0 +1,426 @@
+﻿path,role,runtime,registered_panel,manual_entry,importers,dependencies
+analysis/__init__.py,사용처 미확인·보존,False,False,False,,
+analysis/alarm_signals.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder;charts.lw_payload;charts.plotly_builder;charts.theme;display.alarm_panel;notify.legacy_signals;scripts.sweep_scan_report;tests.test_alarm_signals;tests.test_lw_builder;tests.test_push_alarms;tests.test_slim_app_smoke;tests.test_sweep_alarm_rows;utils.alarm_text,analysis.sweep_confluence;analysis.sweep_reclaim;config.settings
+analysis/array_context.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;analysis.observatory;tests.test_array_context;validation.wave_v2_phase4;validation.wave_v2_phase5,config.settings
+analysis/campaign_backtest.py,연구·호환·재현용 라이브러리,False,False,False,display.v2_campaign_view;tests.test_campaign_backtest;validation.wave_v2_campaign_backtest,analysis.array_context;analysis.campaign_promotion;analysis.campaign_score;analysis.campaign_state_machine;analysis.concordance;analysis.pattern_scanner;analysis.trend_layer;display.asof
+analysis/campaign_promotion.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;tests.test_campaign_promotion;tests.test_candle_patterns;tests.test_pattern_candidate;validation.wave_v2_phase2;validation.wave_v2_phase3,analysis.pattern_scanner;analysis.tf_ladder
+analysis/campaign_score.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;display.campaign_card;display.v2_campaign_view;tests.test_campaign_backtest;tests.test_campaign_card;tests.test_campaign_score;validation.wave_v2_campaign_backtest;validation.wave_v2_phase2;validation.wave_v2_phase3;validation.wave_v2_phase4;validation.wave_v2_phase5;validation.wave_v2_phase6;validation.wave_v2_phase7,analysis.campaign_state_machine;config.settings
+analysis/campaign_state_machine.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;analysis.campaign_score;display.campaign_card;display.observatory;display.v2_campaign_view;tests.test_campaign_card;tests.test_campaign_score;tests.test_campaign_state_machine;tests.test_trend_layer;validation.observatory_snapshot;validation.observatory_snapshot_r2;validation.wave_v2_campaign_backtest;validation.wave_v2_phase2;validation.wave_v2_phase3;validation.wave_v2_phase6,config.settings;display.asof;indicators.oscillators
+analysis/candle_patterns.py,연구·호환·재현용 라이브러리,False,False,False,display.v2_campaign_view;tests.test_candle_patterns;validation.wave_v2_phase4;validation.wave_v2_phase5,analysis.pattern_scanner;config.settings
+analysis/concordance.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;display.v2_campaign_view;tests.test_concordance;validation.wave_v2_phase4;validation.wave_v2_phase5,config.settings
+analysis/dynamics_rules.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_branch_analysis;analysis.wave_energy;display.core_panels;display.panel_context;display.transition_radar;indicators.pattern_clean;tests.test_completion_event_parity;tests.test_dispersion_annotation;tests.test_dynamics_rules;tests.test_narration;tests.test_radar_display;tests.test_transition_rules;tests.test_transition_trace;validation.clean_obs;validation.collect;validation.dispersion_obs;validation.gt_trace;validation.sweep;validation.verdict_sweep,analysis.structure;config.settings;indicators.ma_dispersion
+analysis/engine.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_htf_gate;display.panel_context;tests.test_core_ma;validation.collect,analysis.wave_energy;config.settings
+analysis/monthly_context.py,연구·호환·재현용 라이브러리,False,False,False,scripts.sweep_scan_report;tests.test_monthly_context,config.settings
+analysis/observatory.py,연구·호환·재현용 라이브러리,False,False,False,display.observatory;tests.test_observatory;validation.observatory_snapshot;validation.observatory_snapshot_r2,analysis.array_context;analysis.pattern_scanner;analysis.trend_layer;config.settings
+analysis/pattern_scanner.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;analysis.campaign_promotion;analysis.candle_patterns;analysis.observatory;analysis.trend_layer;display.observatory;display.v2_campaign_view;tests.test_campaign_promotion;tests.test_observatory;tests.test_pattern_candidate;tests.test_pattern_scanner;validation.observatory_snapshot_r2;validation.wave_v2_phase2;validation.wave_v2_phase3;validation.wave_v2_phase4;validation.wave_v2_phase5,config.settings;display.asof;indicators.ma_patterns;indicators.pattern_clean
+analysis/stoch_near_miss.py,연구·호환·재현용 라이브러리,False,False,False,scripts.sweep_scan_report;tests.test_stoch_near_miss,config.settings
+analysis/structure.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.dynamics_rules;analysis.wave_branch_analysis;display.transition_radar;tests.test_structure;validation.keychart.score;validation.sweep,
+analysis/sweep_confluence.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.alarm_signals;scripts.sweep_scan_report;tests.test_sweep_alarm_rows;tests.test_sweep_confluence,analysis.sweep_reclaim;config.settings
+analysis/sweep_reclaim.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.alarm_signals;analysis.sweep_confluence;analysis.tf_radar;scripts.sweep_scan_report;tests.test_sweep_alarm_rows;tests.test_sweep_confluence;tests.test_sweep_reclaim;tests.test_tf_radar,config.settings
+analysis/tf_ladder.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_promotion;display.v2_campaign_view;tests.test_tf_ladder;validation.observatory_snapshot;validation.wave_v2_phase2;validation.wave_v2_phase3;validation.wave_v2_phase4,config.settings
+analysis/tf_radar.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.tf_radar_panel;tests.test_tf_radar,analysis.sweep_reclaim;config.settings
+analysis/trend_layer.py,연구·호환·재현용 라이브러리,False,False,False,analysis.campaign_backtest;analysis.observatory;display.observatory;display.v2_campaign_view;tests.test_observatory;tests.test_trend_layer;validation.observatory_snapshot;validation.observatory_snapshot_r2;validation.wave_v2_phase6;validation.wave_v2_phase7,analysis.pattern_scanner;config.settings;indicators.ma_patterns;indicators.stochastic
+analysis/verdict_stability.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_branch_analysis;analysis.wave_segmentation;display.stability_verdict;tests.test_stability_display;tests.test_verdict_stability;validation.spell_analysis,
+analysis/wave_align_gate_forward.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.lw_gate_context;tests.test_lw_gate_context,analysis.wave_htf_gate;analysis.wave_htf_gate_v2;data.binance;display.asof
+analysis/wave_branch_analysis.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_candidate_rules;analysis.wave_confirmation_gate;analysis.wave_confluence;analysis.wave_energy_divergence;analysis.wave_generalization;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_money_flow;analysis.wave_regime_analysis;analysis.wave_structure_confirmation;analysis.wave_structure_lte;analysis.wave_volume_energy;display.wave_branch_ui;tests.test_wave_branch_analysis;tests.test_wave_candidate_rules;tests.test_wave_generalization;tests.test_wave_regime_analysis;validation.wave_branch_sweep,analysis.dynamics_rules;analysis.structure;analysis.verdict_stability;analysis.wave_expectancy;analysis.wave_outcome;analysis.wave_path_analysis;config.settings
+analysis/wave_candidate_rules.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_generalization;analysis.wave_regime_analysis;analysis.wave_regime_gated;analysis.wave_rule_grading;display.wave_candidate_rules_ui;tests.test_wave_candidate_rules;tests.test_wave_generalization;validation.wave_candidate_rules_sweep,analysis.wave_branch_analysis;analysis.wave_exit;analysis.wave_expectancy
+analysis/wave_confirmation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_confirmation_lifecycle;analysis.wave_exit;display.wave_confirmation_ui;tests.test_wave_confirmation;tests.test_wave_confirmation_lifecycle;validation.wave_confirmation_sweep,analysis.wave_tracker;config.settings;display.asof
+analysis/wave_confirmation_gate.py,연구·호환·재현용 라이브러리,False,False,False,analysis.wave_watchlist_tracker;tests.test_wave_confirmation_gate;validation.wave_confirmation_gate_sweep,analysis.wave_branch_analysis;analysis.wave_generalization;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_outcome;analysis.wave_regime_analysis
+analysis/wave_confirmation_lifecycle.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_generalization;display.wave_confirmation_lifecycle_ui;tests.test_wave_confirmation_lifecycle;tests.test_wave_survival;validation.wave_confirmation_lifecycle_sweep,analysis.wave_confirmation;config.settings;display.asof
+analysis/wave_confluence.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_generalization;analysis.wave_live_watchlist;analysis.wave_regime_analysis;display.wave_confluence_ui;tests.test_wave_confluence;tests.test_wave_regime_analysis;validation.wave_confluence_sweep,analysis.wave_branch_analysis;analysis.wave_exit;analysis.wave_expectancy;analysis.wave_outcome;analysis.wave_segmentation
+analysis/wave_counting.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_counting,config.settings
+analysis/wave_cross_market_validation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_live_watchlist;tests.test_wave_cross_market_validation;validation.wave_cross_market_validation_sweep,analysis.wave_expectancy
+analysis/wave_energy.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.engine;analysis.wave_htf_gate_v2;analysis.wave_tracker;display.asof;display.panel_context;tests.test_fetch_1h;tests.test_frame_resolution;tests.test_narration;validation.collect,analysis.dynamics_rules;config.settings;data.binance;data.processor;indicators.moving_averages;indicators.stochastic
+analysis/wave_energy_divergence.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_energy_divergence;validation.wave_energy_divergence_sweep,analysis.wave_branch_analysis;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_volume_energy
+analysis/wave_entry_filter_refinement.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_htf_gate;analysis.wave_robustness_validation;tests.test_wave_entry_filter_refinement;validation.wave_entry_filter_refinement_sweep,analysis.wave_expectancy;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_regime_segmentation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation
+analysis/wave_exit.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_candidate_rules;analysis.wave_confluence;analysis.wave_exit_policy_simulation;analysis.wave_expectancy;analysis.wave_failure_trigger_validation;analysis.wave_generalization;analysis.wave_grade_post_event;analysis.wave_live_forward_journal;analysis.wave_path_analysis;analysis.wave_segmentation;analysis.wave_volume_energy;display.wave_exit_ui;tests.test_wave_exit;tests.test_wave_grade_post_event;tests.test_wave_segmentation;validation.wave_exit_sweep,analysis.wave_confirmation;analysis.wave_outcome;analysis.wave_survival;config.settings
+analysis/wave_exit_policy_simulation.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_exit_policy_simulation;validation.wave_exit_policy_simulation_sweep,analysis.wave_exit;analysis.wave_expectancy;analysis.wave_live_forward_journal;analysis.wave_money_flow;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_structure_confirmation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation;analysis.wave_volume_energy
+analysis/wave_expectancy.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_branch_analysis;analysis.wave_candidate_rules;analysis.wave_confluence;analysis.wave_cross_market_validation;analysis.wave_energy_divergence;analysis.wave_entry_filter_refinement;analysis.wave_exit_policy_simulation;analysis.wave_forward_observation;analysis.wave_grade_post_event;analysis.wave_htf_gate;analysis.wave_money_flow;analysis.wave_path_analysis;analysis.wave_quality_ruleset;analysis.wave_quality_score;analysis.wave_regime_gated;analysis.wave_regime_segmentation;analysis.wave_rule_grading;analysis.wave_ruleset_robustness;analysis.wave_structure_confirmation;analysis.wave_structure_lte;analysis.wave_symbol_segmentation;analysis.wave_volume_energy;display.wave_expectancy_ui;tests.test_wave_candidate_rules;tests.test_wave_expectancy;tests.test_wave_rule_grading;validation.wave_expectancy_sweep,analysis.wave_exit;analysis.wave_segmentation
+analysis/wave_failure_trigger_validation.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_failure_trigger_validation;validation.wave_failure_trigger_validation_sweep,analysis.wave_exit;analysis.wave_live_forward_journal;analysis.wave_money_flow;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_structure_confirmation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation;analysis.wave_volume_energy
+analysis/wave_final_synthesis.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_final_synthesis;validation.wave_final_synthesis_sweep,
+analysis/wave_forward_observation.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_forward_observation;validation.wave_forward_observation_sweep,analysis.wave_expectancy;analysis.wave_live_forward_journal;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation
+analysis/wave_generalization.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_confirmation_gate;analysis.wave_energy_divergence;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_grade_post_event;analysis.wave_money_flow;analysis.wave_quality_score;analysis.wave_regime_analysis;analysis.wave_regime_gated;analysis.wave_rule_grading;analysis.wave_structure_confirmation;analysis.wave_structure_lte;analysis.wave_volume_energy;analysis.wave_watchlist_tracker;display.wave_generalization_ui;tests.test_wave_generalization;validation.wave_generalization_sweep,analysis.wave_branch_analysis;analysis.wave_candidate_rules;analysis.wave_confirmation_lifecycle;analysis.wave_confluence;analysis.wave_exit;analysis.wave_outcome;analysis.wave_survival;config.settings;data.binance;display.asof
+analysis/wave_grade_early_warning.py,연구·호환·재현용 라이브러리,False,False,False,analysis.wave_grade_failure;analysis.wave_watchlist_tracker;tests.test_wave_grade_early_warning;validation.wave_grade_early_warning_sweep,analysis.wave_branch_analysis;analysis.wave_generalization;analysis.wave_grade_origin;analysis.wave_outcome;analysis.wave_regime_analysis
+analysis/wave_grade_failure.py,연구·호환·재현용 라이브러리,False,False,False,analysis.wave_confirmation_gate;analysis.wave_watchlist_tracker;tests.test_wave_grade_failure;validation.wave_grade_failure_sweep,analysis.wave_branch_analysis;analysis.wave_generalization;analysis.wave_grade_early_warning;analysis.wave_grade_origin;analysis.wave_outcome;analysis.wave_path_analysis;analysis.wave_regime_analysis
+analysis/wave_grade_origin.py,연구·호환·재현용 라이브러리,False,False,False,analysis.wave_confirmation_gate;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_watchlist_tracker;display.wave_grade_origin_ui;tests.test_wave_grade_origin;validation.wave_grade_origin_sweep,analysis.wave_branch_analysis;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_path_analysis;analysis.wave_regime_analysis;analysis.wave_rule_grading;config.settings
+analysis/wave_grade_post_event.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_grade_post_event;validation.wave_grade_post_event_sweep,analysis.wave_exit;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_rule_grading
+analysis/wave_htf_gate.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_align_gate_forward;analysis.wave_htf_gate_v2,analysis.engine;analysis.wave_entry_filter_refinement;analysis.wave_expectancy;analysis.wave_survival_segmentation;analysis.wave_tracker;config.settings;display.asof
+analysis/wave_htf_gate_v2.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_align_gate_forward;analysis.wave_mm_simulator;validation.wave_ma60_turn_probe,analysis.wave_energy;analysis.wave_htf_gate;analysis.wave_tracker;config.settings;data.processor;display.asof
+analysis/wave_live_forward_journal.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_entry_filter_refinement;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_forward_observation;analysis.wave_regime_segmentation;analysis.wave_robustness_validation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation;tests.test_wave_live_forward_journal;validation.wave_live_forward_journal_sweep,analysis.wave_exit;analysis.wave_live_watchlist;analysis.wave_money_flow;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_structure_confirmation;analysis.wave_volume_energy
+analysis/wave_live_watchlist.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_entry_filter_refinement;analysis.wave_live_forward_journal;analysis.wave_regime_segmentation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation;tests.test_wave_live_watchlist;validation.wave_live_watchlist_sweep,analysis.wave_confluence;analysis.wave_cross_market_validation;analysis.wave_money_flow;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_structure_confirmation;analysis.wave_volume_energy;data.binance;display.asof
+analysis/wave_mm_simulator.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_mm_struct_stop;validation.wave_ma60_turn_probe,analysis.wave_htf_gate_v2
+analysis/wave_mm_struct_stop.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.lw_gate_context;tests.test_lw_gate_context;tracking.signals;validation.wave_ma60_turn_probe,analysis.wave_mm_simulator;analysis.wave_structure_confirmation
+analysis/wave_money_flow.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;tests.test_wave_money_flow;validation.wave_money_flow_sweep,analysis.wave_branch_analysis;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_volume_energy
+analysis/wave_outcome.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_branch_analysis;analysis.wave_confirmation_gate;analysis.wave_confluence;analysis.wave_energy_divergence;analysis.wave_exit;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_generalization;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_grade_post_event;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_money_flow;analysis.wave_regime_analysis;analysis.wave_regime_segmentation;analysis.wave_segmentation;analysis.wave_structure_confirmation;analysis.wave_structure_lte;analysis.wave_volume_energy;display.wave_outcome_ui;tests.test_wave_exit;tests.test_wave_outcome;validation.wave_outcome_sweep,analysis.wave_survival
+analysis/wave_path_analysis.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_branch_analysis;analysis.wave_grade_failure;analysis.wave_grade_origin;display.wave_paths_ui;tests.test_wave_paths;validation.wave_paths_sweep,analysis.wave_exit;analysis.wave_expectancy;analysis.wave_segmentation
+analysis/wave_quality_ruleset.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_quality_ruleset;validation.wave_quality_ruleset_sweep,analysis.wave_expectancy;analysis.wave_regime_gated
+analysis/wave_quality_score.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_quality_score;validation.wave_quality_score_sweep,analysis.wave_expectancy;analysis.wave_generalization
+analysis/wave_regime_analysis.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_confirmation_gate;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_grade_post_event;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_regime_gated;analysis.wave_regime_segmentation;analysis.wave_rule_grading;analysis.wave_ruleset_robustness;analysis.wave_watchlist_tracker;tests.test_wave_regime_analysis;validation.wave_regime_sweep,analysis.wave_branch_analysis;analysis.wave_candidate_rules;analysis.wave_confluence;analysis.wave_generalization;analysis.wave_outcome;config.settings;data.binance;display.asof
+analysis/wave_regime_gated.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_quality_ruleset;analysis.wave_rule_grading;tests.test_wave_regime_gated;tests.test_wave_rule_grading;validation.wave_regime_gated_sweep,analysis.wave_candidate_rules;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_regime_analysis
+analysis/wave_regime_segmentation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_entry_filter_refinement;analysis.wave_robustness_validation;analysis.wave_survival_segmentation;tests.test_wave_regime_segmentation;validation.wave_regime_segmentation_sweep,analysis.wave_expectancy;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_outcome;analysis.wave_regime_analysis;analysis.wave_symbol_segmentation
+analysis/wave_robustness_validation.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_robustness_validation;validation.wave_robustness_validation_sweep,analysis.wave_entry_filter_refinement;analysis.wave_live_forward_journal;analysis.wave_regime_segmentation;analysis.wave_survival_segmentation;analysis.wave_symbol_segmentation
+analysis/wave_rule_grading.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_grade_origin;analysis.wave_grade_post_event;analysis.wave_volume_energy;display.wave_rule_grading_ui;tests.test_wave_rule_grading;validation.wave_rule_grading_sweep,analysis.wave_candidate_rules;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_regime_analysis;analysis.wave_regime_gated
+analysis/wave_ruleset_robustness.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_ruleset_robustness;validation.wave_ruleset_robustness_sweep,analysis.wave_expectancy;analysis.wave_regime_analysis
+analysis/wave_segmentation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_confluence;analysis.wave_expectancy;analysis.wave_path_analysis;display.wave_segmentation_ui;tests.test_wave_confluence;tests.test_wave_paths;tests.test_wave_segmentation;validation.wave_segmentation_sweep,analysis.verdict_stability;analysis.wave_exit;analysis.wave_outcome;analysis.wave_survival;config.settings
+analysis/wave_structure_confirmation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_mm_struct_stop;tests.test_lw_gate_context;tests.test_trend_structure;tests.test_wave_structure_confirmation;tracking.structure;validation.wave_structure_confirmation_sweep,analysis.wave_branch_analysis;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_volume_energy
+analysis/wave_structure_lte.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_structure_lte;validation.wave_structure_lte_sweep,analysis.wave_branch_analysis;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_volume_energy
+analysis/wave_survival.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_exit;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_segmentation;display.wave_outcome_ui;display.wave_survival_ui;tests.test_wave_outcome;tests.test_wave_survival;validation.wave_exit_sweep;validation.wave_outcome_sweep;validation.wave_survival_sweep,
+analysis/wave_survival_segmentation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_entry_filter_refinement;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_forward_observation;analysis.wave_htf_gate;analysis.wave_robustness_validation;tests.test_wave_survival_segmentation;validation.wave_survival_segmentation_sweep,analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_regime_segmentation;analysis.wave_symbol_segmentation
+analysis/wave_symbol_segmentation.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_entry_filter_refinement;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_forward_observation;analysis.wave_regime_segmentation;analysis.wave_robustness_validation;analysis.wave_survival_segmentation;tests.test_wave_symbol_segmentation;validation.wave_symbol_segmentation_sweep,analysis.wave_expectancy;analysis.wave_live_forward_journal;analysis.wave_live_watchlist
+analysis/wave_tracker.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_confirmation;analysis.wave_htf_gate;analysis.wave_htf_gate_v2;display.wave_tracker_ui;tests.test_wave_confirmation;tests.test_wave_tracker;validation.wave_tracker_sweep,analysis.wave_energy;config.settings;display.asof
+analysis/wave_volume_energy.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_energy_divergence;analysis.wave_exit_policy_simulation;analysis.wave_failure_trigger_validation;analysis.wave_live_forward_journal;analysis.wave_live_watchlist;analysis.wave_money_flow;analysis.wave_structure_confirmation;analysis.wave_structure_lte;tests.test_wave_energy_divergence;tests.test_wave_volume_energy;validation.wave_volume_energy_sweep,analysis.wave_branch_analysis;analysis.wave_exit;analysis.wave_expectancy;analysis.wave_generalization;analysis.wave_outcome;analysis.wave_rule_grading;data.binance;display.asof
+analysis/wave_watchlist_tracker.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_wave_watchlist_tracker;validation.wave_watchlist_tracker_sweep,analysis.wave_confirmation_gate;analysis.wave_generalization;analysis.wave_grade_early_warning;analysis.wave_grade_failure;analysis.wave_grade_origin;analysis.wave_regime_analysis
+charts/__init__.py,사용처 미확인·보존,False,False,False,,
+charts/lw_builder.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.ma60_down_tracker;display.ma60_turn_tracker;display.trend_structure;main;tests.test_chart_browser;tests.test_lw_builder;tests.test_lw_crosshair;tests.test_lw_structure_markers;tests.test_lw_time_format;tests.test_ma60_down_tracker;tests.test_ma60_turn_tracker;tests.test_tz_label,analysis.alarm_signals;charts.lw_config;charts.lw_payload;charts.lw_templates;charts.theme;config.settings;display.tz_label
+charts/lw_config.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder;charts.lw_payload,charts.theme
+charts/lw_payload.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder;tests.test_lw_builder,analysis.alarm_signals;charts.lw_config;charts.theme;config.settings;utils.time_display
+charts/lw_templates.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder,
+charts/plotly_builder.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_registry;tests.test_lw_builder;tests.test_slim_app_smoke,analysis.alarm_signals;charts.theme;config.settings
+charts/theme.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder;charts.lw_config;charts.lw_payload;charts.plotly_builder;main;tests.test_lw_builder,analysis.alarm_signals
+config/__init__.py,사용처 미확인·보존,False,False,False,,
+config/settings.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.alarm_signals;analysis.array_context;analysis.campaign_score;analysis.campaign_state_machine;analysis.candle_patterns;analysis.concordance;analysis.dynamics_rules;analysis.engine;analysis.monthly_context;analysis.observatory;analysis.pattern_scanner;analysis.stoch_near_miss;analysis.sweep_confluence;analysis.sweep_reclaim;analysis.tf_ladder;analysis.tf_radar;analysis.trend_layer;analysis.wave_branch_analysis;analysis.wave_confirmation;analysis.wave_confirmation_lifecycle;analysis.wave_counting;analysis.wave_energy;analysis.wave_exit;analysis.wave_generalization;analysis.wave_grade_origin;analysis.wave_htf_gate;analysis.wave_htf_gate_v2;analysis.wave_regime_analysis;analysis.wave_segmentation;analysis.wave_tracker;charts.lw_builder;charts.lw_payload;charts.plotly_builder;data.binance;data.frames;data.numeric;data.ohlcv_store;data.processor;display.asof;display.core_panels;display.detail_tab;display.journal_tab;display.panel_context;display.tf_radar_panel;indicators.ma_dispersion;indicators.ma_patterns;indicators.moving_averages;indicators.oscillators;indicators.pattern_clean;indicators.stochastic;main;narration.service;notify.closed_bars;notify.daily_summary;scripts.push_alarms;scripts.sweep_scan_report;tests.conftest;tests.test_alarm_signals;tests.test_binance_fallback;tests.test_binance_store_wiring;tests.test_concordance;tests.test_core_ma;tests.test_dynamics_rules;tests.test_lw_builder;tests.test_ma_dispersion;tests.test_ma_patterns;tests.test_monthly_context;tests.test_narration;tests.test_observatory;tests.test_ohlcv_store;tests.test_pattern_clean;tests.test_push_alarms;tests.test_slim_app_smoke;tests.test_stoch_double_width;tests.test_stoch_kind;tests.test_stoch_near_miss;tests.test_sweep_alarm_rows;tests.test_sweep_confluence;tests.test_sweep_reclaim;tests.test_tf_radar;tests.test_transition_rules;tests.test_transition_trace;tests.test_trend_layer;tests.test_triple_patterns;tests.test_wave_counting;tests.test_wave_grade_origin;tests.test_wave_regime_analysis;tracking.signals;validation.collect;validation.dispersion_obs;validation.g1a_render;validation.gt_trace;validation.keychart.arms;validation.keychart.data_io;validation.keychart.score;validation.ma60_trendline;validation.observatory_snapshot;validation.observatory_snapshot_r2;validation.oversold_study;validation.sweep;validation.wave_ma60_turn_probe;validation.wave_reach_rate;validation.wave_v2_campaign_backtest;validation.wave_v2_phase2;validation.wave_v2_phase4;validation.wave_v2_phase7,
+data/__init__.py,사용처 미확인·보존,False,False,False,,
+data/binance.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_align_gate_forward;analysis.wave_energy;analysis.wave_generalization;analysis.wave_live_watchlist;analysis.wave_regime_analysis;analysis.wave_volume_energy;data.frames;display.asof;display.panel_context;display.stability_verdict;display.tf_radar_panel;display.wave_confirmation_lifecycle_ui;display.wave_confirmation_ui;display.wave_outcome_ui;display.wave_tracker_ui;main;notify.closed_bars;notify.legacy_signals;tests.test_alarm_cli;tests.test_app_lazy_tabs;tests.test_binance_fallback;tests.test_binance_store_wiring;tests.test_fetch_1h;tests.test_page_render_smoke;tests.test_pagination;tests.test_refresh_button;validation.collect;validation.gt_trace;validation.sweep;validation.verdict_sweep;validation.wave_branch_sweep;validation.wave_confirmation_lifecycle_sweep;validation.wave_confirmation_sweep;validation.wave_confluence_sweep;validation.wave_exit_sweep;validation.wave_outcome_sweep;validation.wave_segmentation_sweep;validation.wave_tracker_sweep,config.settings;data.ohlcv_store
+data/frames.py,운영 정적 의존 (조건부 import 포함),True,False,False,main;notify.legacy_signals;tests.test_frame_loading,config.settings;data.binance;data.processor;indicators.moving_averages;indicators.oscillators;indicators.stochastic
+data/numeric.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.asof;tracking.ma60_turn,config.settings
+data/ohlcv_store.py,운영 정적 의존 (조건부 import 포함),True,False,False,data.binance;scripts.sweep_scan_report;tests.conftest;tests.test_alarm_cli;tests.test_binance_store_wiring;tests.test_ohlcv_store;tests.test_pagination,config.settings
+data/processor.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_energy;analysis.wave_htf_gate_v2;data.frames;display.asof;display.panel_context;display.tf_radar_panel;main;notify.closed_bars;tests.test_binance_fallback;tests.test_fetch_1h;tests.test_page_render_smoke;tests.test_push_alarms;tests.test_resample_3h;tests.test_tf_ladder;validation.collect;validation.gt_trace;validation.keychart.data_io;validation.sweep,config.settings
+display/__init__.py,사용처 미확인·보존,False,False,False,,
+display/alarm_copy_text.py,운영 정적 의존 (조건부 import 포함),True,False,False,main;scripts.alarm_cli;tests.test_alarm_cli;tests.test_page_render_smoke,display.alarm_panel;display.ma60_down_tracker;display.ma60_slope;display.ma60_turn_tracker;display.tf_radar_panel;display.trend_structure;display.wave_basis_radar
+display/alarm_panel.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;main;tests.test_alarm_cli;tests.test_alarm_tab_layout;tests.test_frame_loading;tests.test_page_render_smoke;tests.test_push_alarms;tests.test_slim_app_smoke;tests.test_tz_label,analysis.alarm_signals;display.tz_label;utils.alarm_text
+display/analysis_cache.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.ma60_down_tracker;display.ma60_turn_tracker;display.trend_structure;display.wave_basis_radar;main;tests.test_analysis_cache;tests.test_app_lazy_tabs,tracking.ma60_down;tracking.ma60_turn;tracking.structure
+display/asof.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.campaign_backtest;analysis.campaign_state_machine;analysis.pattern_scanner;analysis.wave_align_gate_forward;analysis.wave_confirmation;analysis.wave_confirmation_lifecycle;analysis.wave_generalization;analysis.wave_htf_gate;analysis.wave_htf_gate_v2;analysis.wave_live_watchlist;analysis.wave_regime_analysis;analysis.wave_tracker;analysis.wave_volume_energy;display.detail_tab;display.ma60_slope;display.observatory;display.panel_context;display.stability_verdict;display.v2_campaign_view;display.wave_confirmation_lifecycle_ui;display.wave_confirmation_ui;display.wave_outcome_ui;display.wave_tracker_ui;tests.test_ma60_slope;tests.test_verdict_asof;validation.ma60_trendline;validation.observatory_snapshot;validation.observatory_snapshot_r2;validation.oversold_study;validation.spell_analysis;validation.verdict_sweep;validation.wave_branch_sweep;validation.wave_confirmation_lifecycle_sweep;validation.wave_confirmation_sweep;validation.wave_confluence_sweep;validation.wave_exit_sweep;validation.wave_ma60_turn_probe;validation.wave_outcome_sweep;validation.wave_segmentation_sweep;validation.wave_tracker_sweep;validation.wave_v2_campaign_backtest;validation.wave_v2_phase2;validation.wave_v2_phase3,analysis.wave_energy;config.settings;data.binance;data.numeric;data.processor;indicators.ma_dispersion;indicators.ma_patterns;indicators.moving_averages;indicators.stochastic
+display/campaign_card.py,연구·호환·재현용 라이브러리,False,False,False,display.v2_campaign_view;tests.test_campaign_card,analysis.campaign_score;analysis.campaign_state_machine
+display/code_version.py,운영 정적 의존 (조건부 import 포함),True,False,False,main;tests.test_code_version,
+display/core_panels.py,연구·호환·재현용 라이브러리,False,False,False,display.detail_tab;display.panel_registry;tests.test_narration,analysis.dynamics_rules;config.settings;indicators.ma_patterns;indicators.stochastic;narration.service
+display/detail_tab.py,사용처 미확인·보존,False,False,False,,config.settings;display.asof;display.core_panels;display.panel_context;display.panel_registry
+display/divergence_flag.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_divergence_flag;tests.test_ma60_down_tracker;tests.test_page_render_smoke;tests.test_push_daily_summary,tracking.divergence
+display/journal_tab.py,사용처 미확인·보존,False,False,False,,config.settings
+display/lw_gate_context.py,운영 정적 의존 (조건부 import 포함),True,False,False,main;tests.test_lw_gate_context,analysis.wave_align_gate_forward;analysis.wave_mm_struct_stop
+display/ma60_down_tracker.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;display.wave_basis_radar;main;tests.test_alarm_cli;tests.test_ma60_down_tracker;tests.test_page_render_smoke;tests.test_wave_basis_radar,charts.lw_builder;display.analysis_cache;tracking.ma60_down
+display/ma60_slope.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;display.ma60_turn_tracker;tests.test_ma60_slope;tests.test_page_render_smoke,display.asof;display.tz_label;indicators.moving_averages
+display/ma60_turn_tracker.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;display.wave_basis_radar;main;tests.test_alarm_cli;tests.test_divergence_flag;tests.test_ma60_down_tracker;tests.test_ma60_slope;tests.test_ma60_turn_tracker;tests.test_page_render_smoke;tests.test_trend_structure;tests.test_tz_label;tests.test_wave_basis_radar,charts.lw_builder;display.analysis_cache;display.ma60_slope;tracking.ma60_turn
+display/observatory.py,연구·호환·재현용 라이브러리,False,False,False,display.v2_campaign_view;validation.observatory_snapshot;validation.observatory_snapshot_r2,analysis.campaign_state_machine;analysis.observatory;analysis.pattern_scanner;analysis.trend_layer;display.asof
+display/panel_context.py,연구·호환·재현용 라이브러리,False,False,False,display.detail_tab;tests.test_panel_smoke,analysis.dynamics_rules;analysis.engine;analysis.wave_energy;config.settings;data.binance;data.processor;display.asof;display.stability_verdict;display.transition_radar;display.wave_confirmation_lifecycle_ui;display.wave_confirmation_ui;display.wave_tracker_ui;indicators.ma_dispersion;indicators.ma_patterns;indicators.moving_averages;indicators.oscillators;indicators.stochastic
+display/panel_registry.py,연구·호환·재현용 라이브러리,False,False,False,display.detail_tab;tests.test_campaign_card;tests.test_panel_smoke,charts.plotly_builder;display.core_panels;display.stability_verdict;display.wave_confirmation_lifecycle_ui;display.wave_confirmation_ui;display.wave_tracker_ui
+display/stability_verdict.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_context;display.panel_registry;tests.test_stability_display,analysis.verdict_stability;data.binance;display.asof;validation.verdict_categories
+display/tf_radar_panel.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;display.wave_basis_radar;main;scripts.alarm_cli;tests.test_alarm_cli;tests.test_app_lazy_tabs;tests.test_page_render_smoke,analysis.tf_radar;config.settings;data.binance;data.processor
+display/transition_radar.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_context;narration.input_builder;narration.service;tests.test_narration;tests.test_radar_display,analysis.dynamics_rules;analysis.structure;indicators.ma_patterns;indicators.stochastic
+display/trend_structure.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;main;tests.test_alarm_cli;tests.test_lw_structure_markers;tests.test_page_render_smoke;tests.test_trend_structure,charts.lw_builder;display.analysis_cache;tracking.structure
+display/tz_label.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_builder;display.alarm_panel;display.ma60_slope;main;tests.test_lw_time_format;tests.test_tz_label,utils.time_display
+display/v2_campaign_view.py,사용처 미확인·보존,False,False,False,,analysis.campaign_backtest;analysis.campaign_score;analysis.campaign_state_machine;analysis.candle_patterns;analysis.concordance;analysis.pattern_scanner;analysis.tf_ladder;analysis.trend_layer;display.asof;display.campaign_card;display.observatory
+display/wave_basis_radar.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_copy_text;main;scripts.alarm_cli;tests.test_alarm_cli;tests.test_app_lazy_tabs;tests.test_page_render_smoke;tests.test_wave_basis_radar,display.analysis_cache;display.ma60_down_tracker;display.ma60_turn_tracker;display.tf_radar_panel;indicators.moving_averages;indicators.stochastic
+display/wave_branch_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_branch_analysis
+display/wave_candidate_rules_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_candidate_rules
+display/wave_confirmation_gate_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_confirmation_lifecycle_ui.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_context;display.panel_registry,analysis.wave_confirmation_lifecycle;data.binance;display.asof
+display/wave_confirmation_ui.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_context;display.panel_registry,analysis.wave_confirmation;data.binance;display.asof
+display/wave_confluence_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_confluence
+display/wave_cross_market_validation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_energy_divergence_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_entry_filter_refinement_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_exit_policy_simulation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_exit_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_exit
+display/wave_expectancy_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_expectancy
+display/wave_failure_trigger_validation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_final_synthesis_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_forward_observation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_generalization_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_generalization
+display/wave_grade_early_warning_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_grade_failure_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_grade_origin_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_grade_origin
+display/wave_grade_post_event_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_live_forward_journal_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_live_watchlist_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_money_flow_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_outcome_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_outcome;analysis.wave_survival;data.binance;display.asof
+display/wave_paths_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_path_analysis
+display/wave_quality_ruleset_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_quality_score_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_regime_gated_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_regime_segmentation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_robustness_validation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_rule_grading_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_rule_grading
+display/wave_ruleset_robustness_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_segmentation_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_segmentation
+display/wave_structure_confirmation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_structure_lte_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_survival_segmentation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_survival_ui.py,이전 상세 UI 등록 패널,False,True,False,,analysis.wave_survival
+display/wave_symbol_segmentation_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_tracker_ui.py,연구·호환·재현용 라이브러리,False,False,False,display.panel_context;display.panel_registry,analysis.wave_tracker;data.binance;display.asof
+display/wave_volume_energy_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+display/wave_watchlist_tracker_ui.py,이전 상세 UI 등록 패널,False,True,False,,
+indicators/__init__.py,사용처 미확인·보존,False,False,False,,
+indicators/ma_dispersion.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.dynamics_rules;display.asof;display.panel_context;tests.test_dispersion_annotation;tests.test_ma_dispersion;validation.dispersion_obs,config.settings;indicators.ma_patterns
+indicators/ma_patterns.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.pattern_scanner;analysis.trend_layer;display.asof;display.core_panels;display.panel_context;display.transition_radar;indicators.ma_dispersion;tests.test_ma_dispersion;tests.test_ma_patterns;tests.test_pattern_candidate;tests.test_pattern_clean;tracking.ma60_turn;tracking.signals;validation.collect;validation.gt_trace;validation.sweep;validation.wave_ma60_turn_probe,config.settings
+indicators/moving_averages.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.wave_energy;data.frames;display.asof;display.ma60_slope;display.panel_context;display.wave_basis_radar;notify.closed_bars;tests.test_divergence_flag;tests.test_lw_builder;tests.test_ma60_down_tracker;tests.test_ma60_turn_tracker;tests.test_page_render_smoke;tests.test_slim_app_smoke;tests.test_trend_structure;validation.collect;validation.gt_trace;validation.keychart.score;validation.sweep,config.settings
+indicators/oscillators.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.campaign_state_machine;data.frames;display.panel_context;scripts.sweep_scan_report;tests.test_alarm_signals;tests.test_lw_builder;tests.test_rsi_wilder;tests.test_slim_app_smoke,config.settings;indicators.stochastic
+indicators/pattern_clean.py,연구·호환·재현용 라이브러리,False,False,False,analysis.pattern_scanner;tests.test_pattern_clean;validation.clean_obs,analysis.dynamics_rules;config.settings
+indicators/rsi_wilder.py,연구·호환·재현용 라이브러리,False,False,False,tests.test_rsi_wilder;validation.oversold_study,
+indicators/stochastic.py,운영 정적 의존 (조건부 import 포함),True,False,False,analysis.trend_layer;analysis.wave_energy;data.frames;display.asof;display.core_panels;display.panel_context;display.transition_radar;display.wave_basis_radar;indicators.oscillators;notify.closed_bars;scripts.sweep_scan_report;tests.test_alarm_signals;tests.test_divergence_flag;tests.test_lw_builder;tests.test_ma60_down_tracker;tests.test_ma60_turn_tracker;tests.test_page_render_smoke;tests.test_pattern_clean;tests.test_slim_app_smoke;tests.test_stoch_double_width;tests.test_stoch_kind;tests.test_trend_structure;tests.test_triple_patterns;validation.collect;validation.gt_trace;validation.keychart.score;validation.keychart.test_no_lookahead;validation.sweep;validation.wave_reach_rate,config.settings
+main.py,운영 진입점,True,False,True,scripts.alarm_cli;tests.test_alarm_tab_layout;tests.test_app_lazy_tabs;tests.test_binance_fallback;tests.test_frame_loading;tests.test_lw_builder;tests.test_refresh_button;tests.test_slim_app_smoke;tests.test_tz_label,charts.lw_builder;charts.theme;config.settings;data.binance;data.frames;data.processor;display.alarm_copy_text;display.alarm_panel;display.analysis_cache;display.code_version;display.lw_gate_context;display.ma60_down_tracker;display.ma60_turn_tracker;display.tf_radar_panel;display.trend_structure;display.tz_label;display.wave_basis_radar
+narration/__init__.py,사용처 미확인·보존,False,False,False,,
+narration/cache.py,연구·호환·재현용 라이브러리,False,False,False,narration.service;tests.test_narration,
+narration/client.py,연구·호환·재현용 라이브러리,False,False,False,narration.service;tests.test_narration,
+narration/fallback.py,연구·호환·재현용 라이브러리,False,False,False,narration.service;tests.test_narration,
+narration/input_builder.py,연구·호환·재현용 라이브러리,False,False,False,narration.service;tests.test_narration,display.transition_radar
+narration/service.py,연구·호환·재현용 라이브러리,False,False,False,display.core_panels;tests.test_narration,config.settings;display.transition_radar;narration.cache;narration.client;narration.fallback;narration.input_builder;narration.validator
+narration/validator.py,연구·호환·재현용 라이브러리,False,False,False,narration.service;tests.test_narration,
+notify/__init__.py,사용처 미확인·보존,False,False,False,,
+notify/closed_bars.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.daily_summary;notify.legacy_signals;notify.poller;scripts.push_alarms,config.settings;data.binance;data.processor;indicators.moving_averages;indicators.stochastic
+notify/daily_summary.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.poller;scripts.push_alarms,config.settings;notify.closed_bars;notify.events;notify.history;notify.settings;tracking.ma60_down;tracking.ma60_turn;utils.time_display
+notify/events.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.daily_summary;notify.plan;notify.poller;scripts.push_alarms;tests.test_notify_port;tests.test_push_alarms;tests.test_push_daily_summary,tracking.divergence;tracking.ma60_down;tracking.ma60_turn;tracking.structure;utils.time_display
+notify/history.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.daily_summary;notify.plan;notify.poller;tests.test_notify_port;tests.test_push_alarms;tests.test_push_daily_summary,
+notify/ledger.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.poller;tests.test_notify_port;tests.test_push_alarms,tracking.divergence;tracking.ma60_down;tracking.ma60_turn
+notify/legacy_signals.py,운영 정적 의존 (조건부 import 포함),True,False,False,scripts.push_alarms;tests.test_frame_loading;tests.test_push_alarms,analysis.alarm_signals;data.binance;data.frames;notify.closed_bars;notify.pushbullet;notify.settings;utils.alarm_text;utils.time_display
+notify/plan.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.poller;scripts.push_alarms;tests.test_notify_port;tests.test_push_alarms,notify.events;notify.history
+notify/poller.py,운영 정적 의존 (조건부 import 포함),True,False,False,scripts.push_alarms,notify.closed_bars;notify.daily_summary;notify.events;notify.history;notify.ledger;notify.plan;notify.pushbullet;notify.settings;tracking.divergence;tracking.ma60_turn
+notify/pushbullet.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.legacy_signals;notify.poller;scripts.push_alarms;tests.test_push_alarms,
+notify/settings.py,운영 정적 의존 (조건부 import 포함),True,False,False,notify.daily_summary;notify.legacy_signals;notify.poller;scripts.push_alarms,
+plot_btcusdt_ma.py,수동 실행·연구 경로,False,False,True,,
+scripts/alarm_cli.py,운영 진입점,True,False,True,tests.test_alarm_cli,display.alarm_copy_text;display.tf_radar_panel;display.wave_basis_radar;main
+scripts/maintain_inventory.py,수동 실행·연구 경로,False,False,True,,
+scripts/push_alarms.py,운영 진입점,True,False,True,tests.test_binance_store_wiring;tests.test_push_alarms;tests.test_push_daily_summary,config.settings;notify.closed_bars;notify.daily_summary;notify.events;notify.legacy_signals;notify.plan;notify.poller;notify.pushbullet;notify.settings
+scripts/sweep_scan_report.py,수동 실행·연구 경로,False,False,True,tests.test_binance_store_wiring,analysis.alarm_signals;analysis.monthly_context;analysis.stoch_near_miss;analysis.sweep_confluence;analysis.sweep_reclaim;config.settings;data.ohlcv_store;indicators.oscillators;indicators.stochastic
+tests/conftest.py,테스트,False,False,False,,config.settings;data.ohlcv_store
+tests/test_alarm_cli.py,테스트,False,False,False,,data.binance;data.ohlcv_store;display.alarm_copy_text;display.alarm_panel;display.ma60_down_tracker;display.ma60_turn_tracker;display.tf_radar_panel;display.trend_structure;display.wave_basis_radar;scripts.alarm_cli
+tests/test_alarm_signals.py,테스트,False,False,True,,analysis.alarm_signals;config.settings;indicators.oscillators;indicators.stochastic
+tests/test_alarm_tab_layout.py,테스트,False,False,False,,display.alarm_panel;main
+tests/test_analysis_cache.py,테스트,False,False,False,,display.analysis_cache;tracking.ma60_down;tracking.ma60_turn;tracking.structure
+tests/test_app_lazy_tabs.py,테스트,False,False,False,,data.binance;display.analysis_cache;display.tf_radar_panel;display.wave_basis_radar;main
+tests/test_array_context.py,테스트,False,False,True,,analysis.array_context
+tests/test_binance_fallback.py,테스트,False,False,False,,config.settings;data.binance;data.processor;main
+tests/test_binance_store_wiring.py,테스트,False,False,False,,config.settings;data.binance;data.ohlcv_store;scripts.push_alarms;scripts.sweep_scan_report
+tests/test_campaign_backtest.py,테스트,False,False,True,,analysis.campaign_backtest;analysis.campaign_score
+tests/test_campaign_card.py,테스트,False,False,True,,analysis.campaign_score;analysis.campaign_state_machine;display.campaign_card;display.panel_registry
+tests/test_campaign_promotion.py,테스트,False,False,True,,analysis.campaign_promotion;analysis.pattern_scanner
+tests/test_campaign_score.py,테스트,False,False,True,,analysis.campaign_score;analysis.campaign_state_machine
+tests/test_campaign_state_machine.py,테스트,False,False,True,,analysis.campaign_state_machine
+tests/test_candle_patterns.py,테스트,False,False,True,,analysis.campaign_promotion;analysis.candle_patterns
+tests/test_chart_browser.py,테스트,False,False,False,,charts.lw_builder
+tests/test_code_version.py,테스트,False,False,False,,display.code_version
+tests/test_completion_event_parity.py,테스트,False,False,False,,analysis.dynamics_rules;validation.gt_trace;validation.sweep
+tests/test_concordance.py,테스트,False,False,True,,analysis.concordance;config.settings
+tests/test_core_ma.py,테스트,False,False,True,,analysis.engine;config.settings
+tests/test_dispersion_annotation.py,테스트,False,False,False,tests.test_pattern_clean;tests.test_radar_display,analysis.dynamics_rules;indicators.ma_dispersion;tests.test_transition_rules;validation.gt_trace
+tests/test_divergence_flag.py,테스트,False,False,False,,display.divergence_flag;display.ma60_turn_tracker;indicators.moving_averages;indicators.stochastic;validation.wave_ma60_turn_probe
+tests/test_dynamics_rules.py,테스트,False,False,True,,analysis.dynamics_rules;config.settings
+tests/test_fetch_1h.py,테스트,False,False,False,,analysis.wave_energy;data.binance;data.processor
+tests/test_frame_loading.py,테스트,False,False,False,,data.frames;display.alarm_panel;main;notify.legacy_signals;utils.alarm_text
+tests/test_frame_resolution.py,테스트,False,False,True,,analysis.wave_energy
+tests/test_lw_builder.py,테스트,False,False,False,,analysis.alarm_signals;charts.lw_builder;charts.lw_payload;charts.plotly_builder;charts.theme;config.settings;indicators.moving_averages;indicators.oscillators;indicators.stochastic;main
+tests/test_lw_crosshair.py,테스트,False,False,False,,charts.lw_builder
+tests/test_lw_gate_context.py,테스트,False,False,False,,analysis.wave_align_gate_forward;analysis.wave_mm_struct_stop;analysis.wave_structure_confirmation;display.lw_gate_context
+tests/test_lw_structure_markers.py,테스트,False,False,False,,charts.lw_builder;display.trend_structure
+tests/test_lw_time_format.py,테스트,False,False,False,,charts.lw_builder;display.tz_label
+tests/test_ma60_down_tracker.py,테스트,False,False,False,,charts.lw_builder;display.divergence_flag;display.ma60_down_tracker;display.ma60_turn_tracker;indicators.moving_averages;indicators.stochastic;validation.wave_ma60_turn_probe
+tests/test_ma60_slope.py,테스트,False,False,False,,display.asof;display.ma60_slope;display.ma60_turn_tracker
+tests/test_ma60_turn_tracker.py,테스트,False,False,False,,charts.lw_builder;display.ma60_turn_tracker;indicators.moving_averages;indicators.stochastic;validation.wave_ma60_turn_probe
+tests/test_ma_dispersion.py,테스트,False,False,False,,config.settings;indicators.ma_dispersion;indicators.ma_patterns
+tests/test_ma_patterns.py,테스트,False,False,True,tests.test_pattern_clean,config.settings;indicators.ma_patterns
+tests/test_monthly_context.py,테스트,False,False,False,,analysis.monthly_context;config.settings
+tests/test_narration.py,테스트,False,False,False,,analysis.dynamics_rules;analysis.wave_energy;config.settings;display.core_panels;display.transition_radar;narration.cache;narration.client;narration.fallback;narration.input_builder;narration.service;narration.validator;tests.test_transition_rules
+tests/test_notify_port.py,테스트,False,False,False,,notify.events;notify.history;notify.ledger;notify.plan;tracking.divergence;tracking.ma60_down;tracking.ma60_turn;tracking.structure;validation.wave_ma60_turn_probe
+tests/test_observatory.py,테스트,False,False,True,,analysis.observatory;analysis.pattern_scanner;analysis.trend_layer;config.settings
+tests/test_ohlcv_store.py,테스트,False,False,False,,config.settings;data.ohlcv_store
+tests/test_page_render_smoke.py,테스트,False,False,False,,data.binance;data.processor;display.alarm_copy_text;display.alarm_panel;display.divergence_flag;display.ma60_down_tracker;display.ma60_slope;display.ma60_turn_tracker;display.tf_radar_panel;display.trend_structure;display.wave_basis_radar;indicators.moving_averages;indicators.stochastic
+tests/test_pagination.py,테스트,False,False,False,,data.binance;data.ohlcv_store
+tests/test_panel_smoke.py,테스트,False,False,True,,display.panel_context;display.panel_registry
+tests/test_pattern_candidate.py,테스트,False,False,True,,analysis.campaign_promotion;analysis.pattern_scanner;indicators.ma_patterns
+tests/test_pattern_clean.py,테스트,False,False,False,,config.settings;indicators.ma_patterns;indicators.pattern_clean;indicators.stochastic;tests.test_dispersion_annotation;tests.test_ma_patterns;tests.test_stoch_kind;validation.gt_trace
+tests/test_pattern_scanner.py,테스트,False,False,True,,analysis.pattern_scanner
+tests/test_push_alarms.py,테스트,False,False,False,,analysis.alarm_signals;config.settings;data.processor;display.alarm_panel;notify.events;notify.history;notify.ledger;notify.legacy_signals;notify.plan;notify.pushbullet;scripts.push_alarms
+tests/test_push_daily_summary.py,테스트,False,False,False,,display.divergence_flag;notify.events;notify.history;scripts.push_alarms;tracking.ma60_turn
+tests/test_radar_display.py,테스트,False,False,False,,analysis.dynamics_rules;display.transition_radar;tests.test_dispersion_annotation;tests.test_transition_rules;validation.gt_trace
+tests/test_refactor_provenance.py,테스트,False,False,False,,
+tests/test_refresh_button.py,테스트,False,False,False,,data.binance;main
+tests/test_resample_3h.py,테스트,False,False,True,,data.processor
+tests/test_rsi_wilder.py,테스트,False,False,True,,indicators.oscillators;indicators.rsi_wilder
+tests/test_slim_app_smoke.py,테스트,False,False,True,,analysis.alarm_signals;charts.plotly_builder;config.settings;display.alarm_panel;indicators.moving_averages;indicators.oscillators;indicators.stochastic;main
+tests/test_stability_display.py,테스트,False,False,False,,analysis.verdict_stability;display.stability_verdict
+tests/test_stoch_double_width.py,테스트,False,False,False,,config.settings;indicators.stochastic
+tests/test_stoch_kind.py,테스트,False,False,True,tests.test_pattern_clean,config.settings;indicators.stochastic
+tests/test_stoch_near_miss.py,테스트,False,False,False,,analysis.stoch_near_miss;config.settings
+tests/test_structure.py,테스트,False,False,True,,analysis.structure
+tests/test_sweep_alarm_rows.py,테스트,False,False,False,,analysis.alarm_signals;analysis.sweep_confluence;analysis.sweep_reclaim;config.settings
+tests/test_sweep_confluence.py,테스트,False,False,False,,analysis.sweep_confluence;analysis.sweep_reclaim;config.settings
+tests/test_sweep_reclaim.py,테스트,False,False,False,,analysis.sweep_reclaim;config.settings
+tests/test_tf_ladder.py,테스트,False,False,True,,analysis.tf_ladder;data.processor
+tests/test_tf_radar.py,테스트,False,False,False,,analysis.sweep_reclaim;analysis.tf_radar;config.settings
+tests/test_tracking_extraction.py,테스트,False,False,False,,tracking.ma60_turn;tracking.signals
+tests/test_transition_rules.py,테스트,False,False,True,tests.test_dispersion_annotation;tests.test_narration;tests.test_radar_display;tests.test_transition_trace,analysis.dynamics_rules;config.settings
+tests/test_transition_trace.py,테스트,False,False,True,,analysis.dynamics_rules;config.settings;tests.test_transition_rules
+tests/test_trend_layer.py,테스트,False,False,True,,analysis.campaign_state_machine;analysis.trend_layer;config.settings
+tests/test_trend_structure.py,테스트,False,False,False,,analysis.wave_structure_confirmation;display.ma60_turn_tracker;display.trend_structure;indicators.moving_averages;indicators.stochastic;validation.wave_ma60_turn_probe
+tests/test_triple_patterns.py,테스트,False,False,True,,config.settings;indicators.stochastic
+tests/test_tz_label.py,테스트,False,False,False,,charts.lw_builder;display.alarm_panel;display.ma60_turn_tracker;display.tz_label;main
+tests/test_verdict_asof.py,테스트,False,False,False,,display.asof;validation.verdict_categories;validation.verdict_sweep
+tests/test_verdict_stability.py,테스트,False,False,False,,analysis.verdict_stability;validation.verdict_categories
+tests/test_wave_basis_radar.py,테스트,False,False,False,,display.ma60_down_tracker;display.ma60_turn_tracker;display.wave_basis_radar
+tests/test_wave_branch_analysis.py,테스트,False,False,False,,analysis.wave_branch_analysis
+tests/test_wave_candidate_rules.py,테스트,False,False,False,,analysis.wave_branch_analysis;analysis.wave_candidate_rules;analysis.wave_expectancy
+tests/test_wave_confirmation.py,테스트,False,False,False,,analysis.wave_confirmation;analysis.wave_tracker
+tests/test_wave_confirmation_gate.py,테스트,False,False,False,,analysis.wave_confirmation_gate
+tests/test_wave_confirmation_lifecycle.py,테스트,False,False,False,,analysis.wave_confirmation;analysis.wave_confirmation_lifecycle
+tests/test_wave_confluence.py,테스트,False,False,False,,analysis.wave_confluence;analysis.wave_segmentation
+tests/test_wave_counting.py,테스트,False,False,True,,analysis.wave_counting;config.settings
+tests/test_wave_cross_market_validation.py,테스트,False,False,False,,analysis.wave_cross_market_validation
+tests/test_wave_energy_divergence.py,테스트,False,False,False,,analysis.wave_energy_divergence;analysis.wave_volume_energy
+tests/test_wave_entry_filter_refinement.py,테스트,False,False,False,,analysis.wave_entry_filter_refinement
+tests/test_wave_exit.py,테스트,False,False,False,,analysis.wave_exit;analysis.wave_outcome
+tests/test_wave_exit_policy_simulation.py,테스트,False,False,False,,analysis.wave_exit_policy_simulation
+tests/test_wave_expectancy.py,테스트,False,False,False,,analysis.wave_expectancy
+tests/test_wave_failure_trigger_validation.py,테스트,False,False,False,,analysis.wave_failure_trigger_validation
+tests/test_wave_final_synthesis.py,테스트,False,False,False,,analysis.wave_final_synthesis
+tests/test_wave_forward_observation.py,테스트,False,False,False,,analysis.wave_forward_observation
+tests/test_wave_generalization.py,테스트,False,False,False,,analysis.wave_branch_analysis;analysis.wave_candidate_rules;analysis.wave_generalization
+tests/test_wave_grade_early_warning.py,테스트,False,False,False,,analysis.wave_grade_early_warning
+tests/test_wave_grade_failure.py,테스트,False,False,False,,analysis.wave_grade_failure
+tests/test_wave_grade_origin.py,테스트,False,False,False,,analysis.wave_grade_origin;config.settings
+tests/test_wave_grade_post_event.py,테스트,False,False,False,,analysis.wave_exit;analysis.wave_grade_post_event
+tests/test_wave_live_forward_journal.py,테스트,False,False,False,,analysis.wave_live_forward_journal
+tests/test_wave_live_watchlist.py,테스트,False,False,False,,analysis.wave_live_watchlist
+tests/test_wave_money_flow.py,테스트,False,False,False,,analysis.wave_money_flow
+tests/test_wave_outcome.py,테스트,False,False,False,,analysis.wave_outcome;analysis.wave_survival
+tests/test_wave_paths.py,테스트,False,False,False,,analysis.wave_path_analysis;analysis.wave_segmentation
+tests/test_wave_quality_ruleset.py,테스트,False,False,False,,analysis.wave_quality_ruleset
+tests/test_wave_quality_score.py,테스트,False,False,False,,analysis.wave_quality_score
+tests/test_wave_regime_analysis.py,테스트,False,False,False,,analysis.wave_branch_analysis;analysis.wave_confluence;analysis.wave_regime_analysis;config.settings
+tests/test_wave_regime_gated.py,테스트,False,False,False,,analysis.wave_regime_gated
+tests/test_wave_regime_segmentation.py,테스트,False,False,False,,analysis.wave_regime_segmentation
+tests/test_wave_robustness_validation.py,테스트,False,False,False,,analysis.wave_robustness_validation
+tests/test_wave_rule_grading.py,테스트,False,False,False,,analysis.wave_expectancy;analysis.wave_regime_gated;analysis.wave_rule_grading
+tests/test_wave_ruleset_robustness.py,테스트,False,False,False,,analysis.wave_ruleset_robustness
+tests/test_wave_segmentation.py,테스트,False,False,False,,analysis.wave_exit;analysis.wave_segmentation
+tests/test_wave_structure_confirmation.py,테스트,False,False,False,,analysis.wave_structure_confirmation
+tests/test_wave_structure_lte.py,테스트,False,False,False,,analysis.wave_structure_lte
+tests/test_wave_survival.py,테스트,False,False,False,,analysis.wave_confirmation_lifecycle;analysis.wave_survival
+tests/test_wave_survival_segmentation.py,테스트,False,False,False,,analysis.wave_survival_segmentation
+tests/test_wave_symbol_segmentation.py,테스트,False,False,False,,analysis.wave_symbol_segmentation
+tests/test_wave_tracker.py,테스트,False,False,False,,analysis.wave_tracker
+tests/test_wave_volume_energy.py,테스트,False,False,False,,analysis.wave_volume_energy
+tests/test_wave_watchlist_tracker.py,테스트,False,False,False,,analysis.wave_watchlist_tracker
+tracking/__init__.py,사용처 미확인·보존,False,False,False,,
+tracking/divergence.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.divergence_flag;notify.events;notify.ledger;notify.poller;tests.test_notify_port;tracking.ma60_down;tracking.ma60_turn,tracking.signals
+tracking/ma60_down.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.analysis_cache;display.ma60_down_tracker;notify.daily_summary;notify.events;notify.ledger;tests.test_analysis_cache;tests.test_notify_port,tracking.divergence;tracking.ma60_turn;utils.time_display
+tracking/ma60_turn.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.analysis_cache;display.ma60_turn_tracker;notify.daily_summary;notify.events;notify.ledger;notify.poller;tests.test_analysis_cache;tests.test_notify_port;tests.test_push_daily_summary;tests.test_tracking_extraction;tracking.ma60_down;tracking.structure,data.numeric;indicators.ma_patterns;tracking.divergence;tracking.signals;utils.time_display
+tracking/signals.py,운영 정적 의존 (조건부 import 포함),True,False,False,tests.test_tracking_extraction;tracking.divergence;tracking.ma60_turn,analysis.wave_mm_struct_stop;config.settings;indicators.ma_patterns
+tracking/structure.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.analysis_cache;display.trend_structure;notify.events;tests.test_analysis_cache;tests.test_notify_port,analysis.wave_structure_confirmation;tracking.ma60_turn;utils.time_display
+utils/__init__.py,사용처 미확인·보존,False,False,False,,
+utils/alarm_text.py,운영 정적 의존 (조건부 import 포함),True,False,False,display.alarm_panel;notify.legacy_signals;tests.test_frame_loading,analysis.alarm_signals
+utils/time_display.py,운영 정적 의존 (조건부 import 포함),True,False,False,charts.lw_payload;display.tz_label;notify.daily_summary;notify.events;notify.legacy_signals;tracking.ma60_down;tracking.ma60_turn;tracking.structure,
+validation/clean_obs.py,수동 실행·연구 경로,False,False,True,,analysis.dynamics_rules;indicators.pattern_clean;validation.gt_trace;validation.sweep
+validation/collect.py,수동 실행·연구 경로,False,False,True,,analysis.dynamics_rules;analysis.engine;analysis.wave_energy;config.settings;data.binance;data.processor;indicators.ma_patterns;indicators.moving_averages;indicators.stochastic
+validation/dispersion_obs.py,수동 실행·연구 경로,False,False,True,,analysis.dynamics_rules;config.settings;indicators.ma_dispersion;validation.gt_trace;validation.sweep
+validation/g1a_render.py,연구·호환·재현용 라이브러리,False,False,False,validation.wave_v2_phase3,config.settings
+validation/gt_trace.py,수동 실행·연구 경로,False,False,True,tests.test_completion_event_parity;tests.test_dispersion_annotation;tests.test_pattern_clean;tests.test_radar_display;validation.clean_obs;validation.dispersion_obs,analysis.dynamics_rules;config.settings;data.binance;data.processor;indicators.ma_patterns;indicators.moving_averages;indicators.stochastic;validation.sweep
+validation/keychart/arms.py,연구·호환·재현용 라이브러리,False,False,False,validation.keychart.backtest,config.settings;validation.keychart.params_v0
+validation/keychart/backtest.py,수동 실행·연구 경로,False,False,True,validation.keychart.test_no_lookahead,validation.keychart.arms;validation.keychart.data_io;validation.keychart.params_v0;validation.keychart.score
+validation/keychart/data_io.py,수동 실행·연구 경로,False,False,True,validation.keychart.backtest;validation.keychart.score;validation.keychart.test_no_lookahead,config.settings;data.processor;validation.keychart.params_v0
+validation/keychart/params_v0.py,연구·호환·재현용 라이브러리,False,False,False,validation.keychart.arms;validation.keychart.backtest;validation.keychart.data_io;validation.keychart.score;validation.keychart.test_no_lookahead,
+validation/keychart/score.py,연구·호환·재현용 라이브러리,False,False,False,validation.keychart.backtest;validation.keychart.test_no_lookahead,analysis.structure;config.settings;indicators.moving_averages;indicators.stochastic;validation.keychart.data_io;validation.keychart.params_v0
+validation/keychart/test_no_lookahead.py,수동 실행·연구 경로,False,False,True,,indicators.stochastic;validation.keychart.backtest;validation.keychart.data_io;validation.keychart.params_v0;validation.keychart.score
+validation/ma60_trendline.py,수동 실행·연구 경로,False,False,True,,config.settings;display.asof
+validation/observatory_snapshot.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_state_machine;analysis.observatory;analysis.tf_ladder;analysis.trend_layer;config.settings;display.asof;display.observatory
+validation/observatory_snapshot_r2.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_state_machine;analysis.observatory;analysis.pattern_scanner;analysis.trend_layer;config.settings;display.asof;display.observatory
+validation/oversold_study.py,수동 실행·연구 경로,False,False,True,,config.settings;display.asof;indicators.rsi_wilder
+validation/spell_analysis.py,수동 실행·연구 경로,False,False,True,,analysis.verdict_stability;display.asof;validation.verdict_categories
+validation/stability_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/sweep.py,수동 실행·연구 경로,False,False,True,tests.test_completion_event_parity;validation.clean_obs;validation.dispersion_obs;validation.gt_trace,analysis.dynamics_rules;analysis.structure;config.settings;data.binance;data.processor;indicators.ma_patterns;indicators.moving_averages;indicators.stochastic
+validation/verdict_categories.py,연구·호환·재현용 라이브러리,False,False,False,display.stability_verdict;tests.test_verdict_asof;tests.test_verdict_stability;validation.spell_analysis;validation.verdict_playwright;validation.verdict_sweep,
+validation/verdict_playwright.py,수동 실행·연구 경로,False,False,True,,validation.verdict_categories
+validation/verdict_sweep.py,수동 실행·연구 경로,False,False,True,tests.test_verdict_asof,analysis.dynamics_rules;data.binance;display.asof;validation.verdict_categories
+validation/wave_branch_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_branch_analysis;data.binance;display.asof
+validation/wave_branch_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_candidate_rules_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_candidate_rules
+validation/wave_candidate_rules_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_confirmation_gate_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_confirmation_gate
+validation/wave_confirmation_gate_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_confirmation_lifecycle_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_confirmation_lifecycle;data.binance;display.asof
+validation/wave_confirmation_lifecycle_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_confirmation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_confirmation;data.binance;display.asof
+validation/wave_confirmation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_confluence_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_confluence;data.binance;display.asof
+validation/wave_confluence_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_cross_market_validation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_cross_market_validation
+validation/wave_cross_market_validation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_energy_divergence_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_energy_divergence
+validation/wave_energy_divergence_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_entry_filter_refinement_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_entry_filter_refinement
+validation/wave_entry_filter_refinement_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_exit_policy_simulation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_exit_policy_simulation
+validation/wave_exit_policy_simulation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_exit_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_exit;analysis.wave_survival;data.binance;display.asof
+validation/wave_exit_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_expectancy_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_expectancy
+validation/wave_expectancy_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_failure_trigger_validation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_failure_trigger_validation
+validation/wave_failure_trigger_validation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_final_synthesis_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_final_synthesis
+validation/wave_final_synthesis_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_forward_observation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_forward_observation
+validation/wave_forward_observation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_generalization_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_generalization
+validation/wave_generalization_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_grade_early_warning_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_grade_early_warning
+validation/wave_grade_early_warning_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_grade_failure_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_grade_failure
+validation/wave_grade_failure_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_grade_origin_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_grade_origin
+validation/wave_grade_origin_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_grade_post_event_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_grade_post_event
+validation/wave_grade_post_event_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_live_forward_journal_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_live_forward_journal
+validation/wave_live_forward_journal_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_live_watchlist_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_live_watchlist
+validation/wave_live_watchlist_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_ma60_turn_probe.py,수동 실행·연구 경로,False,False,True,tests.test_divergence_flag;tests.test_ma60_down_tracker;tests.test_ma60_turn_tracker;tests.test_notify_port;tests.test_trend_structure,analysis.wave_htf_gate_v2;analysis.wave_mm_simulator;analysis.wave_mm_struct_stop;config.settings;display.asof;indicators.ma_patterns
+validation/wave_money_flow_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_money_flow
+validation/wave_money_flow_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_outcome_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_outcome;analysis.wave_survival;data.binance;display.asof
+validation/wave_outcome_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_paths_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_path_analysis
+validation/wave_paths_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_quality_ruleset_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_quality_ruleset
+validation/wave_quality_ruleset_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_quality_score_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_quality_score
+validation/wave_quality_score_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_reach_after_pullback.py,수동 실행·연구 경로,False,False,True,,validation.wave_reach_rate
+validation/wave_reach_rate.py,수동 실행·연구 경로,False,False,True,validation.wave_reach_after_pullback,config.settings;indicators.stochastic
+validation/wave_regime_gated_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_regime_gated
+validation/wave_regime_gated_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_regime_segmentation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_regime_segmentation
+validation/wave_regime_segmentation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_regime_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_regime_analysis
+validation/wave_robustness_validation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_robustness_validation
+validation/wave_robustness_validation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_rule_grading_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_rule_grading
+validation/wave_rule_grading_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_ruleset_robustness_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_ruleset_robustness
+validation/wave_ruleset_robustness_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_segmentation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_segmentation;data.binance;display.asof
+validation/wave_segmentation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_structure_confirmation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_structure_confirmation
+validation/wave_structure_confirmation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_structure_lte_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_structure_lte
+validation/wave_structure_lte_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_survival_segmentation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_survival_segmentation
+validation/wave_survival_segmentation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_survival_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_survival
+validation/wave_survival_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_symbol_segmentation_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_symbol_segmentation
+validation/wave_symbol_segmentation_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_tracker_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_tracker;data.binance;display.asof
+validation/wave_tracker_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_v2_campaign_backtest.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_backtest;analysis.campaign_score;analysis.campaign_state_machine;config.settings;display.asof
+validation/wave_v2_phase2.py,수동 실행·연구 경로,False,False,True,validation.wave_v2_phase3;validation.wave_v2_phase4;validation.wave_v2_phase5;validation.wave_v2_phase6;validation.wave_v2_phase7,analysis.campaign_promotion;analysis.campaign_score;analysis.campaign_state_machine;analysis.pattern_scanner;analysis.tf_ladder;config.settings;display.asof
+validation/wave_v2_phase3.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_promotion;analysis.campaign_score;analysis.campaign_state_machine;analysis.pattern_scanner;analysis.tf_ladder;display.asof;validation.g1a_render;validation.wave_v2_phase2
+validation/wave_v2_phase4.py,수동 실행·연구 경로,False,False,True,validation.wave_v2_phase5,analysis.array_context;analysis.campaign_score;analysis.candle_patterns;analysis.concordance;analysis.pattern_scanner;analysis.tf_ladder;config.settings;validation.wave_v2_phase2
+validation/wave_v2_phase5.py,수동 실행·연구 경로,False,False,True,validation.wave_v2_phase6,analysis.array_context;analysis.campaign_score;analysis.candle_patterns;analysis.concordance;analysis.pattern_scanner;validation.wave_v2_phase2;validation.wave_v2_phase4
+validation/wave_v2_phase6.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_score;analysis.campaign_state_machine;analysis.trend_layer;validation.wave_v2_phase2;validation.wave_v2_phase5
+validation/wave_v2_phase7.py,수동 실행·연구 경로,False,False,True,,analysis.campaign_score;analysis.trend_layer;config.settings;validation.wave_v2_phase2
+validation/wave_volume_energy_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_volume_energy
+validation/wave_volume_energy_ui_playwright.py,수동 실행·연구 경로,False,False,True,,
+validation/wave_watchlist_tracker_sweep.py,수동 실행·연구 경로,False,False,True,,analysis.wave_watchlist_tracker
+validation/wave_watchlist_tracker_ui_playwright.py,수동 실행·연구 경로,False,False,True,,

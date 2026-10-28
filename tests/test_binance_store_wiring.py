@@ -178,6 +178,7 @@ def test_app_renders_chart_with_warning_from_store_when_offline(monkeypatch):
     B.reset_data_url()
     main_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py")
     at = AppTest.from_file(main_path, default_timeout=180)
+    at.session_state["main_active_tab"] = "알람"  # 전체 TF 저장본을 준비
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert not [w.value for w in at.warning if "저장본 표시" in w.value]
@@ -190,6 +191,10 @@ def test_app_renders_chart_with_warning_from_store_when_offline(monkeypatch):
     assert not at.exception, [e.value for e in at.exception]
     assert not [e.value for e in at.error if "불러오지 못했습니다" in e.value]
     assert [w.value for w in at.warning if w.value.startswith("바이낸스 수신 실패 — 저장본 표시 · 마지막 수신 ")]
+    assert not [c.value for c in at.caption if c.value.startswith("저장본 표시: 1w(")]
+    at.session_state["main_active_tab"] = "알람"
+    at.run()
+    assert not at.exception
     assert [c.value for c in at.caption if c.value.startswith("저장본 표시: 1w(")]      # TF 레이더 한 줄
 
 

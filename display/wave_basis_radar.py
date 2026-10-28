@@ -132,6 +132,7 @@ def render_basis_radar_section(symbol: str) -> dict:
     import streamlit as st
 
     from display.tf_radar_panel import load_radar_frames
+    from display.analysis_cache import upward_candidates, downward_candidates
     from indicators.moving_averages import add_moving_averages
     from indicators.stochastic import add_stochastic_slow_layers
 
@@ -147,7 +148,7 @@ def render_basis_radar_section(symbol: str) -> dict:
                 )
             except Exception:
                 frames[interval] = None
-        rows = build_basis_rows(frames)
+        rows = build_basis_rows(frames, track_up=upward_candidates, track_down=downward_candidates)
     headline = headline_line(pick_basis_focus(rows))
     st.markdown(headline)
     table = basis_table(rows)

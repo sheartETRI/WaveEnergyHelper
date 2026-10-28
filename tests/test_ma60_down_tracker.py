@@ -30,8 +30,8 @@ def _norm(b: bytes) -> bytes:
 
 # ------------------------------------------------------------ 검출기 import 소비 · 상승 쪽 무접촉
 def test_down_tracker_imports_probe_double_top_path_and_does_not_reimplement():
-    assert D.probe is probe and D.up is T
-    body = open(D.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    assert D.probe is T.probe and D.up.track_candidates is T.track_candidates
+    body = open(sys.modules[D.track_candidates.__module__].__file__, encoding="utf-8").read().split('"""', 2)[2]
     assert "probe.extract_signals(" in body and 'sig["stoch_tops"]' in body       # probe 의 쌍봉 경로 소비
     assert "up.lifecycle_rows(" in body and "up.tracker_pipe(" in body            # 창·경과 규칙은 상승 쪽 함수 호출
     for banned in ("compute_stochastic_pivots", "compute_series_pivots", "detect_double_top", "detect_stochastic_top",
@@ -49,7 +49,7 @@ def test_probe_manifest_and_down_module_consumes_up_side_only():
     for rel, sha in T.CHERRYPICK_PROBE.items():
         local = _norm(open(os.path.join(ROOT, rel), "rb").read())
         assert hashlib.sha256(local).hexdigest() == sha
-    body = open(D.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    body = open(sys.modules[D.track_candidates.__module__].__file__, encoding="utf-8").read().split('"""', 2)[2]
     assert "def lifecycle_rows" in body and "up.lifecycle_rows(" in body
 
 
@@ -261,7 +261,7 @@ def test_summary_counts_already_down_separately_and_rate_uses_finished_only():
 def test_labels_unverified_no_up_side_rate_and_no_recommendation_words():
     assert D.SECTION_TITLE == "60MA 하방 전환 추적 (미검증)"
     assert D.FIXED_CAPTION == "현물 보유 시 참고용 관측입니다. 하방 전환의 전환율은 측정된 바 없습니다."
-    body = open(D.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    body = open(sys.modules[D.track_candidates.__module__].__file__, encoding="utf-8").read().split('"""', 2)[2]
     # 상승 쪽 계측 수치(40.7% / 41.3% / 60%)를 이쪽에 쓰지 않는다
     for s in ("40.7", "41.3", "60%", "PROBE_RATES", "FIXED_CAPTION = up."):
         assert s not in body, s

@@ -24,13 +24,13 @@ def _body(module) -> str:
 
 # ------------------------------------------------------------ import 소비 단언
 def test_consumes_probe_and_existing_swing_detector_without_reimplementation():
-    assert TS.probe is probe and TS.probe is MT.probe
-    body = _body(TS)
+    assert TS.probe is MT.probe
+    body = _body(sys.modules[TS.analyze.__module__])
     assert "from analysis.wave_structure_confirmation import PIVOT, _confirmed, find_swing_highs, find_swing_lows" in body
     assert "probe.extract_signals(" in body and "MT.tracker_pipe(" in body and "MT.lifecycle_rows(" in body
     for banned in ("def find_swing", "rolling(", "argrelextrema", "stoch_pivot", "compute_series_pivots", "shift("):
         assert banned not in body, banned
-    assert TS.swing_chain.__module__ == "display.trend_structure"
+    assert TS.swing_chain.__module__ == "tracking.structure"
     assert WSC.PIVOT == 3
 
 

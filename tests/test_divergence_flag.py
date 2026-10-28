@@ -95,13 +95,13 @@ def test_flag_module_import_restores_logging_and_warnings_regardless_of_order():
     before_disable, before_filters = logging.root.manager.disable, warnings.filters[:]
     importlib.reload(DV)
     assert logging.root.manager.disable == before_disable and warnings.filters[:] == before_filters
-    body = open(DV.__file__, encoding="utf-8").read().split('"""', 2)[2]
-    assert "logging.disable(_log_disable)" in body and "warnings.filters[:] = _warn_filters" in body
-    assert body.index("_log_disable = logging.root.manager.disable") < body.index("import validation.wave_ma60_turn_probe")
+    body = open(sys.modules[DV.divergence_flags.__module__].__file__, encoding="utf-8").read().split('"""', 2)[2]
+    assert "logging.disable(" not in body and "warnings.filters" not in body
+    assert "from tracking import signals as probe" in body and "import validation." not in body
 
 
 def test_no_reimplementation_in_flag_module():
-    body = open(DV.__file__, encoding="utf-8").read().split('"""', 2)[2]
+    body = open(sys.modules[DV.divergence_flags.__module__].__file__, encoding="utf-8").read().split('"""', 2)[2]
     for banned in ("compute_stochastic_pivots", "compute_series_pivots", "detect_double_bottom", "np.roll", "shift(",
                    "rolling(", "argrelextrema", "min()", "nanmin"):
         assert banned not in body, banned
@@ -149,5 +149,5 @@ def test_definition_matches_fixed_doc_on_main():
         pytest.skip("git 또는 정의 커밋을 읽을 수 없음")
     for s in ("(20,10,10)", "`stoch_db_kind` = HL", "피봇 봉의 저가", "두 번째 < 첫 번째", "앱 표시·전방 기록이 모두 공유"):
         assert s in doc, s
-    head = open(DV.__file__, encoding="utf-8").read().split('"""', 2)[1]
+    head = open(sys.modules[DV.divergence_flags.__module__].__file__, encoding="utf-8").read().split('"""', 2)[1]
     assert "870f025" in head and "피봇 봉의 저가" in head and '"HL"' in head

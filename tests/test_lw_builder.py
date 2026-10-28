@@ -416,7 +416,9 @@ def test_markers_are_wired_to_pane_series_in_html():
     assert '"text": "DB"' in html and '"text": "GC"' in html or '"text": "DC"' in html
     # 마커는 억제 없이 전량 — 별도 억제 상수·함수가 없다
     src = open(LW.__file__, encoding="utf-8").read()
-    assert "suppress" not in src.lower() and "억제 로직 없음" in src
+    assert "suppress" not in src.lower()
+    from charts import lw_payload
+    assert "억제 로직 없음" in open(lw_payload.__file__, encoding="utf-8").read()
 
 
 def test_markers_empty_without_indicator_columns():

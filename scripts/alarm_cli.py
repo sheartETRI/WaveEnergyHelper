@@ -103,6 +103,7 @@ def collect_texts(symbol: Optional[str], tfs: Sequence[str], timeout: float = DE
     실행 한 번을 아낀다). 둘째 TF 부터는 같은 AppTest 에서 TF 위젯 값만 바꿔 다시 실행한다.
     """
     at = AppTest.from_file(MAIN_PATH, default_timeout=timeout)
+    at.session_state[app.ACTIVE_TAB_KEY] = "알람"
     if symbol:
         at.session_state[app.SYMBOL_KEY] = symbol
     if tfs:

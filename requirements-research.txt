@@ -1,0 +1,4 @@
+-r requirements-dev.txt
+plotly==6.8.0
+matplotlib==3.9.2
+mplfinance==0.12.10b0

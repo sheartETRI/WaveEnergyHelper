@@ -1,5 +1,9 @@
+-c constraints-py310.txt
 # WaveEnergyHelper 데모(main.py, LW 차트 엔진) 기동에 필요한 최소 의존.
 # Plotly·mplfinance 등 레거시·연구 스크립트 전용 의존은 requirements-legacy.txt 참조.
-requests
-pandas
-streamlit
+# Python 3.10 검증 기준. 설치 범위는 docs/개발_검증.md 참조.
+requests==2.32.3
+pandas==2.2.3
+streamlit==1.58.0
+numpy==1.26.4
+Jinja2==3.1.4

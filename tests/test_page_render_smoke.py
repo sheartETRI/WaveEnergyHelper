@@ -75,6 +75,7 @@ def app(monkeypatch):
     except Exception:   # noqa: BLE001 — 캐시 없으면 무시
         pass
     at = AppTest.from_file(os.path.join(ROOT, "main.py"), default_timeout=180)
+    at.session_state["main_active_tab"] = "알람"
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     return at

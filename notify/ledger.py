@@ -3,9 +3,9 @@
 direction 키가 없는 행은 상승 쪽이다(CSV 내보내기에서만 "up" 으로 채움).
 
 목적: 사람이 고르지 않고 모든 후보를 결과까지 기록해, 몇 달 뒤 "다이버전스 있음 vs 없음" 의 전환율을 편향 없이 비교한다.
-- 대상 셀: notify.scanner.SYMBOLS × LEDGER_TFS(1h·4h·6h·1d). 6h 는 기록 전용(알림 대상 아님).
-- 후보·상태·소요 봉 수·전환 가격은 ``display.ma60_turn_tracker.track_candidates`` 의 행 그대로(창 20봉·as-of 규칙 그 모듈 소관),
-  다이버전스는 ``display.divergence_flag`` (단일 정의, main 870f025) 그대로. 재구현 없음.
+- 대상 셀: notify.settings.PUSH_TARGETS의 기본 7개 시간봉. 순회 호출 시 ledger_intervals로 별도 지정 가능.
+- 후보·상태·소요 봉 수·전환 가격은 ``tracking.ma60_turn.track_candidates`` 의 행 그대로(창 20봉·as-of 규칙 그 모듈 소관),
+  다이버전스는 ``tracking.divergence`` (단일 정의, main 870f025) 그대로. 재구현 없음.
 - 확정 시 60MA 가 이미 상방/하방이던 후보도 **원 생애주기**(행의 ``LIFECYCLE_COL`` — 창 규칙의 전환/소멸)로 그대로 기록한다. 표의 상태
   '해당 없음 (이미 상방)' 은 표시 분리일 뿐이며, 행의 ``already_up`` / ``already_down`` 필드로 구분한다(기록 불변).
 - **과거 소급 기록 금지**: ledger 가 처음 만들어진 실행 시각(``since``) 이후에 확정된 후보(확정봉 open_time ≥ since)만 기록.
@@ -20,9 +20,9 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from display import divergence_flag as DV
-from display import ma60_down_tracker as MD
-from display import ma60_turn_tracker as MT
+from tracking import divergence as DV
+from tracking import ma60_down as MD
+from tracking import ma60_turn as MT
 
 LEDGER_TFS = ("1h", "4h", "6h", "1d")
 RESULT_TURNED, RESULT_EXPIRED = "turned", "expired"
@@ -76,7 +76,7 @@ def finished_rows(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Dict]:
 
 
 def finished_rows_down(pipe: pd.DataFrame, symbol: str, tf: str) -> List[Dict]:
-    """하방(거울상) 후보의 종료 행 — ``display.ma60_down_tracker.track_candidates`` 행 그대로. 다이버전스는 그 모듈의
+    """하방(거울상) 후보의 종료 행 — ``tracking.ma60_down.track_candidates`` 행 그대로. 다이버전스는 그 모듈의
     거울상 정의 라벨(하락 다이버전스 열). 상승 쪽 ``finished_rows`` 와 같은 결과·소요·가격 규칙, 극점은 패턴 고점."""
     n = len(pipe)
     frame = MD.track_candidates(pipe, recent_bars=n)

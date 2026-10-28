@@ -183,8 +183,11 @@ def test_targets_kinds_and_schedule_are_fixed_without_touching_settings():
     assert EV.KINDS == ("ma60_turn", "ma60_down", "structure_ll", "stoch_db")
     assert PL.SEND_DISABLED_KINDS == frozenset({EV.KIND_STRUCTURE_LL})
     src = open(P.__file__, encoding="utf-8").read().split('"""', 2)[2]
-    assert "scan_alarm_signals(" in src.split("# ================================================================ 예전 경로")[1]
-    assert "scan_alarm_signals(" not in src.split("# ================================================================ 예전 경로")[0]
+    from notify import legacy_signals
+    assert P.run_once is legacy_signals.run_once and P.PushState is legacy_signals.PushState
+    assert "scan_alarm_signals(" not in src
+    assert "scan_alarm_signals(" in open(legacy_signals.__file__, encoding="utf-8").read()
+    assert "from display." not in src and "import main" not in src
     with open(os.path.join(ROOT, "deploy", "push_alarms.service"), encoding="utf-8") as fh:
         unit = fh.read()
     assert "scripts/push_alarms.py --loop 300 --offset 60" in unit and "--legacy-signals" not in unit and "Restart=always" in unit
@@ -382,6 +385,20 @@ def test_legacy_state_file_is_moved_aside_and_new_history_starts_empty(tmp_path)
     # 새 형식 파일은 그대로 읽힌다
     H.save(str(state), H.empty())
     assert P.load_history(str(state)) == H.empty() and state.exists()
+
+
+def test_legacy_state_migration_preserves_existing_backup(tmp_path):
+    """기존 백업이 있는 경우 새 백업으로 옮기는 분리 모듈의 경로도 검증한다."""
+    state = tmp_path / "pushbullet_state.json"
+    legacy = {"last_bar": {}, "sent": {}}
+    state.write_text(json.dumps(legacy), encoding="utf-8")
+    existing = tmp_path / "pushbullet_state.legacy.json"
+    existing.write_text("existing backup", encoding="utf-8")
+    assert P.load_history(str(state)) == H.empty()
+    assert existing.read_text(encoding="utf-8") == "existing backup"
+    backups = list(tmp_path.glob("pushbullet_state.legacy.json.*.bak"))
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8")) == legacy
 
 
 # ------------------------------------------------------------ 6. 예전 경로 (--legacy-signals, 기본 꺼짐) — 기존 계약 그대로

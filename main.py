@@ -15,12 +15,14 @@ import streamlit as st
 
 from charts.lw_builder import render_lw_chart
 from charts.theme import CHART_HEIGHT_OPTIONS, DEFAULT_CHART_HEIGHT
-from config.settings import CUSTOM_INTERVALS, STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
+from config.settings import STOCH_LAYERS, SUPPORTED_SYMBOLS, TIMEFRAMES
 from data.binance import (
-    clear_klines_cache, data_source_line, fetch_klines, get_auto_limit, last_fetch_at, last_fetch_error,
+    clear_klines_cache, data_source_line, last_fetch_at, last_fetch_error,
     stale_caption,
 )
-from data.processor import build_dataframe, get_fetch_interval, resample_timeframe
+from data.frames import load_frame
+from data.processor import get_fetch_interval
+from display.analysis_cache import upward_candidates, downward_candidates, structure_analysis
 from display.alarm_copy_text import build_copy_text, render_copy_expander
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.tf_radar_panel import render_tf_radar_section
@@ -31,9 +33,6 @@ from display.ma60_down_tracker import down_tracker_reference_lines, render_down_
 from display.ma60_turn_tracker import render_tracker_section, tracker_reference_lines
 from display.trend_structure import render_structure_section, structure_markers
 from display.tz_label import KST_LABEL, to_kst
-from indicators.moving_averages import add_moving_averages
-from indicators.oscillators import add_macd, add_rsi
-from indicators.stochastic import add_stochastic_slow_layers
 
 # 레이어 선택 표시용 — "대(20,10,10)" 형태. 값은 STOCH_LAYERS의 label.
 _ROLE_KO = {"Top": "대", "Mid": "중", "Bot": "소"}
@@ -54,6 +53,7 @@ MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 
 # 본문 탭 — 첫 탭이 기본(차트). 알람 패널은 두 번째 탭으로 이동(표시 계층 재배치만, 정의 무접촉).
 MAIN_TABS = ("차트", "알람")
+ACTIVE_TAB_KEY = "main_active_tab"
 
 # 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 8cdd4e5 원칙 승계). 공급원은 main 에서 체리픽한
 # 정의 파일(analysis/wave_align_gate_forward 등)을 display/lw_gate_context 가 import 만 해서 라이브 계산한다.
@@ -67,32 +67,6 @@ def gate_context_for(symbol: str, interval: str) -> str:
 def macd_panel_default(interval: str) -> bool:
     """'MACD 패널' 토글 기본값 — 15m 만 꺼짐, 나머지 켬."""
     return interval not in MACD_PANEL_DEFAULT_OFF_INTERVALS
-
-
-def load_frame(symbol: str, interval: str, with_macd: bool = True):
-    """OHLCV 적재 → 지표 계산. 실패 시 None.
-
-    with_macd=False 면 add_macd 를 건너뛴다 → MACD 컬럼이 없어 알람 레이어가 MACD 4종을 조용히
-    건너뛰고 차트에도 MACD 패널이 없다("MACD 패널" 토글 꺼짐).
-    fetch/build/지표는 각자 st.cache_data(ttl=600)를 갖고 있어 여기서 추가 캐시는 두지 않는다.
-    """
-    fetch_interval = get_fetch_interval(interval)
-    raw = fetch_klines(symbol, fetch_interval, get_auto_limit(interval))
-    if not raw:
-        return None
-
-    df = build_dataframe(raw)
-    if df is None or df.empty:
-        return None
-    if interval in CUSTOM_INTERVALS:
-        df = resample_timeframe(df, interval)
-
-    df = add_moving_averages(df)
-    df = add_stochastic_slow_layers(df)
-    if with_macd:
-        df = add_macd(df)
-    df = add_rsi(df)
-    return df
 
 
 # 데이터 새로고침 — 데이터 계층 캐시(fetch_klines, ttl=600)를 비우고 이 rerun 에서 최신 봉까지 다시 받는다.
@@ -120,7 +94,7 @@ def load_error_message(symbol: str, interval: str, reason: Optional[str]) -> str
 
 def render_refresh_button() -> "st.delta_generator.DeltaGenerator":
     """사이드바 상단: 새로고침 버튼 + 신선도 캡션 자리(적재 뒤 main 이 채움) + 상태 초기화 고지."""
-    if st.sidebar.button(REFRESH_BUTTON_LABEL, help="OHLCV 캐시를 비우고 최신 봉까지 다시 받습니다."):
+    if st.sidebar.button(REFRESH_BUTTON_LABEL, help="OHLCV 캐시를 비우고 최신 봉까지 다시 받습니다. 상위 게이트는 별도 캐시로 최대 15분간 유지됩니다."):
         clear_klines_cache()
     slot = st.sidebar.empty()
     st.sidebar.caption(REFRESH_RESET_NOTE)
@@ -210,45 +184,51 @@ def main():
     if stale:
         st.warning(stale)
 
-    # 본문 2탭: [차트](기본) / [알람]. 사이드바 위젯은 공통. st.tabs 는 비활성 탭도 렌더한다(프론트에서 숨김).
-    tab_chart, tab_alarm = st.tabs(MAIN_TABS)
+    # 선택한 탭만 실행한다. 차트에서는 현재 TF 추적만 계산하고 전 TF 레이더는 알람 탭에서 실행한다.
+    tab_chart, tab_alarm = st.tabs(MAIN_TABS, key=ACTIVE_TAB_KEY, on_change="rerun")
 
-    with tab_alarm:
-        # TF 레이더 — 어느 TF에서 전투(레벨 이탈 에피소드)가 벌어지는지 교차 TF 요약 (표시 전용, SPEC §9).
-        tf_radar_view = render_tf_radar_section(symbol)
-        # 기준 TF 레이더 — 대파동 쌍바닥/쌍봉 후 60MA 전환 관찰이 열린 TF (표시 전용, SPEC §10).
-        basis_radar_view = render_basis_radar_section(symbol)
-        alarm_view = render_alarm_panel(
-            df, symbol, interval,
-            history_bars=cfg["history_bars"],
-            include_candidates=cfg["include_candidates"],
-            layers=cfg["layers"] or None,
-        )
-        # 60MA 전환 추적 (미검증) — 별도 섹션. 검출은 validation/wave_ma60_turn_probe 를 import 해 소비.
-        # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님). 기울기 목록은 복사용 텍스트로.
-        tracker_frame, slope_rows = render_tracker_section(df, symbol, interval)
-        # 60MA 하방 전환 추적 (미검증) — 상승 쪽의 거울상(대파동 쌍봉 → 20봉 안 60MA 하방 전환). 현물 보유 시 참고용 관측.
-        # 차트 가격선·알람 푸시 연동 없음(표시 전용).
-        down_frame = render_down_tracker_section(df, symbol, interval)
-        # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
-        structure_result = render_structure_section(df, symbol, interval)
-        # 전체 복사용 텍스트 (탭 맨 아래, 접힘) — 위 섹션들이 화면에 그린 값(반환값)만 마크다운 텍스트로 옮긴다(재계산 없음).
-        render_copy_expander(build_copy_text(
-            symbol, interval, tf_radar=tf_radar_view, basis_radar=basis_radar_view, alarm=alarm_view,
-            tracker=tracker_frame, slope_rows=slope_rows, down=down_frame, structure=structure_result,
-        ))
+    if tab_alarm.open:
+        with tab_alarm:
+            # TF 레이더 — 어느 TF에서 전투(레벨 이탈 에피소드)가 벌어지는지 교차 TF 요약 (표시 전용, SPEC §9).
+            tf_radar_view = render_tf_radar_section(symbol)
+            # 기준 TF 레이더 — 대파동 쌍바닥/쌍봉 후 60MA 전환 관찰이 열린 TF (표시 전용, SPEC §10).
+            basis_radar_view = render_basis_radar_section(symbol)
+            alarm_view = render_alarm_panel(
+                df, symbol, interval,
+                history_bars=cfg["history_bars"],
+                include_candidates=cfg["include_candidates"],
+                layers=cfg["layers"] or None,
+            )
+            # 60MA 전환 추적 (미검증) — 별도 섹션. 검출은 tracking의 공용 계산을 캐시해 재사용.
+            # 반환된 후보 표의 '대기 중' 저점·기준선을 LW 가격 pane 에 함께 그린다(알람 푸시 대상 아님). 기울기 목록은 복사용 텍스트로.
+            tracker_frame, slope_rows = render_tracker_section(df, symbol, interval)
+            # 60MA 하방 전환 추적 (미검증) — 상승 쪽의 거울상(대파동 쌍봉 → 20봉 안 60MA 하방 전환). 현물 보유 시 참고용 관측.
+            # 차트 가격선·알람 푸시 연동 없음(표시 전용).
+            down_frame = render_down_tracker_section(df, symbol, interval)
+            # 추세 구조 추적 (미검증) — 고점·저점 연쇄(파동 번호 없음). 스윙 마커를 LW 가격 pane 에 함께 그린다.
+            structure_result = render_structure_section(df, symbol, interval)
+            # 전체 복사용 텍스트 (탭 맨 아래, 접힘) — 위 섹션들이 화면에 그린 값(반환값)만 마크다운 텍스트로 옮긴다(재계산 없음).
+            render_copy_expander(build_copy_text(
+                symbol, interval, tf_radar=tf_radar_view, basis_radar=basis_radar_view, alarm=alarm_view,
+                tracker=tracker_frame, slope_rows=slope_rows, down=down_frame, structure=structure_result,
+            ))
 
-    with tab_chart:
-        # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
-        # (미검출·퇴화 시 None → "기준선 없음" 폴백).
-        render_lw_chart(
-            df, symbol, interval, gate_context_for(symbol, interval),
-            chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
-            show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
-            tracker_lines=tracker_reference_lines(tracker_frame),
-            structure_markers=structure_markers(structure_result),
-            down_tracker_lines=down_tracker_reference_lines(down_frame),   # 하방 추적 대기 후보 패턴 고점(구분 색, 표시 전용)
-        )
+    if tab_chart.open:
+        with tab_chart:
+            tracker_frame = upward_candidates(df)
+            down_frame = downward_candidates(df)
+            structure_result = structure_analysis(df)
+            # gate_context 는 필수 인자. struct_reference 는 적재된 LTF 프레임으로 라이브 계산
+            # (미검출·퇴화 시 None → "기준선 없음" 폴백).
+            render_lw_chart(
+                df, symbol, interval, gate_context_for(symbol, interval),
+                chart_height=cfg["chart_height"], struct_reference=struct_reference(df, symbol, interval),
+                show_stochastic=cfg["show_stoch"], show_macd=cfg["show_macd"], show_rsi=cfg["show_rsi"],
+                tracker_lines=tracker_reference_lines(tracker_frame),
+                structure_markers=structure_markers(structure_result),
+                down_tracker_lines=down_tracker_reference_lines(down_frame),   # 하방 추적 대기 후보 패턴 고점(구분 색, 표시 전용)
+            )
+
 
 if __name__ == "__main__":
     main()

@@ -18,10 +18,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 
-import display.divergence_flag as DV  # noqa: E402
-import display.ma60_down_tracker as MD  # noqa: E402
-import display.ma60_turn_tracker as MT  # noqa: E402
-import display.trend_structure as TS  # noqa: E402
+import tracking.divergence as DV  # noqa: E402
+import tracking.ma60_down as MD  # noqa: E402
+import tracking.ma60_turn as MT  # noqa: E402
+import tracking.structure as TS  # noqa: E402
 import validation.wave_ma60_turn_probe as probe  # noqa: E402
 from notify import events as EV  # noqa: E402
 from notify import history as H  # noqa: E402
@@ -44,7 +44,7 @@ def events(pipe):
 # ------------------------------------------------------------ 1. 검출 import 소비 · 이벤트 = 모듈 출력
 def test_port_is_verbatim_import_consumption_no_reimplementation():
     assert EV.MT is MT and EV.MD is MD and EV.TS is TS and EV.DV is DV and LG.MT is MT and LG.MD is MD and LG.DV is DV
-    assert MD.up is MT and MT.probe is probe and MD.probe is probe
+    assert MD.up is MT and MD.probe is MT.probe
     src = open(EV.__file__, encoding="utf-8").read().split('"""', 2)[2]
     assert "MT.track_candidates(" in src and "MD.track_candidates(" in src and "TS.analyze(" in src
     for banned in ("stoch_pivot", "compute_series_pivots", "find_swing_lows", "find_swing_highs", "np.roll",

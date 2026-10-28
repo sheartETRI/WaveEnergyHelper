@@ -41,16 +41,16 @@ def test_probe_script_matches_manifest_and_origin_commit():
 
 
 def test_tracker_imports_probe_and_does_not_reimplement_detection():
-    src = open(T.__file__, encoding="utf-8").read()
+    src = open(sys.modules[T.track_candidates.__module__].__file__, encoding="utf-8").read()
     body = src.split('"""', 2)[2]
-    assert "import validation.wave_ma60_turn_probe as probe" in body
+    assert "from tracking import signals as probe" in body
     assert "probe.extract_signals(" in body and "probe.OBS_BARS" in body and "probe.BUFFER" in body
     # 검출 재구현 흔적 금지: 피봇·스토캐 쌍바닥·MA 기울기 계산이 표시 계층에 없다
     for banned in ("stoch_pivot", "compute_series_pivots", "find_swing_lows", "np.roll", "shift(", "> prev",
                    "detect_double_bottom"):
         assert banned not in body, banned
     assert T.OBS_BARS == 20 and T.BUFFER == 0.005
-    assert T.track_candidates.__module__ == "display.ma60_turn_tracker"
+    assert T.track_candidates.__module__ == "tracking.ma60_turn"
 
 
 def test_import_restores_logging_and_warnings():

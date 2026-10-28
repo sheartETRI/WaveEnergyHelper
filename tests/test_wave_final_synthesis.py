@@ -57,7 +57,10 @@ def test_write_report_sections(tmp_path):
         assert section in text
 
 
-def test_run_final_synthesis_produces_artifacts():
+def test_run_final_synthesis_produces_artifacts(tmp_path, monkeypatch):
+    from analysis import wave_final_synthesis as synthesis_module
+    monkeypatch.setattr(synthesis_module, "REPORT_FINAL", str(tmp_path / "report.md"))
+    monkeypatch.setattr(synthesis_module, "PNG_FINAL", str(tmp_path / "synthesis.png"))
     result = run_final_synthesis()
     assert result["final_verdict"] in ("FAILED", "WEAK", "CONDITIONAL", "PROMISING", "STRONG")
     assert os.path.isfile(result["report_path"])
