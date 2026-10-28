@@ -7,7 +7,8 @@ docs/SPEC_SWEEP_RECLAIM.md §10 동결 스펙.
 
 검출·창 규칙 무수정 — display.ma60_turn_tracker / ma60_down_tracker 의
 track_candidates·summarize 를 소비만 한다(관찰 창 20봉 = probe 사전등록값, 상태
-문자열도 그쪽 상수를 단일 출처로 승계). 판정·게이팅·푸시·기록 없음.
+문자열도 그쪽 상수를 단일 출처로 승계). 마감 기준 설명은 SPEC §10.1.
+판정·게이팅·푸시·기록 없음.
 
 우선순위(동률은 입력 순서 = 상위 TF 먼저):
   2  대기 중    관찰 창이 열려 있음 — 지금 지켜봐야 하는 기준 TF
@@ -26,8 +27,8 @@ import display.ma60_turn_tracker as _up
 
 # 섹션 제목·고정 캡션 — 화면과 전체 복사용 텍스트(display.alarm_copy_text)가 같은 문자열을 쓴다
 SECTION_TITLE = "기준 TF 레이더 — 쌍바닥/쌍봉 × 60MA 관찰"
-FIXED_CAPTION = ("대파동 쌍바닥(쌍봉) 확정 후 60MA 전환 관찰 창(20봉)이 열려 있는 TF — "
-                 "기준 TF 후보. 표시 전용(판정·게이팅·푸시 아님), SPEC §10")
+FIXED_CAPTION = ("마감봉 기준: 대파동 쌍바닥·쌍봉 이후 60MA 전환을 관찰할 TF와 다음 확인 조건. "
+                 "대기 우선·동률은 큰 TF 우선인 관찰 순서이며 성공 확률이 아닙니다. SPEC §10.1")
 
 
 @dataclass(frozen=True)
@@ -88,7 +89,9 @@ def build_basis_rows(
         f_up, f_dn = track_up(df), track_down(df)
         up_text, up_score = _cell(_up.summarize(f_up), f_up)
         down_text, down_score = _cell(_down.summarize(f_dn), f_dn)
-        if up_score >= down_score and up_score > 0:
+        if up_score == down_score and up_score > 0:
+            detail = f"상·하방 동시 관찰 — 쌍바닥 {up_text} / 쌍봉 {down_text}"
+        elif up_score > down_score:
             detail = f"쌍바닥→60MA 상방 {up_text}"
         elif down_score > 0:
             detail = f"쌍봉→60MA 하방 {down_text}"
@@ -123,34 +126,49 @@ def basis_table(rows: list[BasisRow]) -> pd.DataFrame:
     ])
 
 
-def render_basis_radar_section(symbol: str) -> dict:
+def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[str], None]] = None) -> dict:
     """알람 탭 섹션 — TF 레이더 아래. 적재는 TF 레이더와 같은 캐시를 공유한다.
 
     반환값은 화면에 그린 값(view) — 전체 복사용 텍스트(display.alarm_copy_text)가 재계산 없이 옮긴다:
-    headline(마크다운 한 줄) · table(표시용 표).
+    headline(마크다운 한 줄) · table(표시용 표) · guidance(같은 설명 카드 view).
     """
     import streamlit as st
 
     from display.tf_radar_panel import load_radar_frames
-    from display.analysis_cache import upward_candidates, downward_candidates
-    from indicators.moving_averages import add_moving_averages
-    from indicators.stochastic import add_stochastic_slow_layers
+    from display.mtf_guidance_model import build_guidance
+    from display.mtf_guidance import (
+        candidate_frames, prepare_closed_frames, remember_radar_observation, render_guidance,
+    )
 
     st.subheader(SECTION_TITLE)
     st.caption(FIXED_CAPTION)
     with st.spinner(f"{symbol} 전 TF 기준 관찰 스캔 중..."):
-        frames: dict[str, Optional[pd.DataFrame]] = {}
-        for interval, df in load_radar_frames(symbol).items():
-            try:
-                frames[interval] = (
-                    None if df is None
-                    else add_stochastic_slow_layers(add_moving_averages(df))
-                )
-            except Exception:
-                frames[interval] = None
-        rows = build_basis_rows(frames, track_up=upward_candidates, track_down=downward_candidates)
-    headline = headline_line(pick_basis_focus(rows))
+        asof = pd.Timestamp.now(tz="UTC")
+        frames = prepare_closed_frames(load_radar_frames(symbol), asof)
+        candidates = candidate_frames(frames)
+        by_frame = {id(frame): candidates[tf] for tf, frame in frames.items() if frame is not None}
+        rows = build_basis_rows(frames, track_up=lambda df: by_frame[id(df)][0],
+                                track_down=lambda df: by_frame[id(df)][1])
+    focus = pick_basis_focus(rows)
+    headline = headline_line(focus)
     st.markdown(headline)
+    st.caption("선정 이유는 레이더가 고른 TF를 설명합니다. 사이드바에서 보는 차트 TF를 바꿔도 설명 대상은 바뀌지 않습니다.")
+    if focus is not None:
+        guidance = render_guidance(build_guidance(focus.interval, frames, candidates, asof),
+                                   symbol=symbol, scope="radar", on_open_chart=on_open_chart)
+        remember_radar_observation(symbol, guidance, asof)
+    else:
+        unavailable = [tf for tf, frame in frames.items() if frame is None or frame.empty or len(frame) < 62]
+        if len(unavailable) == len(frames):
+            reason = "마감봉 자료가 없거나 부족하여 관찰 TF 판단을 보류합니다. 레이더를 다시 조회하세요."
+        else:
+            reason = "현재 레이더의 관찰 조건을 충족하는 TF가 없습니다. 임의의 TF를 관찰 대상으로 지정하지 않습니다."
+            if unavailable:
+                reason += " 자료 부족·미수신 TF: " + ", ".join(unavailable)
+        st.info(reason)
+        guidance = {"text": reason}
+        remember_radar_observation(symbol, None, asof, empty_reason=reason)
     table = basis_table(rows)
     st.dataframe(table, hide_index=True, width="stretch")
-    return {"headline": headline, "table": table}
+    st.caption("이 표와 설명은 마감된 봉을 사용합니다. 아래 기존 알람·전환 추적 표에는 진행 중인 봉이 포함될 수 있습니다.")
+    return {"headline": headline, "table": table, "guidance": guidance}
