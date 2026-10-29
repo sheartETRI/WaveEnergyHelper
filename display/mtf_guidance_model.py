@@ -249,6 +249,9 @@ def build_guidance(interval: str, frames: dict, candidates: dict, asof) -> dict:
               ("해석 범위", "MA60 방향 조건은 단순이평의 수학적 관계입니다. 패턴 후 전환 가능성은 미검증이며 비교값은 목표가·예측이 아닙니다. 기존 전환 상태는 별도 관찰 창 규칙을 따릅니다.")]
     return {"interval": interval, "title": f"{interval} 관찰 설명", "items": items,
             "next_check_at": next_check_at,
+            "local_direction": {"상승": "up", "하락": "down", "평탄": "flat"}.get(current, "unknown"),
+            "local_data_status": status,
+            "observation_directions": [direction for direction, enabled in zip(("up", "down"), active) if enabled],
             "related": {"upper": upper, "lower": lower},
             "snapshot": {"interval": interval, "up": ids[0], "down": ids[1], "ma60": current,
                          "upper": context_states[0], "lower": context_states[1], "data": status}}

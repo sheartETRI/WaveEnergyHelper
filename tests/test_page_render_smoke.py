@@ -159,7 +159,7 @@ def test_alarm_tab_copy_text_block_has_every_section_with_on_screen_values(app):
         assert f"- {m.label}: {m.value}" in text, (m.label, m.value)
     # 표 — 탭에 렌더된 표 전부(레이더 2·이력·기울기·상방·하방, 구조는 스윙이 있을 때)를 같은 텍스트 변환에 넣은 결과가 그대로
     frames = {tuple(d.value.columns): d.value for d in tab.dataframe}
-    assert len(tab.dataframe) == 6 + (TS.COLUMNS in frames)
+    assert len(tab.dataframe) == 7 + (TS.COLUMNS in frames)  # 파동 에너지 관찰 표 포함
     to_text = {tuple(AP.HISTORY_COLUMN_WIDTHS): lambda f: CT.text_table(AP.history_text_frame(f)),
                T.COLUMNS: lambda f: CT.text_table(f, T.DISPLAY_HEADERS), D.COLUMNS: lambda f: CT.text_table(f, D.DISPLAY_HEADERS)}
     for d in tab.dataframe:

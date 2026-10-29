@@ -80,8 +80,10 @@ def basis_radar_chunks(view: Optional[dict], symbol: str) -> List[str]:
     """기준 TF 레이더 — render_basis_radar_section 이 돌려준 view(헤드라인·표) 그대로. view 가 없으면 섹션 없음."""
     if not view:
         return []
-    return [f"## {BR.SECTION_TITLE} · {symbol}", BR.FIXED_CAPTION, view["headline"],
-            view.get("guidance", {}).get("text", ""), text_table(view["table"])]
+    energy = view.get("energy", {})
+    return [f"## {BR.SECTION_TITLE} · {symbol}", BR.FIXED_CAPTION, energy.get("trend", {}).get("text", ""), view["headline"],
+            view.get("guidance", {}).get("text", ""), text_table(view["table"]),
+            energy.get("text", ""), text_table(energy.get("table"))]
 
 
 def alarm_chunks(view: Optional[dict], symbol: str, interval: str) -> List[str]:

@@ -136,6 +136,8 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
 
     from display.tf_radar_panel import load_radar_frames
     from display.mtf_guidance_model import build_guidance
+    from display.energy_observation import prepare_energy_view, render_energy_observation
+    from display.trend_context import apply_trend_context, render_trend_context
     from display.mtf_guidance import (
         candidate_frames, prepare_closed_frames, remember_radar_observation, render_guidance,
     )
@@ -144,17 +146,22 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
     st.caption(FIXED_CAPTION)
     with st.spinner(f"{symbol} 전 TF 기준 관찰 스캔 중..."):
         asof = pd.Timestamp.now(tz="UTC")
-        frames = prepare_closed_frames(load_radar_frames(symbol), asof)
+        raw_frames = load_radar_frames(symbol)
+        frames = prepare_closed_frames(raw_frames, asof)
         candidates = candidate_frames(frames)
         by_frame = {id(frame): candidates[tf] for tf, frame in frames.items() if frame is not None}
         rows = build_basis_rows(frames, track_up=lambda df: by_frame[id(df)][0],
                                 track_down=lambda df: by_frame[id(df)][1])
+        energy_view = prepare_energy_view(symbol, raw_frames, asof)
+    render_trend_context(energy_view["trend"])
     focus = pick_basis_focus(rows)
     headline = headline_line(focus)
     st.markdown(headline)
     st.caption("선정 이유는 레이더가 고른 TF를 설명합니다. 사이드바에서 보는 차트 TF를 바꿔도 설명 대상은 바뀌지 않습니다.")
     if focus is not None:
-        guidance = render_guidance(build_guidance(focus.interval, frames, candidates, asof),
+        card = build_guidance(focus.interval, frames, candidates, asof)
+        card = apply_trend_context(card, energy_view["trend"]["context"], card["local_direction"], period=60)
+        guidance = render_guidance(card,
                                    symbol=symbol, scope="radar", on_open_chart=on_open_chart)
         remember_radar_observation(symbol, guidance, asof)
     else:
@@ -171,4 +178,5 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
     table = basis_table(rows)
     st.dataframe(table, hide_index=True, width="stretch")
     st.caption("이 표와 설명은 마감된 봉을 사용합니다. 아래 기존 알람·전환 추적 표에는 진행 중인 봉이 포함될 수 있습니다.")
-    return {"headline": headline, "table": table, "guidance": guidance}
+    energy = render_energy_observation(symbol, raw_frames, asof, on_open_chart=on_open_chart, prepared_view=energy_view)
+    return {"headline": headline, "table": table, "guidance": guidance, "energy": energy}

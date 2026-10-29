@@ -59,6 +59,8 @@ test_stoch_double_width test_stoch_kind test_sweep_alarm_rows test_sweep_conflue
 test_sweep_reclaim test_tf_radar test_trend_structure test_triple_patterns test_tz_label
 test_wave_basis_radar test_tracking_extraction test_refactor_provenance test_chart_browser
 test_mtf_guidance test_mtf_guidance_ui
+test_wave_energy_relation test_energy_frames test_energy_observation
+test_trend_context test_trend_context_ui
 """.split())
 
 NETWORK_TESTS = {

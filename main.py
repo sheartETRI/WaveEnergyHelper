@@ -28,6 +28,8 @@ from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.tf_radar_panel import render_tf_radar_section
 from display.wave_basis_radar import render_basis_radar_section
 from display.mtf_guidance import render_saved_observation
+from display.energy_observation import render_saved_energy_observation
+from display.trend_context import render_saved_trend_context
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
 from display.ma60_down_tracker import down_tracker_reference_lines, render_down_tracker_section
@@ -193,7 +195,9 @@ def main():
             render_tf_radar_section(symbol)
             render_basis_radar_section(symbol, on_open_chart=open_guidance_chart)
         else:
+            render_saved_trend_context(symbol)
             render_saved_observation(symbol, on_open_chart=open_guidance_chart, on_scan=open_radar_scan)
+            render_saved_energy_observation(symbol, on_open_chart=open_guidance_chart)
         return
     cfg["freshness_slot"].caption(
         data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
@@ -234,7 +238,9 @@ def main():
 
     if tab_chart.open:
         with tab_chart:
+            render_saved_trend_context(symbol)
             render_saved_observation(symbol, on_open_chart=open_guidance_chart, on_scan=open_radar_scan)
+            render_saved_energy_observation(symbol, on_open_chart=open_guidance_chart)
             tracker_frame = upward_candidates(df)
             down_frame = downward_candidates(df)
             structure_result = structure_analysis(df)

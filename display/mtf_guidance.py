@@ -106,7 +106,9 @@ def render_guidance(
         change = "이전 확인과 같은 관찰 상태입니다."
     else:
         labels = {"up": "상방 후보", "down": "하방 후보", "ma60": "MA60 방향",
-                  "upper": "상위 환경", "lower": "하위 진행", "data": "자료 상태", "source": "수신 상태"}
+                  "upper": "상위 환경", "lower": "하위 진행", "data": "자료 상태", "source": "수신 상태",
+                  "phase": "에너지 관찰 단계", "large": "대파동 방향", "small": "소파동 반전 근거",
+                  "ma10": "MA10 방향", "leg": "파동 관찰 구간", "grid": "봉 집계 기준", "trend": "큰 추세 맥락"}
         changed = [label for key, label in labels.items() if previous.get(key) != snapshot.get(key)]
         detail = ", ".join(changed) or "관찰 상태"
         change = f"관찰 상태가 바뀌었습니다: {detail}. 현재 설명에서 변경 내용을 확인하세요."
@@ -188,7 +190,7 @@ def render_saved_observation(
                 next_check = next_check.tz_localize("UTC") if next_check.tzinfo is None else next_check.tz_convert("UTC")
             if next_check is not None and now >= next_check:
                 expired = "다음 확인 시각이 지났습니다. 레이더를 다시 조회해 현재 조건을 확인하세요."
-                card["items"] = [(label, expired if label in ("다음 확인", "관찰 기간") else value)
+                card["items"] = [(label, expired if label in ("다음 확인", "관찰 기간", "추세 안의 해석", "관찰 방향 해석") else value)
                                  for label, value in card["items"]]
             card["items"] = [("조회 당시 수신 상태" if label == "수신 상태" else label, value)
                              for label, value in card["items"]]
