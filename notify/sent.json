@@ -36,6 +36,11 @@
    "sent_at": "2026-10-27T14:38:16Z",
    "delivered": true
   },
+  "BNBUSDT|1h|ma60_down|2026-10-29T10:00:00Z": {
+   "event_ts": "2026-10-29T10:00:00Z",
+   "sent_at": "2026-10-29T18:40:32Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|ma60_down|2026-10-29T11:00:00Z": {
    "event_ts": "2026-10-29T11:00:00Z",
    "sent_at": "2026-10-29T12:49:13Z",
@@ -110,11 +115,6 @@
    "event_ts": "2026-10-19T06:00:00Z",
    "sent_at": "2026-10-19T14:02:03Z",
    "delivered": true
-  },
-  "BNBUSDT|1h|structure_ll|2026-09-29T17:00:00Z": {
-   "event_ts": "2026-09-29T17:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BNBUSDT|1h|structure_ll|2026-10-01T07:00:00Z": {
    "event_ts": "2026-10-01T07:00:00Z",
@@ -256,6 +256,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-29T11:00:00Z": {
+   "event_ts": "2026-10-29T11:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
@@ -280,11 +285,6 @@
    "event_ts": "2026-10-19T00:00:00Z",
    "sent_at": "2026-10-19T06:45:26Z",
    "delivered": true
-  },
-  "BNBUSDT|4h|structure_ll|2026-09-29T16:00:00Z": {
-   "event_ts": "2026-09-29T16:00:00Z",
-   "sent_at": null,
-   "delivered": false
   },
   "BNBUSDT|4h|structure_ll|2026-10-02T16:00:00Z": {
    "event_ts": "2026-10-02T16:00:00Z",
@@ -1083,6 +1083,11 @@
   },
   "ETHUSDT|4h|structure_ll|2026-10-24T12:00:00Z": {
    "event_ts": "2026-10-24T12:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|4h|structure_ll|2026-10-29T00:00:00Z": {
+   "event_ts": "2026-10-29T00:00:00Z",
    "sent_at": null,
    "delivered": false
   }
