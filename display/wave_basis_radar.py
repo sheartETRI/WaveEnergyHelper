@@ -126,11 +126,14 @@ def basis_table(rows: list[BasisRow]) -> pd.DataFrame:
     ])
 
 
-def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[str], None]] = None) -> dict:
-    """알람 탭 섹션 — TF 레이더 아래. 적재는 TF 레이더와 같은 캐시를 공유한다.
+def render_basis_radar_section(
+    symbol: str, on_open_chart: Optional[Callable[[str], None]] = None, *,
+    show_observation: bool = True, show_radar: bool = True,
+) -> dict:
+    """기준 TF를 조회하고 레이더와 관찰 설명을 각각 선택해 표시한다.
 
-    반환값은 화면에 그린 값(view) — 전체 복사용 텍스트(display.alarm_copy_text)가 재계산 없이 옮긴다:
-    headline(마크다운 한 줄) · table(표시용 표) · guidance(같은 설명 카드 view).
+    적재는 TF 레이더와 같은 캐시를 공유한다. 표시를 생략해도 종목별 관찰
+    view와 전체 복사용 텍스트에 필요한 headline·table·guidance·energy를 보존한다.
     """
     import streamlit as st
 
@@ -142,8 +145,9 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
         candidate_frames, prepare_closed_frames, remember_radar_observation, render_guidance,
     )
 
-    st.subheader(SECTION_TITLE)
-    st.caption(FIXED_CAPTION)
+    if show_radar:
+        st.subheader(SECTION_TITLE)
+        st.caption(FIXED_CAPTION)
     with st.spinner(f"{symbol} 전 TF 기준 관찰 스캔 중..."):
         asof = pd.Timestamp.now(tz="UTC")
         raw_frames = load_radar_frames(symbol)
@@ -153,16 +157,22 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
         rows = build_basis_rows(frames, track_up=lambda df: by_frame[id(df)][0],
                                 track_down=lambda df: by_frame[id(df)][1])
         energy_view = prepare_energy_view(symbol, raw_frames, asof)
-    render_trend_context(energy_view["trend"])
+    if show_observation:
+        render_trend_context(energy_view["trend"])
     focus = pick_basis_focus(rows)
     headline = headline_line(focus)
-    st.markdown(headline)
-    st.caption("선정 이유는 레이더가 고른 TF를 설명합니다. 사이드바에서 보는 차트 TF를 바꿔도 설명 대상은 바뀌지 않습니다.")
+    if show_radar:
+        st.markdown(headline)
+        if show_observation:
+            st.caption("선정 이유는 레이더가 고른 TF를 설명합니다. 사이드바에서 보는 차트 TF를 바꿔도 설명 대상은 바뀌지 않습니다.")
+        else:
+            st.caption("큰 추세와 선정 이유·다음 확인 조건은 추세·관찰 탭에서 확인하세요.")
     if focus is not None:
         card = build_guidance(focus.interval, frames, candidates, asof)
         card = apply_trend_context(card, energy_view["trend"]["context"], card["local_direction"], period=60)
         guidance = render_guidance(card,
-                                   symbol=symbol, scope="radar", on_open_chart=on_open_chart)
+                                   symbol=symbol, scope="radar", on_open_chart=on_open_chart,
+                                   show_card=show_observation)
         remember_radar_observation(symbol, guidance, asof)
     else:
         unavailable = [tf for tf, frame in frames.items() if frame is None or frame.empty or len(frame) < 62]
@@ -172,11 +182,15 @@ def render_basis_radar_section(symbol: str, on_open_chart: Optional[Callable[[st
             reason = "현재 레이더의 관찰 조건을 충족하는 TF가 없습니다. 임의의 TF를 관찰 대상으로 지정하지 않습니다."
             if unavailable:
                 reason += " 자료 부족·미수신 TF: " + ", ".join(unavailable)
-        st.info(reason)
+        if show_observation:
+            st.info(reason)
         guidance = {"text": reason}
         remember_radar_observation(symbol, None, asof, empty_reason=reason)
     table = basis_table(rows)
-    st.dataframe(table, hide_index=True, width="stretch")
-    st.caption("이 표와 설명은 마감된 봉을 사용합니다. 아래 기존 알람·전환 추적 표에는 진행 중인 봉이 포함될 수 있습니다.")
-    energy = render_energy_observation(symbol, raw_frames, asof, on_open_chart=on_open_chart, prepared_view=energy_view)
+    if show_radar:
+        st.dataframe(table, hide_index=True, width="stretch")
+        st.caption("이 표와 설명은 마감된 봉을 사용합니다. 아래 기존 알람·전환 추적 표에는 진행 중인 봉이 포함될 수 있습니다."
+                   if show_observation else "기준 TF 레이더는 마감된 봉을 사용합니다. 기존 알람·전환 추적 표에는 진행 중인 봉이 포함될 수 있습니다.")
+    energy = render_energy_observation(symbol, raw_frames, asof, on_open_chart=on_open_chart,
+                                       prepared_view=energy_view, show_observation=show_observation)
     return {"headline": headline, "table": table, "guidance": guidance, "energy": energy}

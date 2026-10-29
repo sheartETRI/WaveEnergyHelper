@@ -61,6 +61,8 @@ test_wave_basis_radar test_tracking_extraction test_refactor_provenance test_cha
 test_mtf_guidance test_mtf_guidance_ui
 test_wave_energy_relation test_energy_frames test_energy_observation
 test_trend_context test_trend_context_ui
+test_trend_turning test_trend_turning_ui
+test_observation_tab
 """.split())
 
 NETWORK_TESTS = {

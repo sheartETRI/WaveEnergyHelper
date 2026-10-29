@@ -217,7 +217,7 @@ def test_unfinished_tail_cannot_change_closed_indicators_or_candidates():
 
 
 def test_alarm_tab_copy_includes_closed_candle_guidance(monkeypatch):
-    """합성 시세로 실제 알람 탭을 실행하여 설명이 복사 경로까지 연결됐는지 확인한다."""
+    """알람의 통합 복사는 설명을 보존하고, 전용 탭에서 차트로 이동해도 관찰 TF는 유지된다."""
     import data.binance as binance
     import main
     from display.analysis_cache import clear_analysis_cache
@@ -243,8 +243,13 @@ def test_alarm_tab_copy_includes_closed_candle_guidance(monkeypatch):
     for label in ("선정 이유", "다음 확인", "마감"):
         assert label in copied
 
+    assert not any(item.value.startswith("**선정 이유**") for item in app.tabs[1].markdown)
+    app.session_state[main.ACTIVE_TAB_KEY] = "추세·관찰"
+    app.run()
+    assert not app.exception, [item.value for item in app.exception]
     assert all(item.label != "설명할 TF" for item in app.selectbox)
     reason = next(item.value for item in app.markdown if item.value.startswith("**선정 이유**"))
+    assert reason in copied
     button = next(item for item in app.button if "관찰 차트 열기" in item.label)
     owner = button.label.split()[0]
     button.click().run()
@@ -252,10 +257,16 @@ def test_alarm_tab_copy_includes_closed_candle_guidance(monkeypatch):
     assert app.session_state[main.INTERVAL_KEY] == owner
     assert app.session_state[main.ACTIVE_TAB_KEY] == "차트"
     assert next(item for item in app.selectbox if item.label == "타임프레임").value == owner
+    assert reason not in [item.value for item in app.markdown]
 
-    # 보고 있는 차트를 바꿔도 레이더가 고른 대상과 선정 이유는 고정한다.
+    # 차트를 바꾼 뒤 전용 탭으로 돌아와도 레이더가 고른 대상과 선정 이유는 고정한다.
     for interval in ("4h", "1h"):
+        app.session_state[main.ACTIVE_TAB_KEY] = "차트"
         next(item for item in app.selectbox if item.label == "타임프레임").select(interval).run()
+        assert not app.exception, [item.value for item in app.exception]
+        assert reason not in [item.value for item in app.markdown]
+        app.session_state[main.ACTIVE_TAB_KEY] = "추세·관찰"
+        app.run()
         assert not app.exception, [item.value for item in app.exception]
         assert reason in [item.value for item in app.markdown]
         assert any(item.label == f"{owner} 관찰 차트 열기" for item in app.button)
@@ -280,7 +291,7 @@ def _screen_text(app):
     return "\n".join(item.value for group in (app.markdown, app.info, app.caption, app.warning) for item in group)
 
 
-def test_initial_chart_observation_requires_a_radar_scan_instead_of_selected_tf_reason():
+def test_unscanned_saved_observation_requires_a_scan_instead_of_selected_tf_reason():
     app = _saved_app()
     assert "**선정 이유**:" not in _screen_text(app)
     assert app.button

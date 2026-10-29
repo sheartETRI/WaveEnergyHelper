@@ -6,6 +6,7 @@ from copy import deepcopy
 import pandas as pd
 
 from analysis.trend_context import classify_trend_move
+from config.settings import MACD_PARAMS
 from utils.time_display import to_kst
 
 
@@ -29,6 +30,32 @@ POLICY_NOTE = (
     "두 기준과 반대인 시간봉 움직임은 반등·조정으로 우선 해석하며 추세 전환을 확정하지 않습니다. "
     "방향은 각 기준 MA의 1봉 변화로 측정합니다. 높은 TF의 성공 확률을 수치로 보장하는 규칙은 아닙니다."
 )
+TURNING_LABELS = ("4d 변곡 준비", "4d MA10 기울기", "4d MA5·MA10", "4d MACD·시그널", "변곡 다음 확인")
+TURNING_STATE = {
+    "BEARISH_PREP": "상승 추세 내 하락 변곡 준비 — MA10 하락 전환은 아직 미확인",
+    "DOWNSIDE_EVIDENCE": "MA10 상승 중 MA5·MACD 하방 근거 유지 — 기울기 둔화 동시 충족은 아님",
+    "SLOWING": "MA10 상승 기울기 둔화 — MA5·MACD 하방 근거의 동시 충족을 확인",
+    "MA10_DOWN": "MA10 하락 관측 — 상승 중 변곡 준비 단계와 구분",
+    "NO_PREP": "세 조건이 함께 나타나는 하락 변곡 준비 근거 없음",
+    "HOLD": "변곡 준비 판단 보류 — 마감 자료·계산 이력 확인 필요",
+}
+
+
+def turning_summary(context: dict) -> str:
+    turning = context.get("turning", {})
+    state = turning.get("state", "HOLD")
+    text = TURNING_STATE.get(state, TURNING_STATE["HOLD"])
+    if state == "HOLD" and turning.get("issue") == "INSUFFICIENT_BARS":
+        minimum = MACD_PARAMS["slow"] + MACD_PARAMS["signal"]
+        text += f"(MACD 계산에 완성 4d 봉 {minimum}개 이상 필요)"
+    return text
+
+
+def trend_interpretation(code: str, context: dict) -> str:
+    text = INTERPRETATION[code]
+    if context.get("turning", {}).get("state") == "BEARISH_PREP" and code != "HOLD":
+        text += " · 4d 하락 변곡 준비 근거 동반: 상승 방향이 유지돼도 조정 지속·확대와 MA10 하향 전환을 함께 확인"
+    return text
 
 
 def _time(value) -> str:
@@ -38,6 +65,47 @@ def _time(value) -> str:
 def _utc(value) -> pd.Timestamp:
     stamp = pd.Timestamp(value)
     return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+
+
+def _number(value) -> str:
+    return "미확인" if value is None else f"{float(value):,.12g}"
+
+
+def _cross_text(event) -> str:
+    if not event:
+        return "교차 발생 시각 미확인"
+    kind = "데드크로스" if event["kind"] == "dead" else "골든크로스"
+    age = "이번 마감봉" if event["bars_ago"] == 0 else f"{event['bars_ago']}봉 전"
+    return f"마지막 {kind} {_time(event['time'])}({age})"
+
+
+def _turning_items(context: dict) -> list:
+    turning = context.get("turning", {})
+    held = turning.get("state", "HOLD") == "HOLD"
+    slowing = turning.get("ma10_slowing")
+    slope = f"직전 {_number(turning.get('ma10_prev_delta'))} → 현재 {_number(turning.get('ma10_delta'))}(가격/4d 봉)"
+    slope += " · 상승 기울기 둔화" if slowing else " · 상승 기울기 둔화 조건 미충족" if slowing is False else " · 확인 보류"
+    relations = {"above": "위", "below": "아래", "equal": "동일", "unknown": "미확인"}
+    ma = (f"MA5 {_number(turning.get('ma5_value'))} · MA10 {_number(turning.get('ma10_value'))}"
+          f" · MA5가 MA10 {relations.get(turning.get('ma_relation'), '미확인')}"
+          f" · {_cross_text(turning.get('ma_cross'))}")
+    macd = (f"MACD선 {_number(turning.get('macd_value'))} · 시그널선 {_number(turning.get('signal_value'))}"
+            f" · MACD선이 시그널선 {relations.get(turning.get('macd_relation'), '미확인')}"
+            f" · {_cross_text(turning.get('macd_cross'))}")
+    params = ",".join(str(MACD_PARAMS[key]) for key in ("fast", "slow", "signal"))
+    macd += f" · MACD({params})"
+    if turning.get("macd_basis") == "chart_seed":
+        macd += " · 기존 4d 차트와 같은 초기 계산 이력"
+    elif turning.get("macd_basis") == "closed_only":
+        macd += " · 완성 4d 봉의 계산 이력(차트 초기값 미확인)"
+    next_text = (
+        f"다음 4d 마감 {_time(turning.get('next_close'))}: MA10 변화량이 음수로 바뀌는지 확인. "
+        "MA5·MACD의 재상향 교차 또는 MA10 재가속으로 세 조건이 깨지면 준비 상태를 해제합니다. "
+        "세 조건의 결합은 관찰 근거이며 하락 확률이나 전환 확정을 뜻하지 않습니다."
+    )
+    if held:
+        slope = ma = macd = next_text = "마감 자료·연속 봉·MACD 계산 이력 확인 후 다시 관찰"
+    return list(zip(TURNING_LABELS, (turning_summary(context), slope, ma, macd, next_text)))
 
 
 def _basis_line(basis: dict) -> str:
@@ -64,6 +132,7 @@ def build_trend_view(context: dict) -> dict:
         ("주 추세 기준 · 4d MA10", _basis_line(context["primary"])),
         ("전체 추세 참고 · 1d MA60", _basis_line(context["reference"])),
         ("큰 추세 판정", STATUS[context["status"]]),
+        *_turning_items(context),
         ("다음 추세 확인", _time(context.get("next_check_at"))),
         ("해석 원칙", POLICY_NOTE),
         ("40일 범위의 의미", "4일봉 MA10은 4일 간격 종가 10개의 평균입니다. 일봉 MA40과 값·갱신 주기가 다릅니다."),
@@ -92,11 +161,12 @@ def apply_trend_context(card: dict, context: dict, local_direction: str, period:
     code = interpretation["code"]
     basis = f"주 기준 4d MA10 {DIRECTION.get(context['primary']['direction'], '보류')} · 전체 참고 1d MA60 {DIRECTION.get(context['reference']['direction'], '보류')}"
     extra = [("큰 추세 기준", basis),
-             ("추세 안의 해석", f"{tf} MA{period} {DIRECTION.get(local_direction, '보류')}: {INTERPRETATION[code]}")]
+             ("4d 변곡 준비", turning_summary(context)),
+             ("추세 안의 해석", f"{tf} MA{period} {DIRECTION.get(local_direction, '보류')}: {trend_interpretation(code, context)}")]
     observation = []
     for direction in result.get("observation_directions", []):
         candidate = classify_trend_move(tf, direction if local_ready else "unknown", context, period=period)
-        observation.append(f"{DIRECTION[direction]} 전환 관찰: {INTERPRETATION[candidate['code']]}")
+        observation.append(f"{DIRECTION[direction]} 전환 관찰: {trend_interpretation(candidate['code'], context)}")
     if observation:
         extra.append(("관찰 방향 해석", " / ".join(observation)))
     result["items"] = extra + result["items"]
@@ -119,6 +189,6 @@ def render_saved_trend_context(symbol: str) -> None:
     deadline = view["context"].get("next_check_at")
     if deadline is not None and pd.Timestamp.now(tz="UTC") >= _utc(deadline):
         st.warning("추세 확인 시각이 지났습니다. 레이더를 다시 조회한 뒤 하위 TF의 반등·조정을 해석하세요.")
-        view["items"] = [(label, "조회 기준 만료 — 큰 추세 재확인 필요" if label in ("큰 추세 판정", "다음 추세 확인")
+        view["items"] = [(label, "조회 기준 만료 — 큰 추세·변곡 근거 재확인 필요" if label in ("큰 추세 판정", "다음 추세 확인", *TURNING_LABELS)
                            else value) for label, value in view["items"]]
     render_trend_context(view)

@@ -1,4 +1,4 @@
-# main.py — WaveEnergyHelper 진입점 (signal-alarm: 차트 + 알람 전용 슬림 구성).
+# main.py — WaveEnergyHelper 진입점 (차트 / 알람 / 추세·관찰).
 #
 # 다섯 가지만 본다:
 #   · 차트 (캔들 + 이평 + 스토캐 3층 스택 + MACD + RSI)
@@ -7,7 +7,7 @@
 #   · MACD 골든 / 데드크로스, 0선 상향 / 하향
 # 검출기는 기존 것을 그대로 쓴다(indicators/). 알람 패널만 신규(display/alarm_panel.py).
 #
-# 조립부만 담당한다 — 화면 상단에 알람, 아래에 차트. 연구·검증 패널 없음.
+# 조립부만 담당한다. 선택한 탭만 실행하며 연구·검증 패널은 연결하지 않는다.
 from typing import Optional
 
 import pandas as pd
@@ -27,9 +27,7 @@ from display.alarm_copy_text import build_copy_text, render_copy_expander
 from display.alarm_panel import DEFAULT_HISTORY_BARS, render_alarm_panel
 from display.tf_radar_panel import render_tf_radar_section
 from display.wave_basis_radar import render_basis_radar_section
-from display.mtf_guidance import render_saved_observation
-from display.energy_observation import render_saved_energy_observation
-from display.trend_context import render_saved_trend_context
+from display.observation_tab import render_observation_tab
 from display.code_version import render_code_version
 from display.lw_gate_context import gate_label, struct_reference
 from display.ma60_down_tracker import down_tracker_reference_lines, render_down_tracker_section
@@ -54,8 +52,8 @@ MACD_PANEL_DEFAULT_OFF_INTERVALS = ("15m",)
 # 남겨 두던 Plotly 라디오·표시 모드·스토캐 표시 컨트롤을 걷어냈다 — main 은 plotly 패키지 없이 기동한다.
 # charts/plotly_builder.py 는 파일로 남아 있으며(레거시·연구 패널 경로) main 에서는 import 하지 않는다.
 
-# 본문 탭 — 첫 탭이 기본(차트). 알람 패널은 두 번째 탭으로 이동(표시 계층 재배치만, 정의 무접촉).
-MAIN_TABS = ("차트", "알람")
+# 본문 탭 — 첫 탭이 기본(차트). 큰 추세·고정 관찰 설명은 전용 탭에서 표시한다.
+MAIN_TABS = ("차트", "알람", "추세·관찰")
 ACTIVE_TAB_KEY = "main_active_tab"
 
 # 게이트 문맥 라벨 — LW 렌더 함수의 필수 인자(main 8cdd4e5 원칙 승계). 공급원은 main 에서 체리픽한
@@ -76,12 +74,6 @@ def open_guidance_chart(interval: str) -> None:
     """버튼 콜백에서 다음 실행 전에 사이드바와 선택 탭을 맞춘다."""
     st.session_state[INTERVAL_KEY] = interval
     st.session_state[ACTIVE_TAB_KEY] = "차트"
-
-
-def open_radar_scan() -> None:
-    """명시적 재조회에서 원본 캐시를 비우고 레이더가 있는 알람 탭을 연다."""
-    clear_klines_cache()
-    st.session_state[ACTIVE_TAB_KEY] = "알람"
 
 
 # 데이터 새로고침 — 데이터 계층 캐시(fetch_klines, ttl=600)를 비우고 이 rerun 에서 최신 봉까지 다시 받는다.
@@ -184,20 +176,25 @@ def main():
     cfg = render_sidebar()
     symbol, interval = cfg["symbol"], cfg["interval"]
 
+    # 저장된 추세·관찰 설명은 선택한 차트의 데이터 적재와 독립적으로 연다.
+    tab_chart, tab_alarm, tab_observation = st.tabs(MAIN_TABS, key=ACTIVE_TAB_KEY, on_change="rerun")
+    if tab_observation.open:
+        with tab_observation:
+            render_observation_tab(symbol, on_open_chart=open_guidance_chart)
+        cfg["data_url_slot"].caption(data_source_line())
+        return
+
     with st.spinner(f"{symbol} {interval} 적재 중..."):
         df = load_frame(symbol, interval, with_macd=cfg["show_macd"])
 
     cfg["data_url_slot"].caption(data_source_line())
     if df is None or df.empty:
-        st.error(load_error_message(symbol, interval, last_fetch_error(symbol, get_fetch_interval(interval))))
-        # 선택한 차트의 적재 실패가 종목 전체의 관찰 안내까지 숨기지 않게 한다.
-        if st.session_state.get(ACTIVE_TAB_KEY) == "알람":
-            render_tf_radar_section(symbol)
-            render_basis_radar_section(symbol, on_open_chart=open_guidance_chart)
-        else:
-            render_saved_trend_context(symbol)
-            render_saved_observation(symbol, on_open_chart=open_guidance_chart, on_scan=open_radar_scan)
-            render_saved_energy_observation(symbol, on_open_chart=open_guidance_chart)
+        with (tab_alarm if tab_alarm.open else tab_chart):
+            st.error(load_error_message(symbol, interval, last_fetch_error(symbol, get_fetch_interval(interval))))
+            if tab_alarm.open:
+                render_tf_radar_section(symbol)
+                render_basis_radar_section(symbol, on_open_chart=open_guidance_chart, show_observation=False)
+            st.info("큰 추세와 관찰 설명은 ‘추세·관찰’ 탭에서 확인할 수 있습니다.")
         return
     cfg["freshness_slot"].caption(
         data_freshness_caption(last_fetch_at(symbol, get_fetch_interval(interval)), df.index[-1])
@@ -207,15 +204,13 @@ def main():
     if stale:
         st.warning(stale)
 
-    # 선택한 탭만 실행한다. 차트에서는 현재 TF 추적만 계산하고 전 TF 레이더는 알람 탭에서 실행한다.
-    tab_chart, tab_alarm = st.tabs(MAIN_TABS, key=ACTIVE_TAB_KEY, on_change="rerun")
-
+    # 차트에서는 현재 TF 추적을 계산하고 전 TF 레이더는 알람 조회에서 실행한다.
     if tab_alarm.open:
         with tab_alarm:
             # TF 레이더 — 어느 TF에서 전투(레벨 이탈 에피소드)가 벌어지는지 교차 TF 요약 (표시 전용, SPEC §9).
             tf_radar_view = render_tf_radar_section(symbol)
             # 기준 TF 레이더 — 대파동 쌍바닥/쌍봉 후 60MA 전환 관찰이 열린 TF (표시 전용, SPEC §10).
-            basis_radar_view = render_basis_radar_section(symbol, on_open_chart=open_guidance_chart)
+            basis_radar_view = render_basis_radar_section(symbol, on_open_chart=open_guidance_chart, show_observation=False)
             alarm_view = render_alarm_panel(
                 df, symbol, interval,
                 history_bars=cfg["history_bars"],
@@ -238,9 +233,6 @@ def main():
 
     if tab_chart.open:
         with tab_chart:
-            render_saved_trend_context(symbol)
-            render_saved_observation(symbol, on_open_chart=open_guidance_chart, on_scan=open_radar_scan)
-            render_saved_energy_observation(symbol, on_open_chart=open_guidance_chart)
             tracker_frame = upward_candidates(df)
             down_frame = downward_candidates(df)
             structure_result = structure_analysis(df)

@@ -10,7 +10,7 @@ from analysis.wave_energy_relation import analyze_energy_relation
 from analysis.trend_context import build_trend_context, classify_trend_move
 from config.settings import WAVE_LAYER_ROLES
 from display.mtf_guidance import render_guidance
-from display.trend_context import INTERPRETATION, apply_trend_context, build_trend_view, render_trend_context
+from display.trend_context import TURNING_LABELS, apply_trend_context, build_trend_view, render_trend_context, trend_interpretation
 from utils.time_display import to_kst
 
 
@@ -81,7 +81,7 @@ def build_energy_view(frames: dict, asof) -> dict:
         rows.append({"TF": tf, "관찰 상태": state, "대파동 K": large,
                      "중파동 K": DIRECTION.get(reading.get("mid_direction"), "보류"),
                      "소파동": f"{pattern} {small_status}", "MA10": ma10,
-                     "대파동·MA10": relation, "추세 안의 해석": INTERPRETATION[trend_move["code"]], "다음 확인": next_text})
+                     "대파동·MA10": relation, "추세 안의 해석": trend_interpretation(trend_move["code"], context), "다음 확인": next_text})
         readings[tf] = {"reading": reading, "issue": issue, "next_close": next_close, "last_close": last_close}
     # 기존 MA60 레이더의 선정·점수를 바꾸지 않는 별도의 관찰 순서다.
     priority = {"SMALL_CONFIRMED": 4, "LARGE_REVERSED": 4, "SMALL_FORMING": 3, "REASSESS": 2, "WAIT_SMALL": 1}
@@ -152,21 +152,29 @@ def prepare_energy_view(symbol: str, raw_frames: dict, asof) -> dict:
     return build_energy_view(prepare_energy_frames(energy_raw, asof), asof)
 
 
-def render_energy_observation(symbol: str, raw_frames: dict, asof, on_open_chart=None, prepared_view=None) -> dict:
-    """알람 조회에서만 계산·수신하며 결과를 종목별로 저장한다."""
+def render_energy_observation(
+    symbol: str, raw_frames: dict, asof, on_open_chart=None, prepared_view=None, *, show_observation: bool = True,
+) -> dict:
+    """명시적 조회의 view를 종목별로 저장하고 선택적으로 표시한다."""
     view = prepared_view if prepared_view is not None else prepare_energy_view(symbol, raw_frames, asof)
-    if prepared_view is None:
+    if show_observation and prepared_view is None:
         render_trend_context(view["trend"])
-    st.markdown(f"### {TITLE}")
-    st.caption(CAPTION)
+    if show_observation:
+        st.markdown(f"### {TITLE}")
+        st.caption(CAPTION)
     if view["card"] is not None:
-        guide = render_guidance(view["card"], symbol=symbol, scope="energy_radar", on_open_chart=on_open_chart)
+        guide = render_guidance(view["card"], symbol=symbol, scope="energy_radar", on_open_chart=on_open_chart,
+                                show_card=show_observation)
         view["card"] = guide["card"]
         text = guide["text"]
+        view.update(change=guide["change"], changed=guide["changed"])
     else:
         text = "현재 해석 가능한 파동 에너지 관찰 대상이 없습니다. 표에서 자료 상태를 확인하세요."
-        st.info(text)
-    st.dataframe(view["table"], hide_index=True, width="stretch")
+        view.update(change="", changed=False)
+        if show_observation:
+            st.info(text)
+    if show_observation:
+        st.dataframe(view["table"], hide_index=True, width="stretch")
     view["text"] = f"### {TITLE}\n\n{CAPTION}\n\n{text}"
     st.session_state[f"wave_energy_observation:{symbol}"] = deepcopy(view)
     return view
@@ -186,7 +194,7 @@ def render_saved_energy_observation(symbol: str, on_open_chart=None) -> None:
             now, next_check = pd.Timestamp.now(tz="UTC"), card.get("next_check_at")
             if next_check is not None and now >= pd.Timestamp(next_check):
                 card["items"] = [(label, "확인 시각이 지났습니다. 큰 추세를 다시 조회한 뒤 해석하세요."
-                                  if label in ("다음 확인", "추세 안의 해석", "관찰 방향 해석") else value)
+                                  if label in ("다음 확인", "추세 안의 해석", "관찰 방향 해석", *TURNING_LABELS) else value)
                                  for label, value in card["items"]]
             _draw_guidance(card, symbol=symbol, scope="saved_energy", change="마지막 에너지 관찰 결과입니다.",
                            changed=False, on_open_chart=on_open_chart)

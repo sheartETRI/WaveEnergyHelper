@@ -66,10 +66,14 @@ render_saved_energy_observation('BTCUSDT')
         assert stored["card"] == card
 
 
-def test_alarm_energy_table_and_copy_include_four_day_observation(app):
-    tables = [item.value for item in app.dataframe if "대파동·MA10" in item.value.columns]
-    assert len(tables) == 1 and "4d" in set(tables[0]["TF"])
+def test_observation_tab_energy_table_matches_alarm_copy_with_four_day_observation(app):
+    assert not any("대파동·MA10" in item.value.columns for item in app.dataframe)
     copied = app.code[0].value
     assert TITLE in copied
+    app.session_state["main_active_tab"] = "추세·관찰"
+    app.run()
+    assert not app.exception, [item.value for item in app.exception]
+    tables = [item.value for item in app.tabs[2].dataframe if "대파동·MA10" in item.value.columns]
+    assert len(tables) == 1 and "4d" in set(tables[0]["TF"])
     from display.alarm_copy_text import text_table
     assert text_table(tables[0]) in copied

@@ -222,14 +222,20 @@ st.code(view['text'])
     assert old_interpretation not in at.code[0].value
 
 
-def test_alarm_presents_global_trend_before_local_guidance_and_copies_it(app):
+def test_observation_tab_presents_global_trend_before_local_guidance_and_alarm_copy_preserves_it(app):
+    import main
     from display.trend_context import TITLE
 
-    visible = [entry.value for entry in app.tabs[1].markdown]
+    text = app.code[0].value
+    assert not any(TITLE in entry.value for entry in app.tabs[1].markdown)
+    assert not any(entry.value.startswith("**선정 이유**") for entry in app.tabs[1].markdown)
+    app.session_state[main.ACTIVE_TAB_KEY] = "추세·관찰"
+    app.run()
+    assert not app.exception, [entry.value for entry in app.exception]
+    visible = [entry.value for entry in app.tabs[2].markdown]
     trend_at = next(i for i, text in enumerate(visible) if TITLE in text)
     local = [i for i, text in enumerate(visible) if text.startswith("**선정 이유**")]
     assert local and trend_at < min(local)
-    text = app.code[0].value
     assert TITLE in text and "4d" in text and "MA10" in text and "MA60" in text
     for entry in visible[trend_at+1:]:
         if entry.startswith("**") and "추세" in entry:

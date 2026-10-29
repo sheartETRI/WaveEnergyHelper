@@ -1,9 +1,10 @@
-"""알람 탭 전체 복사용 텍스트 — 탭에 그린 값을 마크다운 텍스트 한 덩어리로 (표시 계층 전용, signal-alarm).
+"""알람·추세 관찰 조회의 전체 복사용 텍스트 (표시 계층 전용, signal-alarm).
 
 알람 탭 맨 아래 접힌 상자(expander) 안 st.code 블록 하나에 탭 내용을 옮긴다 — st.code 의 복사 버튼으로 한 번에 복사.
-**재계산하지 않는다**: 각 섹션 render_* 가 화면에 그린 뒤 돌려준 값(TF 레이더·기준 TF 레이더 view, 알람 패널 view,
+**재계산하지 않는다**: 각 섹션 render_* 가 돌려준 값(TF 레이더·기준 TF 레이더 view, 알람 패널 view,
 60MA 상방·하방 추적 후보 표, 기울기 (tf, snapshot) 목록, 추세 구조 분석 결과)만 받아, 화면과 같은 표시 함수
 (metric_items · display_frame · summary_line · summary_frame · chain_frame 등)로 문자열을 만든다. 검출·판정·fetch 없음.
+전용 추세·관찰 탭으로 옮긴 설명도 같은 알람 조회의 view에서 함께 내보낸다.
 
 표는 마크다운 표(파이프 구분)로 적고, 고정폭 글꼴에서 열이 맞도록 동아시아 전각 문자(한글·이모지)는 2칸으로 세어 채운다.
 섹션 순서는 화면 순서: TF 레이더 → 기준 TF 레이더 → 알람(심볼·TF·마지막 봉 · 마지막 봉 알람 · 신호 이력) →
@@ -26,7 +27,7 @@ import display.trend_structure as TS
 import display.wave_basis_radar as BR
 
 EXPANDER_LABEL = "전체 복사용 텍스트"
-EXPANDER_CAPTION = "알람 탭에 표시된 값을 마크다운 텍스트로 모았습니다 — 블록 오른쪽 위 복사 버튼으로 한 번에 복사합니다."
+EXPANDER_CAPTION = "알람과 같은 조회의 큰 추세·관찰 설명을 마크다운 텍스트로 모았습니다 — 블록 오른쪽 위 복사 버튼으로 한 번에 복사합니다."
 FILTER_NOTE = "표시 필터 적용 — 전체 {total}건 중 {shown}건"
 DOC_TITLE = "알람 탭 · {symbol} {interval}"
 NL = "\n"

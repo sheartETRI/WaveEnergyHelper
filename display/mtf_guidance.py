@@ -74,8 +74,9 @@ def candidate_frames(frames: dict[str, Optional[pd.DataFrame]]) -> dict[str, tup
 def render_guidance(
     card: dict, *, symbol: str, scope: str,
     on_open_chart: Optional[Callable[[str], None]] = None,
+    show_card: bool = True,
 ) -> dict:
-    """동일 카드의 화면·복사 view. 가격·시각 표시는 의미 변화 비교에서 제외한다."""
+    """동일 카드의 저장·복사 view를 조립하고 선택적으로 표시한다."""
     import streamlit as st
     from data.binance import stale_age
     from data.processor import get_fetch_interval
@@ -115,8 +116,19 @@ def render_guidance(
     st.session_state[state_key] = deepcopy(snapshot)
     st.session_state[focus_key] = interval
 
+    if not show_card:
+        return _guidance_content(card, symbol=symbol, change=change, changed=focus_changed or changed_state)[1]
     return _draw_guidance(card, symbol=symbol, scope=scope, change=change,
                          changed=focus_changed or changed_state, on_open_chart=on_open_chart)
+
+
+def _guidance_content(card: dict, *, symbol: str, change: str, changed: bool) -> tuple[list[str], dict]:
+    """화면 표시와 숨김 저장이 같은 카드·복사 텍스트를 사용한다."""
+    title = f"{symbol} · {card['title']}"
+    lines = [f"### {title}"] + [f"**{label}**: {value}" for label, value in card["items"]]
+    view = {"text": "\n\n".join(lines + [change, REFRESH_NOTE, METHOD_NOTE, MATH_NOTE]),
+            "card": card, "change": change, "changed": changed}
+    return lines, view
 
 
 def _draw_guidance(card: dict, *, symbol: str, scope: str, change: str, changed: bool,
@@ -125,8 +137,7 @@ def _draw_guidance(card: dict, *, symbol: str, scope: str, change: str, changed:
     import streamlit as st
 
     interval = card["interval"]
-    title = f"{symbol} · {card['title']}"
-    lines = [f"### {title}"] + [f"**{label}**: {value}" for label, value in card["items"]]
+    lines, view = _guidance_content(card, symbol=symbol, change=change, changed=changed)
     with st.container(border=True):
         for line in lines:
             st.markdown(line)
@@ -147,8 +158,7 @@ def _draw_guidance(card: dict, *, symbol: str, scope: str, change: str, changed:
         with st.expander("지표와 TF를 연결한 근거", expanded=False):
             st.markdown(METHOD_NOTE)
             st.markdown(MATH_NOTE)
-    return {"text": "\n\n".join(lines + [change, REFRESH_NOTE, METHOD_NOTE, MATH_NOTE]),
-            "card": card, "change": change, "changed": changed}
+    return view
 
 
 def remember_radar_observation(symbol: str, view: Optional[dict], asof, *, empty_reason: str = "") -> None:
@@ -166,6 +176,7 @@ def render_saved_observation(
 ) -> dict:
     """차트 TF를 입력받지 않고 마지막 레이더 결과를 읽기 전용으로 표시한다."""
     import streamlit as st
+    from display.trend_context import TURNING_LABELS
     from utils.time_display import to_kst
 
     saved = st.session_state.get(f"mtf_radar_observation:{symbol}")
@@ -190,7 +201,7 @@ def render_saved_observation(
                 next_check = next_check.tz_localize("UTC") if next_check.tzinfo is None else next_check.tz_convert("UTC")
             if next_check is not None and now >= next_check:
                 expired = "다음 확인 시각이 지났습니다. 레이더를 다시 조회해 현재 조건을 확인하세요."
-                card["items"] = [(label, expired if label in ("다음 확인", "관찰 기간", "추세 안의 해석", "관찰 방향 해석") else value)
+                card["items"] = [(label, expired if label in ("다음 확인", "관찰 기간", "추세 안의 해석", "관찰 방향 해석", *TURNING_LABELS) else value)
                                  for label, value in card["items"]]
             card["items"] = [("조회 당시 수신 상태" if label == "수신 상태" else label, value)
                              for label, value in card["items"]]

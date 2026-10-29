@@ -117,3 +117,34 @@ def test_invalid_times_and_absent_daily_provide_explicit_hold_metadata():
     assert energy.empty and "시각" in energy.attrs["energy_issue"]
     energy = prepare_energy_frames({}, "2030-01-01")["4d"]
     assert energy.empty and "없음" in energy.attrs["energy_issue"]
+
+
+def test_four_day_turning_macd_matches_chart_using_preserved_first_group_seed():
+    from analysis.trend_context import build_trend_context
+    from indicators.oscillators import add_macd
+
+    raw = _daily(402)
+    energy = _four(raw)
+    seed = energy.attrs["energy_macd_seed"]
+    assert seed == {"close": raw["close"].iloc[0], "close_time": raw.index[0]+pd.Timedelta(days=1)}
+    chart = add_macd(resample_timeframe(raw, "4d"))
+    last_label = energy.attrs["energy_chart_labels"][-1]
+    at = energy.attrs["energy_bar_closes"][-1] + pd.Timedelta(hours=1)
+    turning = build_trend_context({"4d": energy}, at)["turning"]
+    assert turning["macd_basis"] == "chart_seed" and turning["state"] != "HOLD"
+    assert turning["macd_value"] == chart.loc[last_label, "macd"]
+    assert turning["signal_value"] == chart.loc[last_label, "macd_signal"]
+    assert len(energy) == 100  # EMA 초기값은 완성 관측봉 수에 넣지 않는다.
+
+
+def test_unfinished_daily_cannot_change_turning_context_or_ema_seed():
+    from analysis.trend_context import build_trend_context
+
+    raw = _daily(402)
+    changed = raw.copy()
+    changed.loc[changed.index[-1], ["high", "close"]] *= 10
+    first, second = _four(raw), _four(changed)
+    at = first.attrs["energy_bar_closes"][-1] + pd.Timedelta(hours=1)
+    expected = build_trend_context({"4d": first}, at)["turning"]
+    actual = build_trend_context({"4d": second}, at)["turning"]
+    assert actual == expected

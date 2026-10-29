@@ -104,6 +104,11 @@ def _four_day_frame(raw: Optional[pd.DataFrame], asof) -> pd.DataFrame:
     frame = add_stochastic_slow_layers(add_moving_averages(frame))
     frame = _metadata(frame, closes, labels, _BASIS_4D)
     frame.attrs["energy_origin"] = origin
+    # 차트의 첫 부분 그룹은 완성봉 관측에서 제외하되 기존 MACD의 EMA 초기값은
+    # 보존한다. 후속 마감봉만 판정하며 이 값은 관측 봉 수에 포함하지 않는다.
+    frame.attrs["energy_macd_seed"] = {
+        "close": float(daily["close"].iloc[0]), "close_time": origin + _DAY,
+    }
     return frame
 
 

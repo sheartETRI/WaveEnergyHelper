@@ -12,6 +12,8 @@ from typing import Optional
 
 import pandas as pd
 
+from analysis.trend_turning import build_turning_context
+
 
 RULE_VERSION = "HT1"
 _DAY = pd.Timedelta(days=1)
@@ -131,6 +133,7 @@ def build_trend_context(frames: dict, asof) -> dict:
         raise ValueError("asof must be a valid UTC instant") from None
     primary = _observation(frames.get("4d"), "4d", 10, at)
     reference = _observation(frames.get("1d"), "1d", 60, at)
+    turning = build_turning_context(frames.get("4d"), primary)
     valid_primary, valid_reference = not primary["issue"], not reference["issue"]
     direction = "unknown"
     if valid_primary and valid_reference:
@@ -150,8 +153,10 @@ def build_trend_context(frames: dict, asof) -> dict:
         "primary_direction": primary["direction"], "reference_direction": reference["direction"],
         "status": status, "primary_issue": primary["issue"], "reference_issue": reference["issue"],
         "grid_origin": str(primary["grid_origin"]) if primary["grid_origin"] is not None else "",
+        "turning": turning["snapshot"],
     }
     return {"version": RULE_VERSION, "primary": primary, "reference": reference,
+            "turning": turning,
             "status": status, "direction": direction,
             "next_check_at": min(checks) if checks else None, "snapshot": snapshot}
 

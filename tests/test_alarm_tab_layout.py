@@ -1,4 +1,4 @@
-"""알람 탭 정리(signal-alarm) — 이력 표 표시 필터·같은 시각 묶음 음영·컬럼 폭 + 본문 2탭 배선. 정의 무접촉."""
+"""알람 탭 정리 — 이력 표시 필터·음영·컬럼 폭과 관찰 전용 탭 배선."""
 import os
 import sys
 
@@ -65,10 +65,10 @@ def test_column_widths_and_no_merge_logic():
     assert 'width="stretch"' in body
 
 
-def test_main_has_two_tabs_chart_first():
-    assert M.MAIN_TABS == ("차트", "알람")
+def test_main_has_a_dedicated_observation_tab_after_chart_and_alarm():
+    assert M.MAIN_TABS == ("차트", "알람", "추세·관찰")
     with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as fh:
         body = fh.read()
     assert 'st.tabs(MAIN_TABS, key=ACTIVE_TAB_KEY, on_change="rerun")' in body
     assert "if tab_alarm.open:" in body and "if tab_chart.open:" in body
-    assert body.index("with tab_alarm:") < body.index("render_alarm_panel(") < body.index("with tab_chart:") < body.index("render_lw_chart(")
+    assert "render_observation_tab(" in body
