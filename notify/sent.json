@@ -266,9 +266,19 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-29T20:00:00Z": {
+   "event_ts": "2026-10-29T20:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
+   "delivered": true
+  },
+  "BNBUSDT|4h|ma60_down|2026-10-29T20:00:00Z": {
+   "event_ts": "2026-10-29T20:00:00Z",
+   "sent_at": "2026-10-30T02:31:08Z",
    "delivered": true
   },
   "BNBUSDT|4h|ma60_turn|2026-10-03T12:00:00Z": {
@@ -856,11 +866,6 @@
    "sent_at": "2026-10-29T22:59:53Z",
    "delivered": true
   },
-  "ETHUSDT|1h|structure_ll|2026-09-30T02:00:00Z": {
-   "event_ts": "2026-09-30T02:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "ETHUSDT|1h|structure_ll|2026-09-30T06:00:00Z": {
    "event_ts": "2026-09-30T06:00:00Z",
    "sent_at": null,
@@ -1003,6 +1008,11 @@
   },
   "ETHUSDT|1h|structure_ll|2026-10-29T02:00:00Z": {
    "event_ts": "2026-10-29T02:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|structure_ll|2026-10-29T20:00:00Z": {
+   "event_ts": "2026-10-29T20:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -3291,6 +3301,20 @@
     "pattern_high": 2530.44,
     "already_down": true,
     "recorded_at": "2026-10-29T12:49:13Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-10-29T04:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 4,
+    "turn_ts": "2026-10-29T20:00:00Z",
+    "turn_price": 698.46,
+    "direction": "down",
+    "pattern_high": 762.2,
+    "already_down": false,
+    "recorded_at": "2026-10-30T02:31:08Z"
    }
   ]
  }
