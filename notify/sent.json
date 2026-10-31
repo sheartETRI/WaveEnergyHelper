@@ -61,11 +61,6 @@
    "sent_at": "2026-10-18T05:12:24Z",
    "delivered": true
   },
-  "BNBUSDT|1h|stoch_db|2026-10-01T17:00:00Z": {
-   "event_ts": "2026-10-01T17:00:00Z",
-   "sent_at": "2026-10-01T21:58:14Z",
-   "delivered": true
-  },
   "BNBUSDT|1h|stoch_db|2026-10-03T10:00:00Z": {
    "event_ts": "2026-10-03T10:00:00Z",
    "sent_at": "2026-10-03T12:36:43Z",
@@ -3344,6 +3339,19 @@
     "pattern_low": 680.0,
     "already_up": false,
     "recorded_at": "2026-10-31T05:19:54Z"
+   },
+   {
+    "symbol": "BTCUSDT",
+    "tf": "6h",
+    "confirm_ts": "2026-10-26T12:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 79220.74,
+    "already_up": false,
+    "recorded_at": "2026-10-31T19:52:20Z"
    }
   ]
  }
