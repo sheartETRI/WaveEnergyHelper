@@ -261,6 +261,11 @@
    "sent_at": null,
    "delivered": false
   },
+  "BNBUSDT|1h|structure_ll|2026-10-31T21:00:00Z": {
+   "event_ts": "2026-10-31T21:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
   "BNBUSDT|4h|ma60_down|2026-10-07T00:00:00Z": {
    "event_ts": "2026-10-07T00:00:00Z",
    "sent_at": "2026-10-07T09:22:15Z",
@@ -784,11 +789,6 @@
   "ETHUSDT|1h|ma60_turn|2026-10-27T18:00:00Z": {
    "event_ts": "2026-10-27T18:00:00Z",
    "sent_at": "2026-10-27T19:41:27Z",
-   "delivered": true
-  },
-  "ETHUSDT|1h|stoch_db|2026-10-02T00:00:00Z": {
-   "event_ts": "2026-10-02T00:00:00Z",
-   "sent_at": "2026-10-02T01:33:10Z",
    "delivered": true
   },
   "ETHUSDT|1h|stoch_db|2026-10-03T20:00:00Z": {
