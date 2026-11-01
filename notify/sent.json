@@ -116,6 +116,11 @@
    "sent_at": "2026-10-31T05:19:54Z",
    "delivered": true
   },
+  "BNBUSDT|1h|stoch_db|2026-11-01T12:00:00Z": {
+   "event_ts": "2026-11-01T12:00:00Z",
+   "sent_at": "2026-11-01T14:57:15Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|structure_ll|2026-10-02T18:00:00Z": {
    "event_ts": "2026-10-02T18:00:00Z",
    "sent_at": null,
@@ -749,6 +754,11 @@
   "ETHUSDT|1h|ma60_down|2026-10-29T02:00:00Z": {
    "event_ts": "2026-10-29T02:00:00Z",
    "sent_at": "2026-10-29T05:57:44Z",
+   "delivered": true
+  },
+  "ETHUSDT|1h|ma60_down|2026-11-01T09:00:00Z": {
+   "event_ts": "2026-11-01T09:00:00Z",
+   "sent_at": "2026-11-01T14:57:15Z",
    "delivered": true
   },
   "ETHUSDT|1h|ma60_turn|2026-10-04T00:00:00Z": {
@@ -3377,6 +3387,20 @@
     "pattern_high": 2249.0,
     "already_down": true,
     "recorded_at": "2026-11-01T08:02:08Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-11-01T04:00:00Z",
+    "divergence": true,
+    "result": "turned",
+    "bars_to_turn": 5,
+    "turn_ts": "2026-11-01T09:00:00Z",
+    "turn_price": 2270.6,
+    "direction": "down",
+    "pattern_high": 2272.61,
+    "already_down": true,
+    "recorded_at": "2026-11-01T14:57:15Z"
    }
   ]
  }
