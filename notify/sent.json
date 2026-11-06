@@ -486,6 +486,11 @@
    "sent_at": "2026-11-03T08:40:15Z",
    "delivered": true
   },
+  "BTCUSDT|1h|stoch_db|2026-11-06T08:00:00Z": {
+   "event_ts": "2026-11-06T08:00:00Z",
+   "sent_at": "2026-11-06T11:35:18Z",
+   "delivered": true
+  },
   "BTCUSDT|1h|structure_ll|2026-10-08T17:00:00Z": {
    "event_ts": "2026-10-08T17:00:00Z",
    "sent_at": null,
@@ -889,6 +894,11 @@
   "ETHUSDT|1h|stoch_db|2026-11-03T07:00:00Z": {
    "event_ts": "2026-11-03T07:00:00Z",
    "sent_at": "2026-11-03T16:38:32Z",
+   "delivered": true
+  },
+  "ETHUSDT|1h|stoch_db|2026-11-06T07:00:00Z": {
+   "event_ts": "2026-11-06T07:00:00Z",
+   "sent_at": "2026-11-06T11:35:18Z",
    "delivered": true
   },
   "ETHUSDT|1h|structure_ll|2026-10-07T13:00:00Z": {
