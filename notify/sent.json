@@ -806,11 +806,6 @@
    "sent_at": "2026-11-04T09:24:32Z",
    "delivered": true
   },
-  "ETHUSDT|1h|stoch_db|2026-10-09T06:00:00Z": {
-   "event_ts": "2026-10-09T06:00:00Z",
-   "sent_at": "2026-10-09T13:41:20Z",
-   "delivered": true
-  },
   "ETHUSDT|1h|stoch_db|2026-10-10T13:00:00Z": {
    "event_ts": "2026-10-10T13:00:00Z",
    "sent_at": "2026-10-10T15:13:46Z",
@@ -3718,6 +3713,32 @@
     "pattern_low": 2206.28,
     "already_up": false,
     "recorded_at": "2026-11-07T09:57:19Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-11-04T20:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 680.74,
+    "already_up": false,
+    "recorded_at": "2026-11-08T09:33:15Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "4h",
+    "confirm_ts": "2026-11-04T16:00:00Z",
+    "divergence": true,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "pattern_low": 2226.44,
+    "already_up": true,
+    "recorded_at": "2026-11-08T09:33:15Z"
    }
   ]
  }
