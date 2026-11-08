@@ -51,6 +51,11 @@
    "sent_at": "2026-11-05T18:18:56Z",
    "delivered": true
   },
+  "BNBUSDT|1h|ma60_down|2026-11-08T21:00:00Z": {
+   "event_ts": "2026-11-08T21:00:00Z",
+   "sent_at": "2026-11-08T23:57:28Z",
+   "delivered": true
+  },
   "BNBUSDT|1h|ma60_turn|2026-10-18T00:00:00Z": {
    "event_ts": "2026-10-18T00:00:00Z",
    "sent_at": "2026-10-18T05:12:24Z",
@@ -263,6 +268,11 @@
   },
   "BNBUSDT|1h|structure_ll|2026-11-07T15:00:00Z": {
    "event_ts": "2026-11-07T15:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|structure_ll|2026-11-08T17:00:00Z": {
+   "event_ts": "2026-11-08T17:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -623,6 +633,11 @@
   },
   "BTCUSDT|1h|structure_ll|2026-11-07T21:00:00Z": {
    "event_ts": "2026-11-07T21:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|structure_ll|2026-11-08T17:00:00Z": {
+   "event_ts": "2026-11-08T17:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -3729,6 +3744,20 @@
     "pattern_low": 2226.44,
     "already_up": true,
     "recorded_at": "2026-11-08T09:33:15Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-11-08T14:00:00Z",
+    "divergence": false,
+    "result": "turned",
+    "bars_to_turn": 7,
+    "turn_ts": "2026-11-08T21:00:00Z",
+    "turn_price": 680.36,
+    "direction": "down",
+    "pattern_high": 701.01,
+    "already_down": false,
+    "recorded_at": "2026-11-08T23:57:28Z"
    }
   ]
  }
