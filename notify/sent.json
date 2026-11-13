@@ -4039,6 +4039,34 @@
     "pattern_high": 81971.0,
     "already_down": true,
     "recorded_at": "2026-11-13T00:32:03Z"
+   },
+   {
+    "symbol": "BNBUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-11-12T06:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 692.5,
+    "already_down": true,
+    "recorded_at": "2026-11-13T07:07:49Z"
+   },
+   {
+    "symbol": "ETHUSDT",
+    "tf": "1h",
+    "confirm_ts": "2026-11-12T10:00:00Z",
+    "divergence": false,
+    "result": "expired",
+    "bars_to_turn": null,
+    "turn_ts": null,
+    "turn_price": null,
+    "direction": "down",
+    "pattern_high": 2132.07,
+    "already_down": true,
+    "recorded_at": "2026-11-13T07:07:49Z"
    }
   ]
  }
