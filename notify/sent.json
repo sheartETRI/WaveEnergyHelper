@@ -146,11 +146,6 @@
    "sent_at": "2026-11-24T20:49:22Z",
    "delivered": true
   },
-  "BNBUSDT|1h|structure_ll|2026-10-26T08:00:00Z": {
-   "event_ts": "2026-10-26T08:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BNBUSDT|1h|structure_ll|2026-10-27T06:00:00Z": {
    "event_ts": "2026-10-27T06:00:00Z",
    "sent_at": null,
@@ -313,6 +308,16 @@
   },
   "BNBUSDT|1h|structure_ll|2026-11-24T03:00:00Z": {
    "event_ts": "2026-11-24T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|structure_ll|2026-11-25T03:00:00Z": {
+   "event_ts": "2026-11-25T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BNBUSDT|1h|structure_ll|2026-11-25T07:00:00Z": {
+   "event_ts": "2026-11-25T07:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -526,11 +531,6 @@
    "sent_at": "2026-11-24T20:49:22Z",
    "delivered": true
   },
-  "BTCUSDT|1h|structure_ll|2026-10-26T13:00:00Z": {
-   "event_ts": "2026-10-26T13:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "BTCUSDT|1h|structure_ll|2026-10-27T06:00:00Z": {
    "event_ts": "2026-10-27T06:00:00Z",
    "sent_at": null,
@@ -708,6 +708,11 @@
   },
   "BTCUSDT|1h|structure_ll|2026-11-24T17:00:00Z": {
    "event_ts": "2026-11-24T17:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "BTCUSDT|1h|structure_ll|2026-11-25T07:00:00Z": {
+   "event_ts": "2026-11-25T07:00:00Z",
    "sent_at": null,
    "delivered": false
   },
@@ -931,11 +936,6 @@
    "sent_at": "2026-11-24T20:49:22Z",
    "delivered": true
   },
-  "ETHUSDT|1h|structure_ll|2026-10-26T13:00:00Z": {
-   "event_ts": "2026-10-26T13:00:00Z",
-   "sent_at": null,
-   "delivered": false
-  },
   "ETHUSDT|1h|structure_ll|2026-10-28T13:00:00Z": {
    "event_ts": "2026-10-28T13:00:00Z",
    "sent_at": null,
@@ -1098,6 +1098,16 @@
   },
   "ETHUSDT|1h|structure_ll|2026-11-24T03:00:00Z": {
    "event_ts": "2026-11-24T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|structure_ll|2026-11-25T03:00:00Z": {
+   "event_ts": "2026-11-25T03:00:00Z",
+   "sent_at": null,
+   "delivered": false
+  },
+  "ETHUSDT|1h|structure_ll|2026-11-25T07:00:00Z": {
+   "event_ts": "2026-11-25T07:00:00Z",
    "sent_at": null,
    "delivered": false
   },
